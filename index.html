@@ -18,8 +18,8 @@
 </head>
 <body style="margin:0;padding:0">
 
-<!-- Tombol Install PWA (mengambang, muncul otomatis kalau browser mendukung & belum terpasang) -->
-<button id="btnInstallPWA" style="display:none;position:fixed;left:14px;bottom:14px;z-index:99999;background:#0d9488;color:#fff;border:none;padding:11px 18px;border-radius:24px;font-size:13.5px;font-weight:600;box-shadow:0 4px 14px rgba(15,118,110,.35);cursor:pointer;font-family:'Segoe UI',Arial,sans-serif">
+<!-- Tombol Install PWA (selalu tampil kecuali aplikasi sudah terpasang) -->
+<button id="btnInstallPWA" style="position:fixed;left:14px;bottom:14px;z-index:99999;background:#0d9488;color:#fff;border:none;padding:11px 18px;border-radius:24px;font-size:13.5px;font-weight:600;box-shadow:0 4px 14px rgba(15,118,110,.35);cursor:pointer;font-family:'Segoe UI',Arial,sans-serif">
   &#128241; Instal Aplikasi WASIAT
 </button>
 
@@ -2036,28 +2036,46 @@
   }
 
   // ============ PWA: tombol Install ============
+  // Tombol SELALU tampil (kecuali aplikasi sudah terpasang) -- tidak menunggu event
+  // "beforeinstallprompt" muncul dulu, karena event itu kadang lambat/tidak konsisten
+  // muncul di berbagai browser. Kalau event tersedia, tombol pakai prompt instal asli
+  // bawaan browser. Kalau tidak tersedia (iPhone/Safari, atau browser lain yang tidak
+  // mendukung), tombol menampilkan panduan manual supaya pengguna tetap bisa install.
   var _deferredInstallPrompt = null;
+  var _sudahTerpasang = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  var _isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+
+  function _perbaruiTombolInstall(){
+    var btn = document.getElementById('btnInstallPWA');
+    if (!btn) return;
+    btn.style.display = _sudahTerpasang ? 'none' : 'block';
+  }
+
   window.addEventListener('beforeinstallprompt', function(e){
     e.preventDefault();
     _deferredInstallPrompt = e;
-    var btn = document.getElementById('btnInstallPWA');
-    if (btn) btn.style.display = 'block';
+    _perbaruiTombolInstall();
   });
   window.addEventListener('appinstalled', function(){
-    var btn = document.getElementById('btnInstallPWA');
-    if (btn) btn.style.display = 'none';
+    _sudahTerpasang = true;
     _deferredInstallPrompt = null;
+    _perbaruiTombolInstall();
   });
+
   document.getElementById('btnInstallPWA').addEventListener('click', function(){
-    if (!_deferredInstallPrompt) return;
-    _deferredInstallPrompt.prompt();
-    _deferredInstallPrompt.userChoice.then(function(){ _deferredInstallPrompt = null; });
+    if (_deferredInstallPrompt) {
+      _deferredInstallPrompt.prompt();
+      _deferredInstallPrompt.userChoice.then(function(){ _deferredInstallPrompt = null; });
+      return;
+    }
+    if (_isIOS) {
+      alert('Cara install di iPhone/iPad:\n\n1. Tap ikon Share/Bagikan (kotak dengan panah ke atas) di bagian bawah layar Safari.\n2. Pilih "Add to Home Screen" / "Tambah ke Layar Utama".\n3. Tap "Add" / "Tambah" di pojok kanan atas.\n\nIkon WASIAT akan muncul di layar utama HP Anda seperti aplikasi biasa.');
+      return;
+    }
+    alert('Cara install aplikasi ini:\n\nDi Android (Chrome): tap menu titik tiga (\u22EE) di pojok kanan atas browser, lalu pilih "Install app" atau "Tambah ke layar Utama".\n\nDi komputer (Chrome/Edge): cari ikon install (gambar layar dengan panah, atau tanda +) di sebelah kanan kolom alamat browser, lalu klik.\n\nKalau tidak menemukan opsi ini, pastikan Anda membuka halaman ini lewat Chrome atau Edge (bukan browser lain).');
   });
-  // Kalau sudah berjalan sebagai app terpasang (standalone), sembunyikan tombol install.
-  if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
-    var _btnI = document.getElementById('btnInstallPWA');
-    if (_btnI) _btnI.style.display = 'none';
-  }
+
+  _perbaruiTombolInstall();
 </script>
 </body>
 </html>
