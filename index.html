@@ -18,8 +18,8 @@
 </head>
 <body style="margin:0;padding:0">
 
-<!-- Tombol Install PWA (selalu tampil kecuali aplikasi sudah terpasang) -->
-<button id="btnInstallPWA" style="position:fixed;left:14px;bottom:14px;z-index:99999;background:#0d9488;color:#fff;border:none;padding:11px 18px;border-radius:24px;font-size:13.5px;font-weight:600;box-shadow:0 4px 14px rgba(15,118,110,.35);cursor:pointer;font-family:'Segoe UI',Arial,sans-serif">
+<!-- Tombol Install PWA (tersembunyi default -- hanya muncul kalau terdeteksi belum terpasang) -->
+<button id="btnInstallPWA" style="display:none;position:fixed;left:14px;bottom:14px;z-index:99999;background:#0d9488;color:#fff;border:none;padding:11px 18px;border-radius:24px;font-size:13.5px;font-weight:600;box-shadow:0 4px 14px rgba(15,118,110,.35);cursor:pointer;font-family:'Segoe UI',Arial,sans-serif">
   &#128241; Instal Aplikasi WASIAT
 </button>
 
@@ -2027,55 +2027,71 @@
 
 <script>
   // ============ PWA: daftarkan service worker ============
+  // Dibungkus try/catch + .catch() supaya kalau gagal (misal dibuka lewat pratinjau
+  // file yang bukan hosting asli/production), aplikasi tetap jalan normal -- cuma
+  // fitur offline-nya saja yang tidak aktif di konteks itu, bukan error yang mengganggu.
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function(){
-      navigator.serviceWorker.register('/sw.js').catch(function(err){
-        console.warn('Gagal mendaftarkan service worker:', err);
-      });
+      try {
+        navigator.serviceWorker.register('/sw.js').catch(function(err){
+          console.warn('Service worker tidak aktif di konteks ini (wajar kalau bukan domain hosting asli):', err.message || err);
+        });
+      } catch (err) { /* abaikan, bukan fitur wajib */ }
     });
   }
 
   // ============ PWA: tombol Install ============
-  // Tombol SELALU tampil (kecuali aplikasi sudah terpasang) -- tidak menunggu event
-  // "beforeinstallprompt" muncul dulu, karena event itu kadang lambat/tidak konsisten
-  // muncul di berbagai browser. Kalau event tersedia, tombol pakai prompt instal asli
-  // bawaan browser. Kalau tidak tersedia (iPhone/Safari, atau browser lain yang tidak
-  // mendukung), tombol menampilkan panduan manual supaya pengguna tetap bisa install.
+  // Tombol HANYA muncul kalau ada sinyal jelas aplikasi BELUM terpasang:
+  // - Chrome/Edge (Android & desktop): muncul begitu event "beforeinstallprompt"
+  //   ditangkap -- browser hanya mengirim event ini kalau memang belum terinstal.
+  // - iPhone/iPad (Safari): tidak ada event seperti di atas, tapi Safari menyediakan
+  //   "navigator.standalone" yang bernilai persis false (bukan sekadar tidak ada)
+  //   saat dibuka biasa di Safari dan belum ditambahkan ke Layar Utama.
+  // - Browser lain yang tidak mendukung sama sekali (jarang) -> tombol tetap
+  //   tersembunyi, karena tidak ada sinyal valid untuk memastikan status install-nya.
   var _deferredInstallPrompt = null;
-  var _sudahTerpasang = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   var _isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+  var _sudahStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 
-  function _perbaruiTombolInstall(){
+  function _tampilkanTombolInstall(){
     var btn = document.getElementById('btnInstallPWA');
-    if (!btn) return;
-    btn.style.display = _sudahTerpasang ? 'none' : 'block';
+    if (!btn || _sudahStandalone) return;
+    btn.style.display = 'block';
+  }
+  function _sembunyikanTombolInstall(){
+    var btn = document.getElementById('btnInstallPWA');
+    if (btn) btn.style.display = 'none';
   }
 
   window.addEventListener('beforeinstallprompt', function(e){
     e.preventDefault();
     _deferredInstallPrompt = e;
-    _perbaruiTombolInstall();
+    _tampilkanTombolInstall();
   });
   window.addEventListener('appinstalled', function(){
-    _sudahTerpasang = true;
+    _sudahStandalone = true;
     _deferredInstallPrompt = null;
-    _perbaruiTombolInstall();
+    _sembunyikanTombolInstall();
   });
 
   document.getElementById('btnInstallPWA').addEventListener('click', function(){
     if (_deferredInstallPrompt) {
       _deferredInstallPrompt.prompt();
-      _deferredInstallPrompt.userChoice.then(function(){ _deferredInstallPrompt = null; });
+      _deferredInstallPrompt.userChoice.then(function(res){
+        _deferredInstallPrompt = null;
+        if (res && res.outcome === 'accepted') _sembunyikanTombolInstall();
+      });
       return;
     }
     if (_isIOS) {
       alert('Cara install di iPhone/iPad:\n\n1. Tap ikon Share/Bagikan (kotak dengan panah ke atas) di bagian bawah layar Safari.\n2. Pilih "Add to Home Screen" / "Tambah ke Layar Utama".\n3. Tap "Add" / "Tambah" di pojok kanan atas.\n\nIkon WASIAT akan muncul di layar utama HP Anda seperti aplikasi biasa.');
-      return;
     }
-    alert('Cara install aplikasi ini:\n\nDi Android (Chrome): tap menu titik tiga (\u22EE) di pojok kanan atas browser, lalu pilih "Install app" atau "Tambah ke layar Utama".\n\nDi komputer (Chrome/Edge): cari ikon install (gambar layar dengan panah, atau tanda +) di sebelah kanan kolom alamat browser, lalu klik.\n\nKalau tidak menemukan opsi ini, pastikan Anda membuka halaman ini lewat Chrome atau Edge (bukan browser lain).');
   });
 
-  _perbaruiTombolInstall();
+  // Khusus iPhone/iPad: kalau BUKAN standalone (berarti dibuka biasa lewat Safari,
+  // belum pernah "Add to Home Screen"), tampilkan tombolnya. Kalau sudah standalone,
+  // _tampilkanTombolInstall() otomatis tidak melakukan apa-apa (lihat pengecekan di atas).
+  if (_isIOS && !_sudahStandalone) { _tampilkanTombolInstall(); }
 </script>
 </body>
 </html>
