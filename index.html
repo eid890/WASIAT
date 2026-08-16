@@ -22,6 +22,9 @@
 <button id="btnInstallPWA" style="display:none;position:fixed;left:14px;bottom:14px;z-index:99999;background:#0d9488;color:#fff;border:none;padding:11px 18px;border-radius:24px;font-size:13.5px;font-weight:600;box-shadow:0 4px 14px rgba(15,118,110,.35);cursor:pointer;font-family:'Segoe UI',Arial,sans-serif">
   &#128241; Instal Aplikasi WASIAT
 </button>
+<button id="btnCekPWA" style="position:fixed;left:14px;bottom:64px;z-index:99999;background:#fff;color:#0f766e;border:1px solid #0d9488;padding:6px 12px;border-radius:16px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'Segoe UI',Arial,sans-serif">
+  &#128269; Cek Status Instalasi
+</button>
 
 <!-- Lencana status data offline (mengambang, hanya tampil kalau ada data belum tersinkron) -->
 <div id="outboxBadge" style="display:none;position:fixed;right:14px;bottom:14px;z-index:99999;background:#f59e0b;color:#fff;padding:10px 14px;border-radius:24px;font-size:12.5px;font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,.25);align-items:center;gap:8px;font-family:'Segoe UI',Arial,sans-serif;cursor:pointer" onclick="sinkronkanOutbox()">
@@ -2090,6 +2093,39 @@
   // Tampilkan default. Kalau ternyata sedang berjalan sebagai app terpasang
   // (standalone), _tampilkanTombolInstall() otomatis tidak melakukan apa-apa.
   _tampilkanTombolInstall();
+
+  // ============ Alat diagnosa: cek kenapa install tidak/belum bisa jalan ============
+  // Mengecek satu-satu syarat yang WAJIB dipenuhi browser (Chrome/Edge) supaya PWA
+  // dianggap "siap diinstal" (memicu beforeinstallprompt). Hasilnya ditampilkan
+  // dalam Bahasa Indonesia supaya mudah dipahami tanpa perlu buka DevTools.
+  document.getElementById('btnCekPWA').addEventListener('click', function(){
+    var hasil = [];
+    hasil.push('=== HASIL CEK STATUS INSTALASI ===\n');
+    hasil.push('URL saat ini: ' + location.href);
+    hasil.push('HTTPS aktif: ' + (location.protocol === 'https:' ? 'YA (baik)' : 'TIDAK (harus HTTPS supaya bisa diinstal!)'));
+    hasil.push('Sudah berjalan sebagai app terpasang: ' + (_sudahStandalone ? 'YA' : 'TIDAK'));
+    hasil.push('Browser sudah kirim izin instal (beforeinstallprompt): ' + (_deferredInstallPrompt ? 'YA (tombol Instal seharusnya berfungsi penuh)' : 'BELUM diterima'));
+
+    var cekManifest = fetch('/manifest.json').then(function(r){
+      return r.ok ? r.json().then(function(j){ return 'OK (nama: "'+(j.name||'-')+'", '+(j.icons?j.icons.length:0)+' ikon terdaftar)'; })
+                  : 'GAGAL - status HTTP ' + r.status + ' (file manifest.json tidak ditemukan di server!)';
+    }).catch(function(){ return 'GAGAL total diambil (cek koneksi atau file tidak ada)'; });
+
+    var cekIkon192 = fetch('/icons/icon-192.png').then(function(r){ return r.ok ? 'OK' : 'GAGAL - status HTTP ' + r.status + ' (file tidak ada di server!)'; }).catch(function(){ return 'GAGAL total diambil'; });
+    var cekIkon512 = fetch('/icons/icon-512.png').then(function(r){ return r.ok ? 'OK' : 'GAGAL - status HTTP ' + r.status + ' (file tidak ada di server!)'; }).catch(function(){ return 'GAGAL total diambil'; });
+    var cekSW = ('serviceWorker' in navigator)
+      ? navigator.serviceWorker.getRegistration().then(function(reg){ return reg ? ('Terdaftar (status: ' + (reg.active?'aktif':'belum aktif') + ')') : 'BELUM terdaftar'; })
+      : Promise.resolve('Browser ini tidak mendukung Service Worker');
+
+    Promise.all([cekManifest, cekIkon192, cekIkon512, cekSW]).then(function(r){
+      hasil.push('\nmanifest.json: ' + r[0]);
+      hasil.push('icons/icon-192.png: ' + r[1]);
+      hasil.push('icons/icon-512.png: ' + r[2]);
+      hasil.push('Service Worker: ' + r[3]);
+      hasil.push('\nKalau ada tulisan "GAGAL" di atas, itu penyebab pastinya -- biasanya file belum ter-upload dengan benar ke GitHub/Vercel. Kalau semua "OK" tapi tombol Instal masih tampilan tutorial, coba tutup & buka lagi browsernya sekali.');
+      alert(hasil.join('\n'));
+    });
+  });
 </script>
 </body>
 </html>
