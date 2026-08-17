@@ -13,14 +13,14 @@
 // Naikkan CACHE_NAME (misal jadi wasiat-v3) setiap kali ingin memaksa semua
 // pengguna mengambil ulang seluruh aset statis dari awal.
 
-const CACHE_NAME = 'wasiat-v2';
+const CACHE_NAME = 'wasiat-v3';
 const APP_SHELL = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-  '/icons/apple-touch-icon.png'
+  '/icon-192.png',
+  '/icon-512.png',
+  '/apple-touch-icon.png'
 ];
 
 self.addEventListener('install', function (e) {

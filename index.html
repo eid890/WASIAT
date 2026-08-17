@@ -9,8 +9,8 @@
 <!-- ============ PWA: manifest, ikon, warna tema ============ -->
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0d9488">
-<link rel="icon" href="/icons/favicon-32.png" sizes="32x32">
-<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="icon" href="/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -167,7 +167,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbx3DiCwWU3Q7zoisVi0AaHgM9rvicPKyVYMfovCeH-ge1iYcMiVakuHlrGaSEarZxL_/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -2111,17 +2111,19 @@
                   : 'GAGAL - status HTTP ' + r.status + ' (file manifest.json tidak ditemukan di server!)';
     }).catch(function(){ return 'GAGAL total diambil (cek koneksi atau file tidak ada)'; });
 
-    var cekIkon192 = fetch('/icons/icon-192.png').then(function(r){ return r.ok ? 'OK' : 'GAGAL - status HTTP ' + r.status + ' (file tidak ada di server!)'; }).catch(function(){ return 'GAGAL total diambil'; });
-    var cekIkon512 = fetch('/icons/icon-512.png').then(function(r){ return r.ok ? 'OK' : 'GAGAL - status HTTP ' + r.status + ' (file tidak ada di server!)'; }).catch(function(){ return 'GAGAL total diambil'; });
+    var cekIkon192 = fetch('/icon-192.png').then(function(r){ return r.ok ? 'OK' : 'GAGAL - status HTTP ' + r.status + ' (file tidak ada di server!)'; }).catch(function(){ return 'GAGAL total diambil'; });
+    var cekIkon512 = fetch('/icon-512.png').then(function(r){ return r.ok ? 'OK' : 'GAGAL - status HTTP ' + r.status + ' (file tidak ada di server!)'; }).catch(function(){ return 'GAGAL total diambil'; });
+    var cekSwFile = fetch('/sw.js').then(function(r){ return r.ok ? 'OK (file ada di server)' : 'GAGAL - status HTTP ' + r.status + ' (file sw.js tidak ditemukan di server!)'; }).catch(function(){ return 'GAGAL total diambil'; });
     var cekSW = ('serviceWorker' in navigator)
       ? navigator.serviceWorker.getRegistration().then(function(reg){ return reg ? ('Terdaftar (status: ' + (reg.active?'aktif':'belum aktif') + ')') : 'BELUM terdaftar'; })
       : Promise.resolve('Browser ini tidak mendukung Service Worker');
 
-    Promise.all([cekManifest, cekIkon192, cekIkon512, cekSW]).then(function(r){
+    Promise.all([cekManifest, cekIkon192, cekIkon512, cekSwFile, cekSW]).then(function(r){
       hasil.push('\nmanifest.json: ' + r[0]);
-      hasil.push('icons/icon-192.png: ' + r[1]);
-      hasil.push('icons/icon-512.png: ' + r[2]);
-      hasil.push('Service Worker: ' + r[3]);
+      hasil.push('icon-192.png: ' + r[1]);
+      hasil.push('icon-512.png: ' + r[2]);
+      hasil.push('File sw.js di server: ' + r[3]);
+      hasil.push('Pendaftaran Service Worker: ' + r[4]);
       hasil.push('\nKalau ada tulisan "GAGAL" di atas, itu penyebab pastinya -- biasanya file belum ter-upload dengan benar ke GitHub/Vercel. Kalau semua "OK" tapi tombol Instal masih tampilan tutorial, coba tutup & buka lagi browsernya sekali.');
       alert(hasil.join('\n'));
     });

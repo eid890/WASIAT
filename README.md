@@ -20,7 +20,7 @@ Blogger, sekarang jadi website sendiri).
 | `manifest.json` | Identitas aplikasi saat di-install: nama **WASIAT**, ikon, warna |
 | `sw.js` | Service worker — bikin aplikasi bisa dibuka instan & tetap muncul saat offline |
 | `vercel.json` | Pengaturan cache supaya update aplikasi selalu sampai ke pengguna |
-| `icons/` | Ikon aplikasi dari logo pesantren (berbagai ukuran) |
+| `icon-192.png`, `icon-512.png`, `icon-192-maskable.png`, `icon-512-maskable.png`, `apple-touch-icon.png`, `favicon-32.png` | Ikon aplikasi dari logo pesantren, semuanya **rata sejajar** dengan `index.html` (sengaja TIDAK dimasukkan folder, supaya upload ke GitHub tidak pernah gagal) |
 
 ---
 
@@ -30,11 +30,18 @@ Blogger, sekarang jadi website sendiri).
 2. Klik **New repository** → beri nama misal `wasiat-app` → pilih **Private** atau
    **Public** (bebas) → **Create repository**.
 3. Di halaman repo kosong itu, klik **uploading an existing file** →
-   drag & drop **SEMUA isi folder ini** (termasuk folder `icons/` beserta isinya)
-   → **Commit changes**.
+   **pilih SEMUA file sekaligus** (10 file: `index.html`, `manifest.json`, `sw.js`,
+   `vercel.json`, `README.md`, dan 6 file ikon `.png`) → drag & drop atau klik
+   "choose your files" dan pilih semuanya bersamaan → **Commit changes**.
+
+   ⚠️ **Penting:** semua file harus ada **langsung di halaman utama repo**
+   (tidak di dalam folder apapun). Kalau setelah upload Anda lihat ada folder
+   seperti `icons/` muncul di repo, berarti prosesnya salah — hapus dan upload
+   ulang dengan memilih file .png satu-satu (bukan folder).
 
 *(Kalau sudah terbiasa pakai Git dari komputer, bisa juga `git init`, `git add .`,
-`git commit`, `git push` — hasilnya sama saja.)*
+`git commit`, `git push` — hasilnya sama saja, dan cara ini pasti tidak ada
+masalah struktur folder.)*
 
 ---
 
