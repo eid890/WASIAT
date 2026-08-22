@@ -174,7 +174,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbx3DiCwWU3Q7zoisVi0AaHgM9rvicPKyVYMfovCeH-ge1iYcMiVakuHlrGaSEarZxL_/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -489,7 +489,7 @@
   // =====================================================================
   // DASHBOARD GURU
   // =====================================================================
-  function dashboardGuru(){
+  function dashboardGuru(activeKey){
     var navItems = [
       {key:'jadwal', label:'Jadwal & Absen', icon:'&#128197;'},
       {key:'riwayatabsen', label:'Riwayat Absensi', icon:'&#128203;'},
@@ -497,11 +497,37 @@
       {key:'riwayathafalan', label:'Riwayat Hafalan', icon:'&#128337;'},
       {key:'inputnilai', label:'Input Nilai', icon:'&#9999;&#65039;'},
       {key:'riwayatnilai', label:'Riwayat Nilai', icon:'&#128202;'},
-      {key:'santrisaya', label:'Santri Saya', icon:'&#128101;'}
+      {key:'santrisaya', label:'Santri Saya', icon:'&#128101;'},
+      {key:'profilsaya', label:'Profil Saya', icon:'&#128100;'}
     ];
-    var map = {jadwal:guruJadwal, riwayatabsen:guruRiwayat, hafalan:guruIsiHafalan, riwayathafalan:guruRiwayatHafalan, inputnilai:guruInputNilai, riwayatnilai:guruRiwayatNilai, santrisaya:guruSantriSaya};
-    renderSidebarShell({title:'Dashboard Guru', navItems:navItems, activeKey:'jadwal', contentId:'dg-content', onSelect:function(key){ map[key](); }});
-    guruJadwal();
+    var map = {jadwal:guruJadwal, riwayatabsen:guruRiwayat, hafalan:guruIsiHafalan, riwayathafalan:guruRiwayatHafalan, inputnilai:guruInputNilai, riwayatnilai:guruRiwayatNilai, santrisaya:guruSantriSaya, profilsaya:guruProfilSaya};
+    activeKey = activeKey && map[activeKey] ? activeKey : 'jadwal';
+    renderSidebarShell({title:'Dashboard Guru', navItems:navItems, activeKey:activeKey, contentId:'dg-content', onSelect:function(key){ map[key](); }});
+    map[activeKey]();
+  }
+
+  // ---- Profil Saya: guru mengubah data akunnya sendiri ----
+  function guruProfilSaya(){
+    var c = document.getElementById('dg-content');
+    c.innerHTML = '<div class="card"><h3>Profil Saya</h3>' +
+      warnBox('Kalau Nama diubah, semua jadwal, riwayat absensi/hafalan/nilai lama, dan rekap jam mengajar Anda TETAP UTUH dan otomatis mengikuti nama baru -- tidak akan hilang atau terputus.') +
+      fieldText('gpNama','Nama', STATE.user.nama) +
+      fieldText('gpNoWa','No WA', STATE.user.noWa || '') +
+      fieldText('gpPin','PIN Baru (kosongkan kalau tidak ingin ganti)', '') +
+      '<button id="btnSimpanProfilGuru">Simpan</button><div id="pesanProfilGuru"></div></div>';
+    document.getElementById('btnSimpanProfilGuru').onclick = function(){
+      var namaBaru = document.getElementById('gpNama').value.trim();
+      var noWaBaru = document.getElementById('gpNoWa').value.trim();
+      var pinBaru = document.getElementById('gpPin').value.trim();
+      if (!namaBaru) { document.getElementById('pesanProfilGuru').innerHTML = errBox('Nama wajib diisi.'); return; }
+      api('ubahProfilGuru', {namaLama: STATE.user.nama, namaBaru: namaBaru, noWaBaru: noWaBaru, pinBaru: pinBaru}).then(function(res){
+        if(!res.ok){ document.getElementById('pesanProfilGuru').innerHTML = errBox(res.error); return; }
+        STATE.user.nama = namaBaru;
+        if (noWaBaru) STATE.user.noWa = noWaBaru;
+        document.getElementById('pesanProfilGuru').innerHTML = '<p class="muted">Tersimpan.</p>';
+        dashboardGuru('profilsaya');
+      });
+    };
   }
 
   // ---- Santri Saya: daftar semua santri lintas kelas & halaqoh yang diajar guru ini ----
@@ -512,10 +538,11 @@
       if(!res.ok){ c.innerHTML = errBox(res.error); return; }
       if(!res.data.length){ c.innerHTML = '<div class="card">'+warnBox('Belum ada santri yang tercatat di kelas/halaqoh yang Anda ampu.')+'</div>'; return; }
       var html = '<div class="card"><h3>Santri yang Saya Ajar ('+res.data.length+' santri)</h3>' +
+        warnBox('Bisa membetulkan data santri (termasuk NISN kalau salah input) lewat tombol Edit Data. Riwayat absen/nilai/hafalan sebelumnya TIDAK akan hilang atau terputus, otomatis ikut menyesuaikan.') +
         '<table><tr><th>NISN</th><th>Nama</th><th>Kelas</th><th>Halaqoh</th><th>Aksi</th></tr>' +
         res.data.map(function(s){
           return '<tr><td>'+esc(s.nisn)+'</td><td>'+esc(s.nama)+'</td><td>'+esc(s.kelas.join(', ')||'-')+'</td><td>'+esc(s.halaqoh.join(', ')||'-')+'</td>' +
-            '<td><button class="small btnLihatRekapSantri" data-nisn="'+esc(s.nisn)+'">Lihat Rekap</button></td></tr>';
+            '<td><button class="small btnLihatRekapSantri" data-nisn="'+esc(s.nisn)+'">Lihat Rekap</button> <button class="small secondary btnEditSantriGuru" data-nisn="'+esc(s.nisn)+'">Edit Data</button></td></tr>';
         }).join('') + '</table></div><div id="rekapSantriSayaWrap"></div>';
       c.innerHTML = html;
       c.querySelectorAll('.btnLihatRekapSantri').forEach(function(btn){
@@ -524,6 +551,32 @@
           wrap.innerHTML = '<div id="rekapSantriSayaPanel"></div>';
           renderRekapLengkapSantri('rekapSantriSayaPanel', btn.dataset.nisn);
           wrap.scrollIntoView({behavior:'smooth', block:'start'});
+        };
+      });
+      c.querySelectorAll('.btnEditSantriGuru').forEach(function(btn){
+        btn.onclick = function(){
+          var nisnLama = btn.dataset.nisn;
+          api('getMasterData', {sheet:'Santri'}).then(function(resSantri){
+            if(!resSantri.ok){ alert(resSantri.error); return; }
+            var s = resSantri.data.data.find(function(x){ return String(x.NISN) === String(nisnLama); });
+            if(!s){ alert('Data santri tidak ditemukan.'); return; }
+            var fieldsHtml = fieldText('esNisn','NISN', s.NISN) + fieldText('esNama','Nama', s.Nama) +
+              fieldSelect('esGender','Jenis Kelamin', ['Laki-laki','Perempuan'], s['Jenis Kelamin']) +
+              fieldText('esNoWa','No WA Orang Tua', s['No WA Ortu']);
+            openModal('Edit Data Santri', fieldsHtml, function(m){
+              var payload = {
+                nisnLama: nisnLama,
+                nisnBaru: m.querySelector('#esNisn').value.trim(),
+                namaBaru: m.querySelector('#esNama').value.trim(),
+                jenisKelamin: m.querySelector('#esGender').value,
+                noWaOrtu: m.querySelector('#esNoWa').value.trim()
+              };
+              api('ubahIdentitasSantri', payload).then(function(r){
+                if(!r.ok){ alert(r.error); return; }
+                guruSantriSaya();
+              });
+            });
+          });
         };
       });
     });
@@ -540,7 +593,10 @@
       if(!res.data.length){ c.innerHTML='<div class="card">Tidak ada jadwal mengajar untuk Anda hari ini.<br><span class="muted">Jika ini tidak sesuai, minta Admin memeriksa nama pengampu di sheet MataPelajaran agar sama persis dengan nama akun Anda.</span></div>'; return; }
       var html = '';
       res.data.forEach(function(j, idx){
-        html += '<div class="card"><b>'+esc(j.mapel)+'</b> - '+esc(j.kelas)+' (Jam ke-'+esc(j.jamKe)+', '+esc(j.hari)+')' +
+        var labelJam = j.jamKeList.length > 1 ? ('Jam ke-'+j.jamKeList.join(' & ')) : ('Jam ke-'+j.jamKeList[0]);
+        var labelPengganti = j.pengganti ? ('<div><span class="badge-hafalan tidaksetor" style="background:#7c3aed">Menggantikan: '+esc(j.guruAsli)+'</span></div>') : '';
+        html += '<div class="card"><b>'+esc(j.mapel)+'</b> - '+esc(j.kelas)+' ('+labelJam+', '+esc(j.hari)+')' + labelPengganti +
+          (j.jamKeList.length > 1 ? '<p class="muted" style="margin:4px 0 0">'+j.jamKeList.length+' jam pelajaran berurutan, cukup isi absen sekali untuk semuanya.</p>' : '') +
           '<div><button class="small" data-idx="'+idx+'">Isi Absensi</button></div></div>';
       });
       c.innerHTML = html;
@@ -555,7 +611,9 @@
     api('getSantriUntukAbsen', {kelas: j.kelas}).then(function(res){
       if(!res.ok){ c.innerHTML = errBox(res.error) + '<button id="btnBalikJadwal">Kembali</button>'; document.getElementById('btnBalikJadwal').onclick = guruJadwal; return; }
       if(!res.data.length){ c.innerHTML = '<div class="card">' + warnBox(res.peringatan || ('Belum ada santri di kelas "'+j.kelas+'".')) + '<button id="btnBalikJadwal2">Kembali</button></div>'; document.getElementById('btnBalikJadwal2').onclick = guruJadwal; return; }
-      var html = '<div class="card"><h3>Absensi '+esc(j.mapel)+' - '+esc(j.kelas)+'</h3>' +
+      var labelJam = j.jamKeList.length > 1 ? ('Jam ke-'+j.jamKeList.join(' & ')) : ('Jam ke-'+j.jamKeList[0]);
+      var html = '<div class="card"><h3>Absensi '+esc(j.mapel)+' - '+esc(j.kelas)+' ('+labelJam+')</h3>' +
+        (j.jamKeList.length > 1 ? warnBox('Ini akan tercatat untuk '+j.jamKeList.length+' jam pelajaran sekaligus (Jam ke-'+j.jamKeList.join(', ')+'), cukup diisi satu kali.') : '') +
         '<label class="muted">Tanggal</label><input type="date" id="absenTanggal" value="'+todayStr()+'" '+(STATE.pengaturan.IzinkanGantiTanggal?'':'disabled')+'>' +
         (STATE.pengaturan.IzinkanGantiTanggal ? '' : '<p class="faded">Tanggal terkunci ke hari ini. Admin/Mudir bisa mengaktifkan izin ganti tanggal di menu Tampilan/Logo.</p>') +
         '<div id="formAbsen">';
@@ -593,10 +651,10 @@
         var btn = document.getElementById('btnSimpanAbsen'); btn.disabled = true; btn.innerText = 'Menyimpan...';
         var tglInput = document.getElementById('absenTanggal');
         var tanggalDipakai = (tglInput && tglInput.value) ? tglInput.value : todayStr();
-        api('submitAbsensi', {tanggal:tanggalDipakai, hari:hariDariTanggal(tanggalDipakai) || j.hari, jamKe:j.jamKe, mapel:j.mapel, kelas:j.kelas, pengampu:STATE.user.nama, items:items})
+        api('submitAbsensi', {tanggal:tanggalDipakai, hari:hariDariTanggal(tanggalDipakai) || j.hari, jamKeList:j.jamKeList, mapel:j.mapel, kelas:j.kelas, pengampu:STATE.user.nama, items:items})
           .then(function(res2){
             if(!res2.ok){ document.getElementById('pesanSimpanAbsen').innerHTML = errBox(res2.error); btn.disabled=false; btn.innerText='Simpan Absensi'; return; }
-            alert('Absensi tersimpan (baru: '+res2.ditambah+', diperbarui: '+res2.diupdate+').');
+            alert('Absensi tersimpan untuk '+j.jamKeList.length+' jam pelajaran (baru: '+res2.ditambah+', diperbarui: '+res2.diupdate+').');
             guruJadwal();
           });
       };
@@ -915,22 +973,28 @@
       '<div id="pilihHalaqohWrap"></div><div id="formHafalanWrap"></div></div>';
     document.getElementById('btnTampilkanHalaqoh').onclick = function(){
       var waktu = document.getElementById('hfWaktu').value;
+      var tanggalDipilih = document.getElementById('hfTanggal').value || todayStr();
       api('getHalaqohGuru', {pengampu: STATE.user.nama, waktu: waktu}).then(function(res){
         if(!res.ok){ document.getElementById('pilihHalaqohWrap').innerHTML = errBox(res.error); return; }
         if(!res.data.length){ document.getElementById('pilihHalaqohWrap').innerHTML = warnBox('Anda tidak memiliki halaqoh pada waktu "'+waktu+'". Hubungi Admin untuk diatur di menu Kelola Halaqoh.'); document.getElementById('formHafalanWrap').innerHTML=''; return; }
-        if(res.data.length === 1){ document.getElementById('pilihHalaqohWrap').innerHTML = ''; muatFormHafalan(res.data[0].namaHalaqoh, waktu); return; }
-        var html = '<label>Pilih Halaqoh</label><select id="pilihHalaqoh">' + res.data.map(function(h){return '<option value="'+esc(h.namaHalaqoh)+'">'+esc(h.namaHalaqoh)+'</option>';}).join('') + '</select>' +
+        if(res.data.length === 1){
+          var satuSatunya = res.data[0];
+          document.getElementById('pilihHalaqohWrap').innerHTML = satuSatunya.pengganti ? warnBox('Anda mengisi halaqoh ini sebagai PENGGANTI dari '+satuSatunya.guruAsli+' (khusus hari ini).') : '';
+          muatFormHafalan(satuSatunya.namaHalaqoh, waktu, tanggalDipilih);
+          return;
+        }
+        var html = '<label>Pilih Halaqoh</label><select id="pilihHalaqoh">' + res.data.map(function(h){return '<option value="'+esc(h.namaHalaqoh)+'">'+esc(h.namaHalaqoh)+(h.pengganti?(' (Menggantikan: '+esc(h.guruAsli)+')'):'')+'</option>';}).join('') + '</select>' +
           '<button id="btnLanjutHalaqoh" class="small">Lanjut</button>';
         document.getElementById('pilihHalaqohWrap').innerHTML = html;
-        document.getElementById('btnLanjutHalaqoh').onclick = function(){ muatFormHafalan(document.getElementById('pilihHalaqoh').value, waktu); };
+        document.getElementById('btnLanjutHalaqoh').onclick = function(){ muatFormHafalan(document.getElementById('pilihHalaqoh').value, waktu, tanggalDipilih); };
       });
     };
   }
 
-  function muatFormHafalan(namaHalaqoh, waktu){
+  function muatFormHafalan(namaHalaqoh, waktu, tanggal){
     var wrap = document.getElementById('formHafalanWrap');
     wrap.innerHTML = '<p>Memuat santri halaqoh '+esc(namaHalaqoh)+'...</p>';
-    api('getSantriUntukHafalan', {namaHalaqoh: namaHalaqoh}).then(function(res){
+    api('getSantriUntukHafalan', {namaHalaqoh: namaHalaqoh, waktu: waktu, tanggal: tanggal, pengampu: STATE.user.nama}).then(function(res){
       if(!res.ok){ wrap.innerHTML = errBox(res.error); return; }
       if(!res.data.length){ wrap.innerHTML = warnBox(res.peringatan); return; }
       var datalistHtml = '<datalist id="daftarSurah">' + DAFTAR_SURAH.map(function(s){return '<option value="'+esc(s)+'">';}).join('') + '</datalist>';
@@ -1039,11 +1103,58 @@
     });
   }
 
+  // Modal untuk membetulkan kesalahan pencatatan hafalan (bukan menghapus & catat ulang)
+  function bukaEditHafalan(row, muatUlang){
+    var ayatRange = parseRange(row.ayat);
+    var halamanRange = parseRange(row.halamanKe);
+    var opsiHalaman = Array.from({length:22},function(_,i){return i+1;});
+    var datalistHtml = '<datalist id="editDaftarSurah">' + DAFTAR_SURAH.map(function(s){return '<option value="'+esc(s)+'">';}).join('') + '</datalist>';
+    var fieldsHtml = datalistHtml +
+      fieldSelect('ehJenis','Jenis Hafalan', JENIS_HAFALAN_ALL, row.jenis) +
+      '<div id="ehDetailWrap">' +
+      '<label class="muted">Nama Surah</label><input id="ehSurah" list="editDaftarSurah" value="'+esc(row.surah||'')+'">' +
+      '<div class="grid2">' +
+      '<div><label class="muted">Ayat (dari - sampai)</label><div style="display:flex;align-items:center;gap:6px">' +
+      '<input id="ehAyatAwal" type="number" min="1" style="flex:1" value="'+esc(ayatRange.awal)+'"><span>-</span><input id="ehAyatAkhir" type="number" min="1" style="flex:1" value="'+esc(ayatRange.akhir)+'"></div></div>' +
+      '<div><label class="muted">Juz</label><select id="ehJuz">' + Array.from({length:30},function(_,i){return i+1;}).map(function(j){return '<option value="'+j+'" '+(Number(row.juz)===j?'selected':'')+'>'+j+'</option>';}).join('') + '</select></div>' +
+      '</div>' +
+      '<label class="muted">Halaman (dari - sampai)</label><div style="display:flex;align-items:center;gap:6px">' +
+      '<select id="ehHalAwal">' + opsiHalaman.map(function(h){return '<option value="'+h+'" '+(String(h)===halamanRange.awal?'selected':'')+'>'+h+'</option>';}).join('') + '</select>' +
+      '<span>-</span>' +
+      '<select id="ehHalAkhir">' + opsiHalaman.map(function(h){return '<option value="'+h+'" '+(String(h)===halamanRange.akhir?'selected':'')+'>'+h+'</option>';}).join('') + '</select>' +
+      '</div>' +
+      '<label class="muted">Nilai Hafalan</label><select id="ehNilai"><option value="">-- Tidak diisi --</option>' +
+      Array.from({length:10},function(_,i){return (i+1)*10;}).map(function(n){return '<option value="'+n+'" '+(String(row.nilai)===String(n)?'selected':'')+'>'+n+'</option>';}).join('') + '</select>' +
+      '</div>';
+    var modal = openModal('Edit Riwayat Hafalan - '+row.nama, fieldsHtml, function(m){
+      var jenisBaru = m.querySelector('#ehJenis').value;
+      var payload = {rowIndex: row.rowIndex, jenisHafalan: jenisBaru};
+      if (JENIS_HAFALAN_SETOR.indexOf(jenisBaru) !== -1) {
+        payload.surah = m.querySelector('#ehSurah').value;
+        var aAwal = m.querySelector('#ehAyatAwal').value, aAkhir = m.querySelector('#ehAyatAkhir').value;
+        payload.ayat = (aAwal && aAkhir) ? (aAwal+' - '+aAkhir) : aAwal;
+        payload.juz = m.querySelector('#ehJuz').value;
+        var hAwal = m.querySelector('#ehHalAwal').value, hAkhir = m.querySelector('#ehHalAkhir').value;
+        payload.halamanKe = (hAwal === hAkhir) ? hAwal : (hAwal+' - '+hAkhir);
+        payload.nilai = m.querySelector('#ehNilai').value;
+      } else {
+        payload.surah=''; payload.ayat=''; payload.juz=''; payload.halamanKe=''; payload.nilai='';
+      }
+      api('updateHafalan', payload).then(function(r){ if(!r.ok) alert(r.error); else muatUlang(); });
+    });
+    function toggleDetail(){
+      var jenis = modal.querySelector('#ehJenis').value;
+      modal.querySelector('#ehDetailWrap').style.display = JENIS_HAFALAN_SETOR.indexOf(jenis)===-1 ? 'none' : 'block';
+    }
+    modal.querySelector('#ehJenis').onchange = toggleDetail;
+    toggleDetail();
+  }
+
   function guruRiwayatHafalan(){
     var c = document.getElementById('dg-content');
     c.innerHTML = '<p>Memuat...</p>';
     Promise.all([api('getHalaqohList', {}), api('getSemuaSantri', {})]).then(function(hasil){
-      var daftarHalaqoh = hasil[0].ok ? hasil[0].data.filter(function(h){return h.pengampu===STATE.user.nama;}).map(function(h){return h.namaHalaqoh;}) : [];
+      var daftarHalaqoh = hasil[0].ok ? hasil[0].data.filter(function(h){return h.pengampuList && h.pengampuList.indexOf(STATE.user.nama)!==-1;}).map(function(h){return h.namaHalaqoh;}) : [];
       var daftarSantri = hasil[1].ok ? hasil[1].data : [];
       c.innerHTML = '<div class="card"><div class="grid2">' +
         '<div>' + fieldAutocomplete('filHalaqoh','Filter Halaqoh', daftarHalaqoh, '', 'kosongkan utk semua') + '</div>' +
@@ -1062,10 +1173,13 @@
             res.data.forEach(function(r){
               var detail = JENIS_HAFALAN_SETOR.indexOf(r.jenis)!==-1 ? (esc(r.surah)+' : '+esc(r.ayat)+', Juz '+esc(r.juz)+', Hal '+esc(r.halamanKe)) : '-';
               html += '<tr><td>'+esc(r.tanggal)+'</td><td>'+esc(r.waktu)+'</td><td>'+esc(r.nama)+'</td><td>'+badgeJenisHafalan(r.jenis)+'</td><td>'+detail+'</td><td>'+(r.nilai!=null&&r.nilai!==''?esc(r.nilai):'-')+'</td>' +
-                '<td><button class="small danger btnHapusH" data-row="'+r.rowIndex+'">Hapus</button></td></tr>';
+                '<td><button class="small btnEditH" data-row="'+r.rowIndex+'">Edit</button> <button class="small danger btnHapusH" data-row="'+r.rowIndex+'">Hapus</button></td></tr>';
             });
             html += '</table>';
             if (!setHtmlSafe('riwayatHTable', html)) return;
+            document.querySelectorAll('.btnEditH').forEach(function(btn){
+              btn.onclick = function(){ bukaEditHafalan(res.data.find(function(r){return r.rowIndex===Number(btn.dataset.row);}), cari); };
+            });
             document.querySelectorAll('.btnHapusH').forEach(function(btn){
               btn.onclick = function(){ if(!confirm('Hapus catatan hafalan ini?')) return; api('deleteHafalan', {rowIndex: Number(btn.dataset.row)}).then(cari); };
             });
@@ -1089,8 +1203,18 @@
       c.innerHTML = '<div class="card"><h3>Input Nilai</h3>' +
         '<div class="grid2"><div><label>Tanggal</label><input type="date" id="nlTanggal" value="'+todayStr()+'"></div>' +
         '<div><label>Jenis Nilai</label><select id="nlJenis">' + JENIS_NILAI_LIST.map(function(j){return '<option value="'+j+'">'+j+'</option>';}).join('') + '</select></div></div>' +
+        '<div id="nlKeteranganJenis"></div>' +
         '<label>Mata Pelajaran - Kelas</label><select id="nlMapelKelas">' + res.data.map(function(m,i){return '<option value="'+i+'">'+esc(opsi[i])+'</option>';}).join('') + '</select>' +
         '<button id="btnTampilkanSantriNilai">Tampilkan Santri</button><div id="formNilaiWrap"></div></div>';
+      function perbaruiKeteranganJenis(){
+        var jenis = document.getElementById('nlJenis').value;
+        var akumulatif = (jenis === 'Tugas' || jenis === 'Keterampilan');
+        document.getElementById('nlKeteranganJenis').innerHTML = akumulatif
+          ? warnBox('Nilai "'+jenis+'" akan selalu TERCATAT SEBAGAI ENTRI BARU setiap kali disimpan (tidak menimpa yang lama) -- cocok untuk dicatat berkali-kali dalam satu semester, lalu otomatis dirata-ratakan untuk rapor. Kalau salah input satu nilai, betulkan lewat menu Riwayat Nilai > Edit.')
+          : warnBox('Nilai "'+jenis+'" akan MENIMPA nilai lama untuk santri & mapel yang sama (dianggap satu kali per semester). Kalau perlu memasukkan ulang, nilai sebelumnya otomatis tergantikan.');
+      }
+      document.getElementById('nlJenis').onchange = perbaruiKeteranganJenis;
+      perbaruiKeteranganJenis();
       document.getElementById('btnTampilkanSantriNilai').onclick = function(){
         var m = res.data[Number(document.getElementById('nlMapelKelas').value)];
         muatFormNilai(m.mapel, m.kelas, document.getElementById('nlJenis').value, document.getElementById('nlTanggal').value);
@@ -1204,20 +1328,27 @@
       renderRekapLengkapSantri('dw-rekap', nisn, {showSaldo:true});
       renderRaporCard('dw-rapor', nisn, d.nama);
 
-      document.getElementById('dw-kontak').innerHTML = '<div class="card"><h3>Edit Data Kontak</h3><label>No WA Orang Tua</label><input id="editNoWa" placeholder="No WA baru">' +
-        '<button id="btnSimpanKontak">Simpan</button><div id="pesanKontak"></div></div>';
-      document.getElementById('btnSimpanKontak').onclick = function(){
-        var noBaru = document.getElementById('editNoWa').value.trim();
-        if(!noBaru) return;
-        api('getMasterData', {sheet:'Santri'}).then(function(resAll){
-          if(!resAll.ok){ document.getElementById('pesanKontak').innerHTML = errBox(resAll.error); return; }
-          var rowSantri = resAll.data.data.find(function(s){ return String(s.NISN)===String(nisn); });
-          if(!rowSantri) return;
-          api('saveMasterRow', {sheet:'Santri', rowIndex: rowSantri.rowIndex,
-            values: {NISN: rowSantri.NISN, Nama: rowSantri.Nama, 'Tahun Masuk': rowSantri['Tahun Masuk'], 'Jenis Kelamin': rowSantri['Jenis Kelamin'], 'No WA Ortu': noBaru}
-          }).then(function(res4){ document.getElementById('pesanKontak').innerHTML = res4.ok ? '<p class="muted">Tersimpan.</p>' : errBox(res4.error); });
-        });
-      };
+      document.getElementById('dw-kontak').innerHTML = '<div class="card"><h3>Edit Data Santri</h3><p>Memuat...</p></div>';
+      api('getMasterData', {sheet:'Santri'}).then(function(resAll){
+        if(!resAll.ok){ document.getElementById('dw-kontak').innerHTML = '<div class="card">'+errBox(resAll.error)+'</div>'; return; }
+        var s = resAll.data.data.find(function(x){ return String(x.NISN)===String(nisn); });
+        if(!s){ document.getElementById('dw-kontak').innerHTML = '<div class="card">'+errBox('Data santri tidak ditemukan.')+'</div>'; return; }
+        document.getElementById('dw-kontak').innerHTML = '<div class="card"><h3>Edit Data Santri</h3>' +
+          warnBox('NISN hanya bisa diubah lewat Guru/Admin (untuk menjaga keakuratan riwayat). Perubahan Nama/Jenis Kelamin/No WA di sini aman -- riwayat absen, nilai, dan hafalan sebelumnya tetap utuh, otomatis menyesuaikan.') +
+          fieldText('editNama','Nama', s.Nama) +
+          fieldSelect('editGender','Jenis Kelamin', ['Laki-laki','Perempuan'], s['Jenis Kelamin']) +
+          fieldText('editNoWa','No WA Orang Tua', s['No WA Ortu']) +
+          '<button id="btnSimpanKontak">Simpan</button><div id="pesanKontak"></div></div>';
+        document.getElementById('btnSimpanKontak').onclick = function(){
+          var namaBaru = document.getElementById('editNama').value.trim();
+          var genderBaru = document.getElementById('editGender').value;
+          var noWaBaru = document.getElementById('editNoWa').value.trim();
+          if(!namaBaru){ document.getElementById('pesanKontak').innerHTML = errBox('Nama wajib diisi.'); return; }
+          api('ubahIdentitasSantri', {nisnLama:nisn, nisnBaru:nisn, namaBaru:namaBaru, jenisKelamin:genderBaru, noWaOrtu:noWaBaru}).then(function(res4){
+            document.getElementById('pesanKontak').innerHTML = res4.ok ? '<p class="muted">Tersimpan.</p>' : errBox(res4.error);
+          });
+        };
+      });
     });
   }
 
@@ -1232,6 +1363,7 @@
       {key:'halaqoh', label:'Kelola Halaqoh', icon:'&#128374;'},
       {key:'santri', label:'Data Santri', icon:'&#128100;'},
       {key:'data', label:'Data Master Lain', icon:'&#128193;'},
+      {key:'pengganti', label:'Guru Pengganti', icon:'&#128101;'},
       {key:'rekapguru', label:'Rekap Guru', icon:'&#128104;&#8205;&#127979;'},
       {key:'rekapsantri', label:'Rekap Santri', icon:'&#127891;'},
       {key:'rapor', label:'Nilai & Rapor', icon:'&#128196;'},
@@ -1239,7 +1371,7 @@
       {key:'tampilan', label:'Tampilan / Logo', icon:'&#127912;'}
     ];
     var map = {ringkasan:adminRingkasan, tahun:adminTahunAjaran, rombel:adminRombel, halaqoh:adminHalaqoh, santri:adminDataSantri,
-      data:adminDataMaster, rekapguru:adminRekapGuru, rekapsantri:adminRekapSantri, rapor:adminRaporSantri, slide:adminSlide, tampilan:adminTampilan};
+      data:adminDataMaster, pengganti:adminPenggantian, rekapguru:adminRekapGuru, rekapsantri:adminRekapSantri, rapor:adminRaporSantri, slide:adminSlide, tampilan:adminTampilan};
     activeKey = activeKey && map[activeKey] ? activeKey : 'ringkasan';
     renderSidebarShell({title:'Dashboard '+STATE.user.level, navItems:navItems, activeKey:activeKey, contentId:'da-content', onSelect:function(key){ map[key](); }});
     map[activeKey]();
@@ -1419,6 +1551,95 @@
   }
 
   // ---------------- KELOLA HALAQOH (tahfidz) ----------------
+  // ---------------- GURU PENGGANTI ----------------
+  function adminPenggantian(){
+    var c = document.getElementById('da-content');
+    c.innerHTML = '<p>Memuat...</p>';
+    api('getMasterData', {sheet:'Guru'}).then(function(resGuru){
+      var daftarNamaGuru = resGuru.ok ? resGuru.data.data.map(function(g){return g.Nama;}) : [];
+      c.innerHTML = '<div class="card"><h3>Catat Guru Pengganti</h3>' +
+        warnBox('Isi kalau ada guru berhalangan hadir dan digantikan guru lain, HANYA untuk tanggal yang dipilih. Setelah dicatat: sesi ini otomatis hilang dari jadwal guru asli pada tanggal itu saja (besok normal lagi), dan muncul di jadwal guru pengganti (ditandai "Menggantikan"). Jam mengajarnya otomatis tercatat milik guru pengganti di Rekap Guru.') +
+        '<label>Tanggal</label><input type="date" id="pgTanggal" value="'+todayStr()+'">' +
+        '<label>Jenis Sesi</label><select id="pgJenis"><option value="Mapel">Mata Pelajaran</option><option value="Halaqoh">Halaqoh (Tahfidz)</option></select>' +
+        fieldAutocomplete('pgGuruAsli','Guru Asli (yang berhalangan)', daftarNamaGuru, '', 'Ketik nama guru...') +
+        '<div id="pgSesiWrap"><p class="muted">Ketik nama Guru Asli dulu untuk melihat jadwalnya.</p></div>' +
+        fieldAutocomplete('pgGuruPengganti','Guru Pengganti', daftarNamaGuru, '', 'Ketik nama guru...') +
+        fieldText('pgKeterangan','Keterangan (opsional)', '') +
+        '<button id="btnSimpanPengganti">Simpan</button><div id="pesanPengganti"></div></div>' +
+        '<div class="card"><h3>Daftar Guru Pengganti Tercatat</h3><div id="daftarPenggantiWrap">Memuat...</div></div>';
+
+      function muatFormSesi(){
+        var jenis = document.getElementById('pgJenis').value;
+        var guruAsli = resolveGuruExact(document.getElementById('pgGuruAsli').value.trim(), daftarNamaGuru);
+        var wrap = document.getElementById('pgSesiWrap');
+        if (!guruAsli) { wrap.innerHTML = '<p class="muted">Ketik nama Guru Asli yang valid dulu (pilih dari saran).</p>'; return; }
+        wrap.innerHTML = '<p>Memuat jadwal...</p>';
+        if (jenis === 'Mapel') {
+          api('getMasterData', {sheet:'MataPelajaran'}).then(function(res){
+            if(!res.ok){ wrap.innerHTML = errBox(res.error); return; }
+            var daftar = res.data.data.filter(function(m){ return m.Pengampu === guruAsli; });
+            if(!daftar.length){ wrap.innerHTML = warnBox('Guru ini tidak punya jadwal mata pelajaran.'); return; }
+            window.__pgDaftarSesi = daftar;
+            wrap.innerHTML = '<label>Pilih Sesi yang Digantikan</label><select id="pgSesiPilihan">' +
+              daftar.map(function(m,i){ return '<option value="'+i+'">'+esc(m['Nama Mapel'])+' - '+esc(m.Kelas)+' ('+esc(m.Hari)+', Jam ke-'+esc(m['Jam Ke'])+')</option>'; }).join('') + '</select>';
+          });
+        } else {
+          api('getHalaqohList', {}).then(function(res){
+            if(!res.ok){ wrap.innerHTML = errBox(res.error); return; }
+            var daftar = res.data.filter(function(h){ return h.pengampuList && h.pengampuList.indexOf(guruAsli) !== -1; });
+            if(!daftar.length){ wrap.innerHTML = warnBox('Guru ini tidak punya jadwal halaqoh.'); return; }
+            window.__pgDaftarSesi = daftar;
+            wrap.innerHTML = '<label>Pilih Halaqoh yang Digantikan</label><select id="pgSesiPilihan">' +
+              daftar.map(function(h,i){ return '<option value="'+i+'">'+esc(h.namaHalaqoh)+' ('+esc(h.waktu)+')</option>'; }).join('') + '</select>';
+          });
+        }
+      }
+      document.getElementById('pgJenis').onchange = muatFormSesi;
+      document.getElementById('pgGuruAsli').addEventListener('input', muatFormSesi);
+
+      function muatDaftarPengganti(){
+        document.getElementById('daftarPenggantiWrap').innerHTML = 'Memuat...';
+        api('getDaftarPenggantian', {}).then(function(res){
+          if(!res.ok){ document.getElementById('daftarPenggantiWrap').innerHTML = errBox(res.error); return; }
+          if(!res.data.length){ document.getElementById('daftarPenggantiWrap').innerHTML = '<p class="muted">Belum ada catatan guru pengganti.</p>'; return; }
+          var html = '<table><tr><th>Tanggal</th><th>Jenis</th><th>Sesi</th><th>Guru Asli</th><th>Guru Pengganti</th><th>Ket</th><th>Aksi</th></tr>';
+          res.data.sort(function(a,b){ return b.tanggal.localeCompare(a.tanggal); }).forEach(function(p){
+            var sesiLabel = p.jenisSesi === 'Mapel' ? (p.mapel+' - '+p.kelas+' (Jam ke-'+p.jamKe+')') : (p.halaqoh+' ('+p.waktu+')');
+            html += '<tr><td>'+esc(p.tanggal)+'</td><td>'+esc(p.jenisSesi)+'</td><td>'+esc(sesiLabel)+'</td><td>'+esc(p.guruAsli)+'</td><td>'+esc(p.guruPengganti)+'</td><td>'+esc(p.keterangan||'-')+'</td>' +
+              '<td><button class="small danger btnHapusPengganti" data-row="'+p.rowIndex+'">Hapus</button></td></tr>';
+          });
+          html += '</table>';
+          document.getElementById('daftarPenggantiWrap').innerHTML = html;
+          document.querySelectorAll('.btnHapusPengganti').forEach(function(btn){
+            btn.onclick = function(){ if(!confirm('Hapus catatan penggantian ini?')) return; api('hapusPenggantian', {rowIndex:Number(btn.dataset.row)}).then(muatDaftarPengganti); };
+          });
+        });
+      }
+
+      document.getElementById('btnSimpanPengganti').onclick = function(){
+        var tanggal = document.getElementById('pgTanggal').value;
+        var jenis = document.getElementById('pgJenis').value;
+        var guruAsli = resolveGuruExact(document.getElementById('pgGuruAsli').value.trim(), daftarNamaGuru);
+        var guruPengganti = resolveGuruExact(document.getElementById('pgGuruPengganti').value.trim(), daftarNamaGuru);
+        var sesiSelect = document.getElementById('pgSesiPilihan');
+        if (!tanggal || !guruAsli || !guruPengganti || !sesiSelect) { document.getElementById('pesanPengganti').innerHTML = errBox('Lengkapi semua isian, termasuk pilih sesi yang digantikan (nama guru harus dipilih dari saran).'); return; }
+        if (guruAsli === guruPengganti) { document.getElementById('pesanPengganti').innerHTML = errBox('Guru Pengganti tidak boleh sama dengan Guru Asli.'); return; }
+        var sesi = window.__pgDaftarSesi[Number(sesiSelect.value)];
+        var payload = {tanggal:tanggal, jenisSesi:jenis, guruAsli:guruAsli, guruPengganti:guruPengganti, keterangan: document.getElementById('pgKeterangan').value.trim()};
+        if (jenis === 'Mapel') { payload.mapel = sesi['Nama Mapel']; payload.kelas = sesi.Kelas; payload.jamKe = sesi['Jam Ke']; }
+        else { payload.halaqoh = sesi.namaHalaqoh; payload.waktu = sesi.waktu; }
+        api('tambahPenggantian', payload).then(function(res){
+          if(!res.ok){ document.getElementById('pesanPengganti').innerHTML = errBox(res.error); return; }
+          document.getElementById('pesanPengganti').innerHTML = '<p class="muted">Tersimpan.</p>';
+          document.getElementById('pgKeterangan').value = '';
+          muatDaftarPengganti();
+        });
+      };
+
+      muatDaftarPengganti();
+    });
+  }
+
   function adminHalaqoh(){
     var c = document.getElementById('da-content');
     c.innerHTML = '<div class="card"><h3>Buat Halaqoh Baru</h3><p>Memuat...</p></div>';
@@ -1426,7 +1647,9 @@
       var daftarNamaGuru = resGuru.ok ? resGuru.data.data.map(function(g){return g.Nama;}) : [];
       c.innerHTML = '<div class="card"><h3>Buat Halaqoh Baru</h3>' +
         '<div class="grid2"><div><label>Nama Halaqoh</label><input id="namaHalaqohBaru" placeholder="Contoh: Tahfidz A"></div>' +
-        '<div>' + fieldAutocomplete('pengampuHalaqohBaru','Pengampu', daftarNamaGuru, '', 'Ketik nama guru...') + '</div></div>' +
+        '<div><label>Pengampu (boleh pilih lebih dari satu)</label><div id="pengampuHalaqohBaruWrap">' +
+          daftarNamaGuru.map(function(g){ return '<label style="display:inline-flex;align-items:center;gap:5px;font-weight:400;margin-right:12px;margin-bottom:4px"><input type="checkbox" class="pengampuHalaqohBaruChk" value="'+esc(g)+'" style="width:auto;margin:0"> '+esc(g)+'</label>'; }).join('') +
+        '</div></div></div>' +
         '<div class="grid2"><div><label>Waktu</label><select id="waktuHalaqohBaru">' + WAKTU_HALAQOH.map(function(w){return '<option value="'+w+'">'+w+'</option>';}).join('') + '</select></div>' +
         '<div><label>Gender</label><select id="genderHalaqohBaru"><option value="Laki-laki">Laki-laki</option><option value="Perempuan">Perempuan</option></select></div></div>' +
         '<button id="btnBuatHalaqoh">Buat Halaqoh</button><div id="pesanHalaqoh"></div></div>' +
@@ -1453,13 +1676,17 @@
         document.querySelectorAll('.btnLihatHalaqoh').forEach(function(b){ b.onclick=function(){ tampilkanDetailHalaqoh(b.dataset.h); }; });
         document.querySelectorAll('.btnEditHalaqoh').forEach(function(b){
           b.onclick = function(){
+            var pengampuTerpilihSaatIni = b.dataset.p.split(',').map(function(s){return s.trim();}).filter(Boolean);
+            var fieldsPengampu = '<label>Pengampu (boleh pilih lebih dari satu)</label><div id="editPengampuWrap">' +
+              daftarNamaGuru.map(function(g){ return '<label style="display:inline-flex;align-items:center;gap:5px;font-weight:400;margin-right:12px;margin-bottom:4px"><input type="checkbox" class="editPengampuChk" value="'+esc(g)+'" style="width:auto;margin:0" '+(pengampuTerpilihSaatIni.indexOf(g)!==-1?'checked':'')+'> '+esc(g)+'</label>'; }).join('') +
+              '</div>';
             openModal('Edit Halaqoh '+b.dataset.h,
-              fieldAutocomplete('editPengampu','Pengampu', daftarNamaGuru, b.dataset.p, 'Ketik nama guru...') +
+              fieldsPengampu +
               fieldSelect('editWaktu','Waktu', WAKTU_HALAQOH, b.dataset.w) +
               fieldSelect('editGender','Gender', ['Laki-laki','Perempuan'], b.dataset.g),
               function(modal){
-                var pengampuBaru = resolveGuruExact(modal.querySelector('#editPengampu').value, daftarNamaGuru);
-                if (!pengampuBaru) { alert('Nama guru tidak dikenali. Pilih salah satu saran yang muncul saat mengetik.'); return false; }
+                var pengampuBaru = Array.prototype.map.call(modal.querySelectorAll('.editPengampuChk:checked'), function(el){return el.value;}).join(', ');
+                if (!pengampuBaru) { alert('Pilih minimal satu guru pengampu.'); return false; }
                 api('editHalaqoh', {namaHalaqoh:b.dataset.h, pengampu: pengampuBaru, waktu: modal.querySelector('#editWaktu').value, gender: modal.querySelector('#editGender').value}).then(muatDaftar);
               });
           };
@@ -1522,12 +1749,14 @@
     document.getElementById('btnBuatHalaqoh').onclick = function(){
       var nama = document.getElementById('namaHalaqohBaru').value.trim();
       if(!nama) return;
-      var pengampu = resolveGuruExact(document.getElementById('pengampuHalaqohBaru').value, daftarNamaGuru);
-      if (!pengampu) { document.getElementById('pesanHalaqoh').innerHTML = errBox('Nama guru tidak dikenali. Pilih salah satu saran yang muncul saat mengetik.'); return; }
+      var pengampu = Array.prototype.map.call(document.querySelectorAll('.pengampuHalaqohBaruChk:checked'), function(el){return el.value;}).join(', ');
+      if (!pengampu) { document.getElementById('pesanHalaqoh').innerHTML = errBox('Pilih minimal satu guru pengampu.'); return; }
       api('buatHalaqohBaru', {namaHalaqoh:nama, pengampu: pengampu,
         waktu: document.getElementById('waktuHalaqohBaru').value, gender: document.getElementById('genderHalaqohBaru').value}).then(function(res){
         if(!res.ok){ document.getElementById('pesanHalaqoh').innerHTML = errBox(res.error); return; }
-        document.getElementById('namaHalaqohBaru').value=''; document.getElementById('pengampuHalaqohBaru').value=''; document.getElementById('pesanHalaqoh').innerHTML=''; muatDaftar();
+        document.getElementById('namaHalaqohBaru').value='';
+        document.querySelectorAll('.pengampuHalaqohBaruChk:checked').forEach(function(el){ el.checked = false; });
+        document.getElementById('pesanHalaqoh').innerHTML=''; muatDaftar();
       });
     };
     muatDaftar();
