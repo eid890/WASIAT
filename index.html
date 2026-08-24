@@ -172,12 +172,13 @@
 
   /* ---- website depan (beranda publik) ---- */
   #absensi-app .site-nav{position:sticky;top:0;z-index:600;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.06);display:flex;align-items:center;justify-content:space-between;padding:10px 16px;flex-wrap:wrap;gap:8px}
-  #absensi-app .brand2{display:flex;align-items:center;gap:11px}
-  #absensi-app .brand2 img{height:46px;width:46px;object-fit:contain;border-radius:10px;border:1px solid #e2e8f0;box-shadow:0 2px 6px rgba(0,0,0,.08);background:#fff;padding:2px}
-  #absensi-app .brand2 span{font-weight:800;color:#0f766e;font-size:15px;line-height:1.25}
+  #absensi-app .brand2{display:flex;align-items:center;gap:9px;flex-shrink:0;min-width:0}
+  #absensi-app .brand2 img{height:42px;width:42px;min-width:42px;flex-shrink:0;display:block;object-fit:contain;border-radius:10px;border:1px solid #e2e8f0;box-shadow:0 2px 6px rgba(0,0,0,.08);background:#fff;padding:2px}
+  #absensi-app .brand2 span{font-weight:800;color:#0f766e;font-size:14px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px}
   #absensi-app .site-nav-links{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
   #absensi-app .site-nav-links a{color:#334155;font-size:13.5px;font-weight:600;cursor:pointer}
   #absensi-app .site-nav-links a:hover{color:#0d9488}
+  @media(min-width:480px){ #absensi-app .brand2 img{height:46px;width:46px;min-width:46px} #absensi-app .brand2 span{font-size:15px;max-width:none;white-space:normal} }
   #absensi-app .btn-masuk{background:var(--tema);color:#fff;border:none;padding:9px 20px;border-radius:20px;font-weight:700;cursor:pointer;font-size:13px;margin:0;width:auto}
   #absensi-app .hero{background:linear-gradient(150deg,#0f766e,#134e4a 65%,#0a2e2c);color:#fff;padding:50px 20px;text-align:center}
   #absensi-app .hero img{height:84px;width:84px;object-fit:contain;margin-bottom:14px;border-radius:14px;background:#fff;padding:8px}
@@ -232,6 +233,8 @@
   @keyframes spMarquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 
   /* ---- Kontak / WA ---- */
+  #absensi-app .ikon-wa-svg{width:26px;height:26px;flex-shrink:0}
+  #absensi-app .kontak-card .fitur-icon.wa-hijau{background:#25D366}
   #absensi-app .kontak-grid{display:grid;grid-template-columns:1fr;gap:12px}
   @media(min-width:768px){ #absensi-app .kontak-grid{grid-template-columns:repeat(3,1fr)} }
   #absensi-app .kontak-card{background:#fff;border:1px solid #eef2f6;border-radius:12px;padding:18px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.06)}
@@ -255,7 +258,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxCXgizTp9k5ikXX0sLUV52i_09pOJjcMjDNfGTcDBPQQWzcm3lwYPmLZB4OnDYo8ja/exec";
+  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxlE03EuzWV_msBf4xwleTZjzDuj1-T3m8mQCIdTohiSS0DvXHirbyQncvR0K8HW9t6/exec";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -289,6 +292,18 @@
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
+  // ---------------- SESI TERSIMPAN (supaya bisa "tetap login" walau offline) ----------------
+  // Login pertama kali WAJIB online (untuk verifikasi Nama/PIN ke server). Setelah
+  // berhasil, identitas yang sudah terverifikasi disimpan di HP -- jadi pembukaan
+  // aplikasi berikutnya (termasuk saat offline) bisa langsung masuk ke dashboard tanpa
+  // perlu verifikasi ulang ke server. Sesi ini hilang hanya kalau user klik Keluar.
+  var SESI_KEY = 'wasiatSesiUserV1';
+  function simpanSesi(){ try { localStorage.setItem(SESI_KEY, JSON.stringify(STATE.user)); } catch(e) {} }
+  function ambilSesiTersimpan(){
+    try { var raw = localStorage.getItem(SESI_KEY); return raw ? JSON.parse(raw) : null; } catch(e) { return null; }
+  }
+  function hapusSesiTersimpan(){ try { localStorage.removeItem(SESI_KEY); } catch(e) {} }
+
   // ---------------- MODE OFFLINE: antrian & auto-sinkron ----------------
   // Aksi "menyimpan data" boleh diantre saat offline dan otomatis dikirim ulang
   // begitu koneksi kembali. Aksi "membaca data" (getX) TIDAK diantre -- kalau
@@ -313,7 +328,15 @@
     return fetch(WEBAPP_URL, { method:'POST', body: JSON.stringify({action:action, payload:payload||{}}) })
       .then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
       .then(function(txt){ try { return JSON.parse(txt); } catch(e){ throw new Error('Respon server tidak valid'); } })
-      .catch(function(err){ return {ok:false, error: 'Gagal terhubung ke server: ' + err.message, _jaringanGagal:true}; });
+      .catch(function(err){
+        // Kalau memang sedang tidak ada koneksi internet sama sekali, beri pesan yang
+        // jelas dalam Bahasa Indonesia -- jangan tampilkan pesan mentah dari browser
+        // (misal "Failed to fetch") yang membingungkan bagi pengguna.
+        var pesan = (typeof navigator!=='undefined' && navigator.onLine===false)
+          ? 'Tidak ada koneksi internet. Data ini butuh koneksi untuk diambil/diperiksa -- coba lagi setelah tersambung ke internet.'
+          : 'Gagal terhubung ke server. Periksa koneksi internet Anda, lalu coba lagi.';
+        return {ok:false, error: pesan, _jaringanGagal:true};
+      });
   }
 
   function api(action, payload){
@@ -419,21 +442,39 @@
   }
 
   // ---------------- LOGIN ----------------
+  function terapkanPengaturan(res){
+    if (res.ok && res.data) {
+      STATE.pengaturan = { NamaPesantren: res.data.NamaPesantren || 'Pondok Pesantren', LogoURL: res.data.LogoURL || '',
+        LogoDataUriDefault: res.data.LogoDataUriDefault || '', WarnaTema: res.data.WarnaTema || '#0d9488',
+        IzinkanGantiTanggal: res.data.IzinkanGantiTanggal === 'true',
+        DeskripsiSingkat: res.data.DeskripsiSingkat || '', AlamatPesantren: res.data.AlamatPesantren || '',
+        NoTeleponPesantren: res.data.NoTeleponPesantren || '', EmailPesantren: res.data.EmailPesantren || '',
+        InfoPPDB: res.data.InfoPPDB || '', LinkPPDBEksternal: res.data.LinkPPDBEksternal || '',
+        Visi: res.data.Visi || '', Misi: res.data.Misi || '', HeroImageURL: res.data.HeroImageURL || '',
+        IkonJadwalSholat: res.data.IkonJadwalSholat || '', IkonAlQuran: res.data.IkonAlQuran || '', IkonDzikir: res.data.IkonDzikir || '',
+        TaglineHero: res.data.TaglineHero || 'Pendidikan Islam Terpadu', IkonWhatsApp: res.data.IkonWhatsApp || '' };
+      root.style.setProperty('--tema', STATE.pengaturan.WarnaTema);
+      return true;
+    }
+    return false;
+  }
+
   function loadPengaturanLaluTampilkanLogin(){
+    var sesiTersimpan = ambilSesiTersimpan();
+    if (sesiTersimpan) {
+      // Sudah pernah login sebelumnya -- langsung masuk ke dashboard TANPA menunggu
+      // percobaan koneksi ke server dulu, supaya tetap instan walau sedang offline.
+      STATE.user = sesiTersimpan;
+      lanjutkanKeDashboard();
+      // Pengaturan (logo/tema/dll) tetap dicoba diperbarui di latar belakang -- kalau
+      // memang online, tampilan akan ikut ter-update begitu selesai; kalau offline,
+      // dashboard yang sudah terlanjur tampil di atas tidak terganggu sama sekali.
+      api('getPengaturan', {}).then(terapkanPengaturan);
+      return;
+    }
     render('<div style="text-align:center;padding:30px">Memuat...</div>');
     api('getPengaturan', {}).then(function(res){
-      if (res.ok && res.data) {
-        STATE.pengaturan = { NamaPesantren: res.data.NamaPesantren || 'Pondok Pesantren', LogoURL: res.data.LogoURL || '',
-          LogoDataUriDefault: res.data.LogoDataUriDefault || '', WarnaTema: res.data.WarnaTema || '#0d9488',
-          IzinkanGantiTanggal: res.data.IzinkanGantiTanggal === 'true',
-          DeskripsiSingkat: res.data.DeskripsiSingkat || '', AlamatPesantren: res.data.AlamatPesantren || '',
-          NoTeleponPesantren: res.data.NoTeleponPesantren || '', EmailPesantren: res.data.EmailPesantren || '',
-          InfoPPDB: res.data.InfoPPDB || '', LinkPPDBEksternal: res.data.LinkPPDBEksternal || '',
-          Visi: res.data.Visi || '', Misi: res.data.Misi || '', HeroImageURL: res.data.HeroImageURL || '',
-          IkonJadwalSholat: res.data.IkonJadwalSholat || '', IkonAlQuran: res.data.IkonAlQuran || '', IkonDzikir: res.data.IkonDzikir || '',
-          TaglineHero: res.data.TaglineHero || 'Pendidikan Islam Terpadu' };
-        root.style.setProperty('--tema', STATE.pengaturan.WarnaTema);
-      }
+      terapkanPengaturan(res);
       showBeranda();
     });
   }
@@ -448,6 +489,17 @@
     if (!no) return '';
     if (no.charAt(0) === '0') no = '62' + no.substring(1);
     return 'https://wa.me/' + no;
+  }
+
+  // Ikon WhatsApp -- pakai gambar custom kalau Admin sudah upload, kalau belum pakai
+  // SVG bawaan (gagang telepon dalam gelembung chat, warna hijau khas WA).
+  function ikonWA(){
+    if (STATE.pengaturan.IkonWhatsApp) {
+      return '<img src="'+esc(STATE.pengaturan.IkonWhatsApp)+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%">';
+    }
+    return '<svg class="ikon-wa-svg" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" fill="#fff">' +
+      '<path d="M16.02 4C9.4 4 4 9.4 4 16.02c0 2.12.56 4.15 1.6 5.95L4 28l6.2-1.62a11.94 11.94 0 0 0 5.82 1.5h.01c6.62 0 12.02-5.4 12.02-12.02C28.05 9.4 22.65 4 16.02 4zm0 21.86h-.01a9.9 9.9 0 0 1-5.05-1.38l-.36-.21-3.68.96.98-3.58-.24-.37a9.86 9.86 0 0 1-1.51-5.27C6.15 10.5 10.5 6.15 16.03 6.15c5.5 0 9.87 4.37 9.87 9.87 0 5.5-4.4 9.84-9.88 9.84zm5.4-7.38c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.65.07-.3-.15-1.24-.46-2.37-1.47-.87-.78-1.46-1.74-1.63-2.04-.17-.3-.02-.46.13-.6.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.07-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.51-.17-.01-.37-.01-.57-.01-.2 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.48 0 1.46 1.07 2.87 1.22 3.07.15.2 2.1 3.2 5.08 4.49.71.3 1.26.49 1.69.62.71.23 1.36.2 1.87.12.57-.08 1.76-.72 2.01-1.42.25-.7.25-1.3.17-1.42-.07-.13-.27-.2-.57-.35z"/>' +
+      '</svg>';
   }
 
   function kartuFitur(f){
@@ -471,7 +523,7 @@
           '<button class="btn-masuk" id="btnBukaLogin">Masuk</button>' +
         '</div>' +
       '</nav>' +
-      '<div class="hero'+(p.HeroImageURL?' ada-gambar':'')+'"'+heroStyle+'>' + (logo?'<img src="'+esc(logo)+'">':'') +
+      '<div class="hero'+(p.HeroImageURL?' ada-gambar':'')+'"'+heroStyle+'>' +
         '<div class="hero-tagline">'+esc(p.TaglineHero||'Pendidikan Islam Terpadu')+'</div>' +
         '<h1>'+esc(p.NamaPesantren)+'</h1>' +
         '<p>'+esc(p.DeskripsiSingkat||'')+'</p>' +
@@ -501,7 +553,7 @@
 
       '<div class="site-section" id="sec-kontak"><h2>Hubungi Kami</h2>' +
         '<div class="kontak-grid">' +
-          '<div class="kontak-card"><div class="fitur-icon">&#128241;</div><p>WhatsApp</p>' + (wa? '<a href="'+esc(wa)+'" target="_blank" rel="noopener">'+esc(p.NoTeleponPesantren)+'</a>' : '<span class="muted">Belum diatur</span>') + '</div>' +
+          '<div class="kontak-card"><div class="fitur-icon wa-hijau">'+ikonWA()+'</div><p>WhatsApp</p>' + (wa? '<a href="'+esc(wa)+'" target="_blank" rel="noopener">'+esc(p.NoTeleponPesantren)+'</a>' : '<span class="muted">Belum diatur</span>') + '</div>' +
           '<div class="kontak-card"><div class="fitur-icon">&#128231;</div><p>Email</p>' + (p.EmailPesantren? '<a href="mailto:'+esc(p.EmailPesantren)+'">'+esc(p.EmailPesantren)+'</a>' : '<span class="muted">Belum diatur</span>') + '</div>' +
           '<div class="kontak-card"><div class="fitur-icon">&#128205;</div><p>Alamat</p><span style="font-size:12.5px;color:#475569">'+esc(p.AlamatPesantren||'Belum diatur')+'</span></div>' +
         '</div>' +
@@ -511,7 +563,7 @@
         '<b>'+esc(p.NamaPesantren)+'</b>' + (p.AlamatPesantren?('<br>'+esc(p.AlamatPesantren)):'') + '<br>' +
         (p.NoTeleponPesantren?('Telp: '+esc(p.NoTeleponPesantren)+'  '):'') + (p.EmailPesantren?('Email: '+esc(p.EmailPesantren)):'') +
       '</div>' +
-      (wa? '<a class="wa-float" href="'+esc(wa)+'" target="_blank" rel="noopener" title="Chat WhatsApp">&#128241;</a>' : '') +
+      (wa? '<a class="wa-float" href="'+esc(wa)+'" target="_blank" rel="noopener" title="Chat WhatsApp">'+ikonWA()+'</a>' : '') +
       '<div class="menu-ibadah-float">' +
         '<a class="menu-ibadah-btn" style="background:#0d9488" href="'+esc('https://salat.markazsunnah.com/')+'" target="_blank" rel="noopener"><span class="tip">Jadwal Sholat</span>'+(p.IkonJadwalSholat?('<img src="'+esc(p.IkonJadwalSholat)+'">'):'&#128332;')+'</a>' +
         '<a class="menu-ibadah-btn" style="background:#7c3aed" href="'+esc('https://quran.ksu.edu.sa/index.php?ui=1&l=en#aya=1_1&m=hafs&qaree=husary&trans=id_indonesian')+'" target="_blank" rel="noopener"><span class="tip">Al-Quran</span>'+(p.IkonAlQuran?('<img src="'+esc(p.IkonAlQuran)+'">'):'&#128214;')+'</a>' +
@@ -603,7 +655,7 @@
           return;
         }
         STATE.user = res.user;
-        if (modeKhusus === 'kantin') { STATE.user.level = 'PemilikBarang'; lanjutkanKeDashboard(); return; }
+        if (modeKhusus === 'kantin') { STATE.user.level = 'PemilikBarang'; simpanSesi(); lanjutkanKeDashboard(); return; }
         routeByLevel();
       });
     };
@@ -636,10 +688,11 @@
     document.querySelectorAll('.pilihRoleBtn').forEach(function(btn){
       btn.onclick = function(){ STATE.user.level = btn.dataset.role; lanjutkanKeDashboard(); };
     });
-    document.getElementById('btnBatalRole').onclick = function(){ STATE.user = null; showBeranda(); };
+    document.getElementById('btnBatalRole').onclick = function(){ STATE.user = null; hapusSesiTersimpan(); showBeranda(); };
   }
 
   function lanjutkanKeDashboard(){
+    simpanSesi();
     var lvl = STATE.user.level;
     if(lvl === 'Guru') return dashboardGuru();
     if(lvl === 'WaliSantri') return dashboardWali();
@@ -665,7 +718,7 @@
       gantiRole + '<button class="secondary small" id="btnLogout">Keluar</button></div></div>';
   }
   function bindLogout(){
-    document.getElementById('btnLogout').onclick = function(){ STATE.user=null; showBeranda(); };
+    document.getElementById('btnLogout').onclick = function(){ STATE.user=null; hapusSesiTersimpan(); showBeranda(); };
     var btnGanti = document.getElementById('btnGantiRole');
     if (btnGanti) btnGanti.onclick = function(){ tampilkanPilihanRole(); };
   }
@@ -750,7 +803,7 @@
       '</div>'
     );
     renderSlideBar('slideBarWrap');
-    document.getElementById('sbLogout').onclick = function(){ STATE.user=null; showBeranda(); };
+    document.getElementById('sbLogout').onclick = function(){ STATE.user=null; hapusSesiTersimpan(); showBeranda(); };
     var sbGanti = document.getElementById('sbGantiRole');
     if (sbGanti) sbGanti.onclick = function(){ tampilkanPilihanRole(); };
     var sidebar = document.getElementById('sbNav'), overlay = document.getElementById('sbOverlay');
@@ -3189,6 +3242,9 @@
         '<label>Ikon Dzikir</label><input type="file" id="wIkonDzikirFile" accept="image/*">' +
         '<div id="wIkonDzikirStatus">'+(d.IkonDzikir?('<img src="'+esc(d.IkonDzikir)+'" style="height:50px;width:50px;border-radius:50%;object-fit:cover;margin-top:4px;display:block">'):'')+'</div>' +
         fieldText('wIkonDzikirUrl','URL (otomatis terisi)', d.IkonDzikir||'') +
+        '<label>Ikon Hubungi WhatsApp</label><input type="file" id="wIkonWaFile" accept="image/*">' +
+        '<div id="wIkonWaStatus">'+(d.IkonWhatsApp?('<img src="'+esc(d.IkonWhatsApp)+'" style="height:50px;width:50px;border-radius:50%;object-fit:cover;margin-top:4px;display:block">'):'')+'</div>' +
+        fieldText('wIkonWaUrl','URL (otomatis terisi)', d.IkonWhatsApp||'') +
         '<button id="btnSimpanIkon" style="margin-top:10px">Simpan Ikon</button><div id="pesanIkon"></div></div>';
 
       function ikatUploadIkon(fileId, statusId, urlId){
@@ -3210,11 +3266,13 @@
       ikatUploadIkon('wIkonJadwalFile','wIkonJadwalStatus','wIkonJadwalUrl');
       ikatUploadIkon('wIkonQuranFile','wIkonQuranStatus','wIkonQuranUrl');
       ikatUploadIkon('wIkonDzikirFile','wIkonDzikirStatus','wIkonDzikirUrl');
+      ikatUploadIkon('wIkonWaFile','wIkonWaStatus','wIkonWaUrl');
       document.getElementById('btnSimpanIkon').onclick = function(){
         var dataIkon = {
           IkonJadwalSholat: document.getElementById('wIkonJadwalUrl').value.trim(),
           IkonAlQuran: document.getElementById('wIkonQuranUrl').value.trim(),
-          IkonDzikir: document.getElementById('wIkonDzikirUrl').value.trim()
+          IkonDzikir: document.getElementById('wIkonDzikirUrl').value.trim(),
+          IkonWhatsApp: document.getElementById('wIkonWaUrl').value.trim()
         };
         Promise.all(Object.keys(dataIkon).map(function(k){ return api('simpanPengaturan', {key:k, value:dataIkon[k]}); })).then(function(){
           Object.assign(STATE.pengaturan, dataIkon);
