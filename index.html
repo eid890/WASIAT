@@ -270,7 +270,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwv0S35Sp3LSKQNWK2NLQiWyWx66Y8EvSJWSqHQbtOt2E8Q3Tscleo1G5Mt5ozHwhk/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -5517,94 +5517,211 @@
   // ============ ADMIN: KELOLA MODUL AJAR & RPP ============
   function adminModulAjar(){
     var c = document.getElementById('da-content');
-    c.innerHTML = '<div class="card"><h3>Modul Ajar & RPP Pertemuan</h3>' +
-      warnBox('Unggah file modul ajar (Word/PDF) untuk setiap mata pelajaran. Sistem akan otomatis mengekstrak isi dan membuat ringkasan AI. Guru bisa melihat modul ini langsung dari HP saat mengajar.') +
+    c.innerHTML = '<div class="card"><h3>&#128218; Modul Ajar & RPP Pertemuan</h3>' +
+      warnBox('Upload beberapa file sekaligus untuk satu mapel. Tentukan kelas tujuan (pisah koma) — sistem mendaftarkan semua file ke setiap kelas otomatis. Contoh: "7, 7A, 7B" = 3 kelas, 1 klik.') +
       '</div><div id="maContent">Memuat...</div>';
+
     function muat(){
-      Promise.all([api('getModulAjarList',{}), api('getRPPList',{})]).then(function(hasil){
+      Promise.all([api('getModulAjarList',{}), api('getRPPList',{}), api('getSemuaSantri',{})]).then(function(hasil){
         var resMA = hasil[0], resRPP = hasil[1];
+
+        // Kumpulkan daftar mapel unik
         var daftarMapel = [];
         if (resMA.ok) resMA.data.forEach(function(m){ if (daftarMapel.indexOf(m.mapel)===-1) daftarMapel.push(m.mapel); });
         if (resRPP.ok) resRPP.data.forEach(function(r){ if (daftarMapel.indexOf(r.mapel)===-1) daftarMapel.push(r.mapel); });
-        var html = '<div class="card"><h3>Upload File Modul Ajar</h3>' +
+
+        var html = '<div class="card"><h3>&#128196; Upload Batch File Modul Ajar</h3>' +
+          '<p class="muted" style="font-size:13px">Pilih <b>beberapa file sekaligus</b> (Word/PDF). Semua file yang dipilih akan didaftarkan ke <b>setiap kelas</b> yang Anda tulis.</p>' +
           '<div class="grid2">' +
-          '<div><label>Mata Pelajaran</label><input id="maMapel" placeholder="Contoh: IPA"></div>' +
-          '<div><label>Kelas/Fase</label><input id="maKelas" placeholder="Contoh: VIII / Fase D"></div>' +
-          '</div><div class="grid2">' +
+          '<div><label>Mata Pelajaran <span style="color:#dc2626">*</span></label>' +
+          '<input id="maMapel" placeholder="Contoh: Bahasa Indonesia" list="daftarMapelMA">' +
+          '<datalist id="daftarMapelMA">'+daftarMapel.map(function(m){return '<option value="'+esc(m)+'">';}).join('')+'</datalist></div>' +
           '<div><label>Kurikulum</label><select id="maKurikulum"><option>Merdeka</option><option>K13</option></select></div>' +
-          '<div><label>Kategori</label><input id="maKategori" placeholder="Contoh: CP, ATP, Promes, Modul Ajar"></div>' +
           '</div>' +
-          '<label>Nama File (tampil di aplikasi)</label><input id="maNamaFile" placeholder="Contoh: CP IPA Kelas VIII">' +
-          '<label>Upload File (Word/PDF)</label><input type="file" id="maFile" accept=".docx,.pdf">' +
+          '<label>Kelas Tujuan <span style="color:#dc2626">*</span> <span class="muted">(pisah koma untuk banyak kelas)</span></label>' +
+          '<input id="maKelas" placeholder="Contoh: 7, 7A, 7B, 8, 8A" style="font-size:14px">' +
+          '<div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0" id="maKelasPreview"></div>' +
+          '<label>Kategori File <span class="muted">(opsional — kosong = otomatis dari nama file)</span></label>' +
+          '<input id="maKategori" placeholder="Contoh: CP, ATP, Promes, Modul Ajar, RPP">' +
+          '<label>Pilih File <span style="color:#dc2626">*</span> <span class="muted">(bisa pilih banyak sekaligus)</span></label>' +
+          '<input type="file" id="maFiles" accept=".docx,.pdf" multiple style="padding:8px;border:2px dashed #cbd5e1;border-radius:8px;width:100%;box-sizing:border-box">' +
+          '<div id="maFileList" style="margin-top:8px"></div>' +
           '<div id="maUploadStatus"></div>' +
-          '<button id="btnUploadMA">Upload & Proses Ringkasan AI</button></div>' +
+          '<button id="btnUploadMA" style="margin-top:10px">&#128640; Upload Semua File ke Kelas Terpilih</button>' +
+          '<div id="maProgressWrap" style="display:none;margin-top:10px">' +
+          '<div style="background:#e2e8f0;border-radius:8px;height:12px"><div id="maProgressBar" style="background:#0d9488;width:0%;height:100%;border-radius:8px;transition:width .3s"></div></div>' +
+          '<p id="maProgressText" class="muted" style="font-size:12px;margin-top:4px"></p>' +
+          '</div></div>' +
+
           '<div class="card"><h3>Daftar File Modul Ajar</h3>' +
-          (resMA.ok && resMA.data.length ? '<table><tr><th>Mapel</th><th>Kelas</th><th>Kurikulum</th><th>Nama File</th><th>Kategori</th><th>Aksi</th></tr>' +
-            resMA.data.map(function(m){ return '<tr><td>'+esc(m.mapel)+'</td><td>'+esc(m.kelas)+'</td><td>'+esc(m.kurikulum)+'</td><td>'+esc(m.namaFile)+'</td><td>'+esc(m.kategori)+'</td><td>' +
-              '<button class="small btnLihatMA" data-row="'+m.rowIndex+'">Lihat</button> ' +
-              '<button class="small danger btnHapusMA" data-row="'+m.rowIndex+'">Hapus</button></td></tr>'; }).join('') + '</table>'
-            : '<p class="muted">Belum ada file modul ajar. Upload di atas.</p>') + '</div>' +
+          '<div style="display:flex;gap:8px;margin-bottom:10px">' +
+          '<input id="maFilterMapel" placeholder="Filter mapel..." style="flex:1">' +
+          '<input id="maFilterKelas" placeholder="Filter kelas..." style="flex:1">' +
+          '</div>' +
+          '<div id="maDaftarWrap">' +
+          (resMA.ok && resMA.data.length ?
+            '<table><tr><th>Mapel</th><th>Kelas</th><th>Nama File</th><th>Kategori</th><th>Ringkasan AI</th><th>Aksi</th></tr>' +
+            resMA.data.map(function(m){
+              return '<tr class="maRow" data-mapel="'+esc(m.mapel.toLowerCase())+'" data-kelas="'+esc(m.kelas.toLowerCase())+'">'+
+                '<td>'+esc(m.mapel)+'</td><td>'+esc(m.kelas)+'</td>' +
+                '<td>'+esc(m.namaFile)+'</td><td>'+esc(m.kategori)+'</td>' +
+                '<td style="font-size:12px">'+(m.ringkasanAI?'&#10004; Ada':'<span class="muted">-</span>')+'</td>' +
+                '<td style="white-space:nowrap">'+
+                '<button class="small btnLihatMA" data-row="'+m.rowIndex+'">Lihat</button> '+
+                '<button class="small danger btnHapusMA" data-row="'+m.rowIndex+'">Hapus</button></td></tr>';
+            }).join('') + '</table>'
+            : '<p class="muted">Belum ada file modul ajar.</p>') +
+          '</div></div>' +
+
           '<div class="card"><h3>RPP Pertemuan</h3>' +
           '<button class="small" id="btnTambahRPP">+ Tambah Pertemuan</button>' +
-          (resRPP.ok && resRPP.data.length ? '<table style="margin-top:10px"><tr><th>Mapel</th><th>Kelas</th><th>Pertemuan</th><th>Topik</th><th>JP</th><th>Aksi</th></tr>' +
-            resRPP.data.map(function(r){ return '<tr><td>'+esc(r.mapel)+'</td><td>'+esc(r.kelas)+'</td><td>'+r.noPertemuan+'</td><td>'+esc(r.topik)+'</td><td>'+r.alokasiJP+'</td><td>' +
-              '<button class="small btnEditRPP" data-row="'+r.rowIndex+'">Edit</button> ' +
-              '<button class="small danger btnHapusRPP" data-row="'+r.rowIndex+'">Hapus</button></td></tr>'; }).join('') + '</table>'
+          (resRPP.ok && resRPP.data.length ?
+            '<table style="margin-top:10px"><tr><th>Mapel</th><th>Kelas</th><th>Pertemuan</th><th>Topik</th><th>JP</th><th>Aksi</th></tr>' +
+            resRPP.data.map(function(r){
+              return '<tr><td>'+esc(r.mapel)+'</td><td>'+esc(r.kelas)+'</td><td>'+r.noPertemuan+'</td>'+
+                '<td>'+esc(r.topik)+'</td><td>'+r.alokasiJP+'</td>' +
+                '<td><button class="small btnEditRPP" data-row="'+r.rowIndex+'">Edit</button> '+
+                '<button class="small danger btnHapusRPP" data-row="'+r.rowIndex+'">Hapus</button></td></tr>';
+            }).join('') + '</table>'
             : '<p class="muted">Belum ada RPP pertemuan.</p>') + '</div>';
+
         document.getElementById('maContent').innerHTML = html;
 
-        document.getElementById('btnUploadMA').onclick = function(){
-          var file = document.getElementById('maFile').files[0];
-          var mapel = document.getElementById('maMapel').value.trim();
-          var namaFile = document.getElementById('maNamaFile').value.trim();
-          if (!file || !mapel || !namaFile) { alert('Isi Mata Pelajaran, Nama File, dan pilih file terlebih dahulu.'); return; }
-          var btn = document.getElementById('btnUploadMA'); btn.disabled=true; btn.textContent='Mengunggah...';
-          document.getElementById('maUploadStatus').innerHTML = '<p class="muted">Mengunggah file ke Drive...</p>';
-          resizeImageFile(file, 0, 1).then(function(hasil){
-            return api('uploadSlideImage', {base64:hasil.base64, mimeType:file.type, fileName:file.name});
-          }).catch(function(){
-            // Untuk non-gambar, baca sebagai base64 langsung
-            return new Promise(function(resolve, reject){
-              var reader = new FileReader();
-              reader.onload = function(e){ var b64 = e.target.result.split(',')[1]; resolve({ok:true, fileId:'', url:''}); reader.onload2=function(){ resolve({ok:true,base64:b64,mimeType:file.type,fileName:file.name}); }; };
-              reader.readAsDataURL(file);
-            });
-          }).then(function(res){
-            if(!res.ok){ document.getElementById('maUploadStatus').innerHTML = errBox(res.error||'Gagal upload'); btn.disabled=false; btn.textContent='Upload & Proses Ringkasan AI'; return; }
-            document.getElementById('maUploadStatus').innerHTML = '<p class="muted">File terunggah. Menyimpan metadata...</p>';
-            return api('saveModulAjar',{mapel:mapel, kelas:document.getElementById('maKelas').value.trim(), kurikulum:document.getElementById('maKurikulum').value,
-              kategori:document.getElementById('maKategori').value.trim(), namaFile:namaFile, urlAsli:res.url, diuploadOleh:STATE.user.nama}).then(function(resSave){
-              if(!resSave.ok){ document.getElementById('maUploadStatus').innerHTML = errBox(resSave.error); btn.disabled=false; btn.textContent='Upload & Proses Ringkasan AI'; return; }
-              document.getElementById('maUploadStatus').innerHTML = '<p class="muted">Tersimpan. Membuat ringkasan AI (10-30 detik)...</p>';
-              // Ekstrak fileId dari URL Drive
-              var fileId = (res.url||'').match(/\/d\/([\w-]+)/);
-              fileId = fileId ? fileId[1] : '';
-              if (!fileId) { document.getElementById('maUploadStatus').innerHTML = errBox('Gagal mendapat fileId dari URL. Ringkasan AI tidak diproses.'); btn.disabled=false; btn.textContent='Upload & Proses Ringkasan AI'; return; }
-              return api('prosesTeksModulAjar',{rowIndex:resSave.rowIndex, fileId:fileId}).then(function(resAI){
-                btn.disabled=false; btn.textContent='Upload & Proses Ringkasan AI';
-                if(resAI.ok) { document.getElementById('maUploadStatus').innerHTML = '<p class="muted">&#9989; Selesai! Ringkasan AI sudah tersimpan.</p>'; muat(); }
-                else document.getElementById('maUploadStatus').innerHTML = errBox('Upload berhasil tapi ringkasan AI gagal: '+resAI.error);
-              });
-            });
-          });
+        // Preview kelas saat diketik
+        document.getElementById('maKelas').oninput = function(){
+          var kelasList = this.value.split(',').map(function(k){return k.trim();}).filter(Boolean);
+          document.getElementById('maKelasPreview').innerHTML = kelasList.map(function(k){
+            return '<span style="background:#0d9488;color:#fff;border-radius:12px;padding:3px 10px;font-size:12px">'+esc(k)+'</span>';
+          }).join('');
         };
 
+        // Preview file yang dipilih
+        document.getElementById('maFiles').onchange = function(){
+          var files = Array.from(this.files);
+          document.getElementById('maFileList').innerHTML = files.length ?
+            '<div style="background:#f8fafc;border-radius:8px;padding:10px;font-size:13px">'+
+            '<b>'+files.length+' file dipilih:</b><ul style="margin:6px 0 0 16px;padding:0">'+
+            files.map(function(f){ return '<li>'+esc(f.name)+' <span class="muted">('+Math.round(f.size/1024)+'KB)</span></li>'; }).join('')+
+            '</ul></div>' : '';
+        };
+
+        // Upload batch
+        document.getElementById('btnUploadMA').onclick = function(){
+          var files = Array.from(document.getElementById('maFiles').files);
+          var mapel = document.getElementById('maMapel').value.trim();
+          var kelasList = document.getElementById('maKelas').value.split(',').map(function(k){return k.trim();}).filter(Boolean);
+          var kurikulum = document.getElementById('maKurikulum').value;
+          var kategoriGlobal = document.getElementById('maKategori').value.trim();
+
+          if (!files.length){ alert('Pilih minimal satu file.'); return; }
+          if (!mapel){ alert('Isi Mata Pelajaran terlebih dahulu.'); return; }
+          if (!kelasList.length){ alert('Isi Kelas Tujuan terlebih dahulu.'); return; }
+
+          var btn = document.getElementById('btnUploadMA');
+          btn.disabled = true;
+          document.getElementById('maProgressWrap').style.display = 'block';
+
+          var totalPekerjaan = files.length * kelasList.length;
+          var selesai = 0;
+
+          function updateProgress(pesan){
+            selesai++;
+            var pct = Math.round(selesai/totalPekerjaan*100);
+            document.getElementById('maProgressBar').style.width = pct+'%';
+            document.getElementById('maProgressText').textContent = pesan+' ('+selesai+'/'+totalPekerjaan+')';
+          }
+
+          // Proses file satu per satu secara berurutan
+          function prosesFile(fileIdx){
+            if (fileIdx >= files.length){
+              btn.disabled = false;
+              document.getElementById('maUploadStatus').innerHTML =
+                '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;margin-top:8px">'+
+                '&#10004; Semua file berhasil diupload ke '+kelasList.length+' kelas!<br>'+
+                '<span class="muted" style="font-size:12.5px">Total: '+files.length+' file × '+kelasList.length+' kelas = '+totalPekerjaan+' entri. Ringkasan AI sedang diproses di server.</span></div>';
+              muat();
+              return;
+            }
+            var file = files[fileIdx];
+            var namaFile = file.name.replace(/\.[^.]+$/, ''); // Hapus ekstensi
+            var kategori = kategoriGlobal || namaFile;
+
+            // Baca file sebagai base64
+            var reader = new FileReader();
+            reader.onload = function(e){
+              var base64 = e.target.result.split(',')[1];
+              var mimeType = file.type || 'application/octet-stream';
+
+              // Upload ke Drive sekali
+              api('uploadFileKeDrive', {base64:base64, mimeType:mimeType, fileName:file.name}).then(function(resUp){
+                if (!resUp.ok){
+                  document.getElementById('maUploadStatus').innerHTML = errBox('Gagal upload '+file.name+': '+(resUp.error||'error'));
+                  btn.disabled = false;
+                  return;
+                }
+                var fileId = (resUp.url||'').match(/\/d\/([\w-]+)/);
+                fileId = fileId ? fileId[1] : '';
+                var urlAsli = resUp.url || '';
+
+                // Daftarkan ke setiap kelas
+                var promsKelas = kelasList.map(function(kelas){
+                  return api('saveModulAjar',{
+                    mapel:mapel, kelas:kelas, kurikulum:kurikulum,
+                    kategori:kategori, namaFile:namaFile+' - '+kelas,
+                    urlAsli:urlAsli, diuploadOleh:STATE.user.nama
+                  }).then(function(resSave){
+                    updateProgress('Mendaftarkan '+namaFile+' → Kelas '+kelas);
+                    // Proses ringkasan AI (tidak tunggu selesai)
+                    if (fileId && resSave.ok) {
+                      api('prosesTeksModulAjar',{rowIndex:resSave.rowIndex, fileId:fileId}).catch(function(){});
+                    }
+                  });
+                });
+
+                Promise.all(promsKelas).then(function(){
+                  prosesFile(fileIdx + 1);
+                });
+              });
+            };
+            reader.readAsDataURL(file);
+          }
+
+          prosesFile(0);
+        };
+
+        // Filter tabel modul ajar
+        function filterMA(){
+          var q1 = document.getElementById('maFilterMapel').value.toLowerCase();
+          var q2 = document.getElementById('maFilterKelas').value.toLowerCase();
+          document.querySelectorAll('.maRow').forEach(function(row){
+            var ok = (!q1 || row.dataset.mapel.includes(q1)) && (!q2 || row.dataset.kelas.includes(q2));
+            row.style.display = ok ? '' : 'none';
+          });
+        }
+        document.getElementById('maFilterMapel').oninput = filterMA;
+        document.getElementById('maFilterKelas').oninput = filterMA;
+
+        // Tombol Lihat dan Hapus
+        if (resMA.ok){
+          document.querySelectorAll('.btnLihatMA').forEach(function(btn){
+            var ma = resMA.data.find(function(m){return m.rowIndex===Number(btn.dataset.row);});
+            btn.onclick = function(){ if(ma) tampilkanModulAjar(ma); };
+          });
+          document.querySelectorAll('.btnHapusMA').forEach(function(btn){
+            btn.onclick = function(){
+              if(!confirm('Hapus file ini?')) return;
+              api('deleteModulAjar',{rowIndex:Number(btn.dataset.row)}).then(muat);
+            };
+          });
+        }
+
         document.getElementById('btnTambahRPP').onclick = function(){ bukaFormRPP(null, resRPP.ok?resRPP.data:[], muat); };
-        if (resRPP.ok) {
+        if (resRPP.ok){
           document.querySelectorAll('.btnEditRPP').forEach(function(btn){
             btn.onclick = function(){ bukaFormRPP(resRPP.data.find(function(r){return r.rowIndex===Number(btn.dataset.row);}), resRPP.data, muat); };
           });
           document.querySelectorAll('.btnHapusRPP').forEach(function(btn){
             btn.onclick = function(){ if(!confirm('Hapus pertemuan ini?')) return; api('deleteRPP',{rowIndex:Number(btn.dataset.row)}).then(muat); };
-          });
-        }
-        if (resMA.ok) {
-          document.querySelectorAll('.btnHapusMA').forEach(function(btn){
-            btn.onclick = function(){ if(!confirm('Hapus file ini?')) return; api('deleteModulAjar',{rowIndex:Number(btn.dataset.row)}).then(muat); };
-          });
-          document.querySelectorAll('.btnLihatMA').forEach(function(btn){
-            var ma = resMA.data.find(function(m){return m.rowIndex===Number(btn.dataset.row);});
-            btn.onclick = function(){ tampilkanModulAjar(ma); };
           });
         }
       });
