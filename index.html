@@ -270,7 +270,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxBzE6VM2_tlCbzaTxvl9feDTK2CDaZeGLn86Mv2MkqmjFq5fEY9R6blU1ALwKCQHg6/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -280,10 +280,11 @@
     {value:'Admin', label:'Admin'},
     {value:'Mudir', label:'Mudir'},
     {value:'Guru', label:'Guru'},
+    {value:'WaliKelas', label:'Wali Kelas'},
     {value:'Bendahara', label:'Bendahara'},
     {value:'PemilikBarang', label:'Pemilik Barang'},
-    {value:'WaliSantri', label:'Orang Tua Santri'},
-    {value:'Pembina', label:'Pembina Halaqoh'}
+    {value:'Pembina', label:'Pembina Halaqoh'},
+    {value:'WaliSantri', label:'Orang Tua Santri'}
   ];
   function labelRole(value){ var r = DAFTAR_ROLE.find(function(x){return x.value===value;}); return r ? r.label : value; }
   var HARI_LIST = ['Minggu','Senin','Selasa','Rabu','Kamis',"Jum'at",'Sabtu'];
@@ -300,7 +301,131 @@
     var kelas = PETA_KELAS_BADGE_HAFALAN[jenis] || 'tidaksetor';
     return '<span class="badge-hafalan '+kelas+'">'+esc(jenis)+'</span>';
   }
-  var DAFTAR_SURAH = ["Al-Fatihah","Al-Baqarah","Ali 'Imran","An-Nisa","Al-Ma'idah","Al-An'am","Al-A'raf","Al-Anfal","At-Taubah","Yunus","Hud","Yusuf","Ar-Ra'd","Ibrahim","Al-Hijr","An-Nahl","Al-Isra","Al-Kahf","Maryam","Taha","Al-Anbiya","Al-Hajj","Al-Mu'minun","An-Nur","Al-Furqan","Asy-Syu'ara","An-Naml","Al-Qasas","Al-'Ankabut","Ar-Rum","Luqman","As-Sajdah","Al-Ahzab","Saba","Fatir","Yasin","As-Saffat","Sad","Az-Zumar","Ghafir","Fussilat","Asy-Syura","Az-Zukhruf","Ad-Dukhan","Al-Jasiyah","Al-Ahqaf","Muhammad","Al-Fath","Al-Hujurat","Qaf","Az-Zariyat","At-Tur","An-Najm","Al-Qamar","Ar-Rahman","Al-Waqi'ah","Al-Hadid","Al-Mujadalah","Al-Hasyr","Al-Mumtahanah","As-Saff","Al-Jumu'ah","Al-Munafiqun","At-Tagabun","At-Talaq","At-Tahrim","Al-Mulk","Al-Qalam","Al-Haqqah","Al-Ma'arij","Nuh","Al-Jinn","Al-Muzzammil","Al-Muddassir","Al-Qiyamah","Al-Insan","Al-Mursalat","An-Naba","An-Nazi'at","Abasa","At-Takwir","Al-Infitar","Al-Mutaffifin","Al-Insyiqaq","Al-Buruj","At-Tariq","Al-A'la","Al-Gasyiyah","Al-Fajr","Al-Balad","Asy-Syams","Al-Lail","Ad-Duha","Asy-Syarh","At-Tin","Al-'Alaq","Al-Qadr","Al-Bayyinah","Az-Zalzalah","Al-'Adiyat","Al-Qari'ah","At-Takasur","Al-'Asr","Al-Humazah","Al-Fil","Quraisy","Al-Ma'un","Al-Kausar","Al-Kafirun","An-Nasr","Al-Masad","Al-Ikhlas","Al-Falaq","An-Nas"];
+  // Database Al-Quran Al-Hufaz (Cordoba) -- Mushaf Pojok 604 halaman
+  // Format: [no, nama, total_ayat, juz_mulai, hal_mulai]
+  // Halaman mengacu pada Mushaf Standar Pojok (tiap halaman berakhir di akhir ayat)
+  var QURAN_DB = [
+    [1,"Al-Fatihah",7,1,1],[2,"Al-Baqarah",286,1,2],[3,"Ali 'Imran",200,3,50],
+    [4,"An-Nisa",176,4,77],[5,"Al-Ma'idah",120,6,106],[6,"Al-An'am",165,7,128],
+    [7,"Al-A'raf",206,8,151],[8,"Al-Anfal",75,9,177],[9,"At-Taubah",129,10,187],
+    [10,"Yunus",109,11,208],[11,"Hud",123,11,221],[12,"Yusuf",111,12,235],
+    [13,"Ar-Ra'd",43,13,249],[14,"Ibrahim",52,13,255],[15,"Al-Hijr",99,14,262],
+    [16,"An-Nahl",128,14,267],[17,"Al-Isra",111,15,282],[18,"Al-Kahf",110,15,293],
+    [19,"Maryam",98,16,305],[20,"Ta-Ha",135,16,312],[21,"Al-Anbiya",112,17,322],
+    [22,"Al-Hajj",78,17,332],[23,"Al-Mu'minun",118,18,342],[24,"An-Nur",64,18,350],
+    [25,"Al-Furqan",77,18,359],[26,"Asy-Syu'ara",227,19,367],[27,"An-Naml",93,19,377],
+    [28,"Al-Qasas",88,20,385],[29,"Al-'Ankabut",69,20,396],[30,"Ar-Rum",60,21,404],
+    [31,"Luqman",34,21,411],[32,"As-Sajdah",30,21,415],[33,"Al-Ahzab",73,21,418],
+    [34,"Saba'",54,22,428],[35,"Fatir",45,22,434],[36,"Ya-Sin",83,22,440],
+    [37,"As-Saffat",182,23,446],[38,"Sad",88,23,453],[39,"Az-Zumar",75,23,458],
+    [40,"Gafir",85,24,467],[41,"Fussilat",54,24,477],[42,"Asy-Syura",53,25,483],
+    [43,"Az-Zukhruf",89,25,489],[44,"Ad-Dukhan",59,25,496],[45,"Al-Jasiyah",37,25,499],
+    [46,"Al-Ahqaf",35,26,502],[47,"Muhammad",38,26,507],[48,"Al-Fath",29,26,511],
+    [49,"Al-Hujurat",18,26,515],[50,"Qaf",45,26,518],[51,"Az-Zariyat",60,26,520],
+    [52,"At-Tur",49,27,523],[53,"An-Najm",62,27,526],[54,"Al-Qamar",55,27,528],
+    [55,"Ar-Rahman",78,27,531],[56,"Al-Waqi'ah",96,27,534],[57,"Al-Hadid",29,27,537],
+    [58,"Al-Mujadilah",22,28,542],[59,"Al-Hasyr",24,28,545],[60,"Al-Mumtahanah",13,28,549],
+    [61,"As-Saf",14,28,551],[62,"Al-Jumu'ah",11,28,553],[63,"Al-Munafiqun",11,28,554],
+    [64,"At-Tagabun",18,28,556],[65,"At-Talaq",12,28,558],[66,"At-Tahrim",12,28,560],
+    [67,"Al-Mulk",30,29,562],[68,"Al-Qalam",52,29,564],[69,"Al-Haqqah",52,29,566],
+    [70,"Al-Ma'arij",44,29,568],[71,"Nuh",28,29,570],[72,"Al-Jinn",28,29,572],
+    [73,"Al-Muzzammil",20,29,574],[74,"Al-Muddassir",56,29,575],[75,"Al-Qiyamah",40,29,577],
+    [76,"Al-Insan",31,29,578],[77,"Al-Mursalat",50,29,580],[78,"An-Naba",40,30,582],
+    [79,"An-Nazi'at",46,30,583],[80,"'Abasa",42,30,585],[81,"At-Takwir",29,30,586],
+    [82,"Al-Infitar",19,30,587],[83,"Al-Mutaffifin",36,30,587],[84,"Al-Insyiqaq",25,30,589],
+    [85,"Al-Buruj",22,30,590],[86,"At-Tariq",17,30,591],[87,"Al-A'la",19,30,591],
+    [88,"Al-Gasyiyah",26,30,592],[89,"Al-Fajr",30,30,593],[90,"Al-Balad",20,30,594],
+    [91,"Asy-Syams",15,30,595],[92,"Al-Lail",21,30,595],[93,"Ad-Duha",11,30,596],
+    [94,"Al-Insyirah",8,30,596],[95,"At-Tin",8,30,597],[96,"Al-'Alaq",19,30,597],
+    [97,"Al-Qadr",5,30,598],[98,"Al-Bayyinah",8,30,598],[99,"Az-Zalzalah",8,30,599],
+    [100,"Al-'Adiyat",11,30,599],[101,"Al-Qari'ah",11,30,600],[102,"At-Takasur",8,30,600],
+    [103,"Al-'Asr",3,30,601],[104,"Al-Humazah",9,30,601],[105,"Al-Fil",5,30,601],
+    [106,"Quraisy",4,30,602],[107,"Al-Ma'un",7,30,602],[108,"Al-Kausar",3,30,602],
+    [109,"Al-Kafirun",6,30,603],[110,"An-Nasr",3,30,603],[111,"Al-Masad",5,30,603],
+    [112,"Al-Ikhlas",4,30,604],[113,"Al-Falaq",5,30,604],[114,"An-Nas",6,30,604]
+  ];
+
+  // Batas akhir setiap juz: [juz, no_surah, ayat_terakhir]
+  var BATAS_JUZ = [
+    [1,2,141],[2,2,252],[3,3,92],[4,4,23],[5,4,147],
+    [6,5,81],[7,6,110],[8,7,87],[9,8,40],[10,9,92],
+    [11,11,5],[12,12,52],[13,14,52],[14,16,128],[15,18,74],
+    [16,20,135],[17,22,78],[18,25,20],[19,27,55],[20,29,45],
+    [21,33,30],[22,36,27],[23,39,31],[24,41,46],[25,45,37],
+    [26,51,30],[27,57,29],[28,66,12],[29,77,50],[30,114,6]
+  ];
+
+  // Daftar nama surah (untuk datalist autocomplete)
+  var DAFTAR_SURAH = QURAN_DB.map(function(s){return s[1];});
+
+  // Alias nama surah yang sering diketik berbeda
+  var ALIAS_SURAH = {
+    'yasin':'Ya-Sin','ya sin':'Ya-Sin','al yasin':'Ya-Sin',
+    'taha':'Ta-Ha','ta ha':'Ta-Ha',
+    'abasa':"'Abasa",'abasa':"'Abasa",
+    'al fath':'Al-Fath','alfath':'Al-Fath',
+    'as saff':'As-Saf','as-saff':'As-Saf','saff':'As-Saf',
+    'sad':'Sad','shad':'Sad',
+    'al baqarah':'Al-Baqarah','baqarah':'Al-Baqarah',
+    'ali imran':"Ali 'Imran","ali 'imran":"Ali 'Imran",
+    'al insyirah':'Al-Insyirah','asy syarh':'Al-Insyirah','al syarh':'Al-Insyirah',
+    'asy syams':'Asy-Syams','assyams':'Asy-Syams',
+  };
+
+  // Cari data surah dari nama (toleran terhadap variasi penulisan)
+  function cariDataSurah(namaSurah) {
+    if (!namaSurah) return null;
+    var q = namaSurah.trim().toLowerCase();
+    // Cek alias dulu
+    if (ALIAS_SURAH[q]) q = ALIAS_SURAH[q].toLowerCase();
+    // Cari exact match (case-insensitive)
+    for (var i=0;i<QURAN_DB.length;i++) {
+      if (QURAN_DB[i][1].toLowerCase() === q) return QURAN_DB[i];
+    }
+    // Cari partial match
+    for (var i=0;i<QURAN_DB.length;i++) {
+      if (QURAN_DB[i][1].toLowerCase().indexOf(q) === 0) return QURAN_DB[i];
+    }
+    // Cari tanpa "al-" / "asy-" / "an-" / "at-" / "as-" / "az-" / "ad-"
+    var qTanpaAwalan = q.replace(/^(al|asy|an|at|as|az|ad|ar)-?\s*/,'');
+    for (var i=0;i<QURAN_DB.length;i++) {
+      var namaTanpaAwalan = QURAN_DB[i][1].toLowerCase().replace(/^(al|asy|an|at|as|az|ad|ar)['-]?\s*/,'');
+      if (namaTanpaAwalan === qTanpaAwalan) return QURAN_DB[i];
+    }
+    return null;
+  }
+
+  // Hitung juz dari nama surah + nomor ayat
+  function hitungJuzDariAyat(namaSurah, noAyat) {
+    var surah = cariDataSurah(namaSurah);
+    if (!surah) return null;
+    var noSurah = surah[0];
+    noAyat = Number(noAyat);
+    for (var i=0;i<BATAS_JUZ.length;i++) {
+      var juz = BATAS_JUZ[i][0], batasSurah = BATAS_JUZ[i][1], batasAyat = BATAS_JUZ[i][2];
+      if (noSurah < batasSurah) return juz;
+      if (noSurah === batasSurah && noAyat <= batasAyat) return juz;
+    }
+    return 30;
+  }
+
+  // Hitung halaman dari nama surah + nomor ayat (perkiraan mushaf pojok 604 hal)
+  // Cara: halaman_mulai_surah + estimasi posisi ayat dalam surah
+  function hitungHalamanDariAyat(namaSurah, noAyat) {
+    var surah = cariDataSurah(namaSurah);
+    if (!surah) return null;
+    var no = surah[0], totalAyat = surah[2], halMulai = surah[4];
+    noAyat = Math.max(1, Number(noAyat)||1);
+    // Hitung halaman surah berikutnya (atau 605 kalau surah terakhir)
+    var halAkhir = (no < 114) ? QURAN_DB[no][4] : 605;
+    var totalHalaman = halAkhir - halMulai;
+    if (totalHalaman <= 0) return halMulai;
+    // Estimasi proporsional berdasarkan posisi ayat
+    var rasio = (noAyat - 1) / totalAyat;
+    return Math.min(halMulai + Math.floor(rasio * totalHalaman), halAkhir - 1);
+  }
+
+
 
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
@@ -703,24 +828,178 @@
     document.getElementById('btnBatalRole').onclick = function(){ STATE.user = null; hapusSesiTersimpan(); showBeranda(); };
   }
 
-  function lanjutkanKeDashboard(){
-    simpanSesi();
-    var lvl = STATE.user.level;
-    if(lvl === 'Guru') return dashboardGuru();
-    if(lvl === 'WaliSantri') return dashboardWali();
-    if(lvl === 'Admin' || lvl === 'Mudir') return dashboardAdmin();
-    if(lvl === 'Bendahara') return dashboardBendahara();
-    if(lvl === 'PemilikBarang') return dashboardPemilikBarang();
-    if(lvl === 'Pembina') return dashboardPembina();
-    showBeranda(true, 'Level akses "'+lvl+'" tidak dikenal. Hubungi Admin.');
+  // Definisi menu per role -- digunakan untuk membangun tab multi-role
+  var MENU_PER_ROLE = {
+    'Guru': [
+      {key:'jadwal',          label:'Jadwal & Absen',      icon:'&#128197;'},
+      {key:'riwayatabsen',    label:'Riwayat Absensi',     icon:'&#128203;'},
+      {key:'rekapabsen',      label:'Rekap Absensi',       icon:'&#128202;'},
+      {key:'hafalan',         label:'Isi Hafalan',         icon:'&#128214;'},
+      {key:'riwayathafalan',  label:'Riwayat Hafalan',     icon:'&#128337;'},
+      {key:'progresshafalan', label:'Progress Hafalan',    icon:'&#128200;'},
+      {key:'inputnilai',      label:'Input Nilai',         icon:'&#9999;&#65039;'},
+      {key:'riwayatnilai',    label:'Riwayat Nilai',       icon:'&#128202;'},
+      {key:'rekapnilai',      label:'Rekap Nilai Rapor',   icon:'&#128196;'},
+      {key:'pelanggaran',     label:'Catat Pelanggaran',   icon:'&#9888;&#65039;'},
+      {key:'modulajar',       label:'Modul Ajar & RPP',    icon:'&#128218;'},
+      {key:'riwayatjurnal',   label:'Riwayat Jurnal',      icon:'&#128221;'},
+      {key:'sop',             label:'SOP Mengajar',        icon:'&#128203;'},
+      {key:'santrisaya',      label:'Santri Saya',         icon:'&#128101;'},
+      {key:'profilsaya',      label:'Profil Saya',         icon:'&#128100;'}
+    ],
+    'WaliKelas': [
+      {key:'wk_rekapnilai',   label:'Rekap Nilai Kelas',   icon:'&#128196;'},
+      {key:'wk_rekapabsen',   label:'Rekap Absensi Kelas', icon:'&#128202;'},
+      {key:'wk_santri',       label:'Data Santri Kelas',   icon:'&#128101;'},
+      {key:'wk_hafalan',      label:'Rekap Hafalan',       icon:'&#128214;'},
+      {key:'wk_pelanggaran',  label:'Rekap Pelanggaran',   icon:'&#9888;&#65039;'}
+    ],
+    'Bendahara': [
+      {key:'dasbor',          label:'Dasbor Keuangan',     icon:'&#128200;'},
+      {key:'transaksi',       label:'Catat Transaksi',     icon:'&#128221;'},
+      {key:'tarikkasir',      label:'Tarik Saldo Santri',  icon:'&#128717;'},
+      {key:'bku',             label:'Buku Kas Umum',       icon:'&#128218;'},
+      {key:'laporan',         label:'Laporan Bulanan',     icon:'&#128202;'},
+      {key:'pendapatan',      label:'Pendapatan Pondok',   icon:'&#128180;'},
+      {key:'anggaran',        label:'Anggaran Kegiatan',   icon:'&#127919;'},
+      {key:'spp',             label:'SPP & Tunggakan',     icon:'&#128179;'},
+      {key:'persetujuan',     label:'Persetujuan Saldo',   icon:'&#9989;'},
+      {key:'pengaturan',      label:'Pengaturan Kantin',   icon:'&#9881;&#65039;'},
+      {key:'tarif',           label:'Kelola Tarif',        icon:'&#128204;'},
+      {key:'kategori',        label:'Kelola Kategori',     icon:'&#127991;'}
+    ],
+    'PemilikBarang': [
+      {key:'kasir',           label:'Kasir (Jual)',         icon:'&#128717;'},
+      {key:'riwayat',         label:'Riwayat Transaksi',   icon:'&#128203;'},
+      {key:'omzet',           label:'Laporan Omzet',       icon:'&#128200;'},
+      {key:'saldo',           label:'Saldo & Tarik',       icon:'&#128176;'},
+      {key:'riwsaldo',        label:'Riwayat Saldo',       icon:'&#128337;'}
+    ],
+    'Pembina': [
+      {key:'absen',           label:'Absen Maghrib',       icon:'&#127774;'},
+      {key:'rekap',           label:'Rekap Kehadiran',     icon:'&#128202;'}
+    ],
+    'Admin': [], // Admin/Mudir punya dashboard tersendiri yang kompleks
+    'Mudir': []
+  };
+
+  // Map fungsi per key (dikumpulkan di sini agar bisa dipakai lintas role)
+  function getMapFungsi(role){
+    var m = {
+      // Guru
+      jadwal:guruJadwal, riwayatabsen:guruRiwayat, rekapabsen:guruRekapAbsensi,
+      hafalan:guruIsiHafalan, riwayathafalan:guruRiwayatHafalan, progresshafalan:guruProgressHafalan,
+      inputnilai:guruInputNilai, riwayatnilai:guruRiwayatNilai, rekapnilai:guruRekapNilaiRapor,
+      pelanggaran:guruCatatPelanggaran, santrisaya:guruSantriSaya, profilsaya:guruProfilSaya,
+      modulajar:guruModulAjar, riwayatjurnal:guruRiwayatJurnal, sop:guruSOP,
+      // Wali Kelas
+      wk_rekapnilai:wkRekapNilai, wk_rekapabsen:wkRekapAbsensi,
+      wk_santri:wkDataSantri, wk_hafalan:wkRekapHafalan, wk_pelanggaran:wkRekapPelanggaran,
+      // Bendahara
+      dasbor:bendDasbor, transaksi:bendTransaksi, tarikkasir:bendTarikSaldoSantri,
+      bku:bendBKU, laporan:bendLaporan, pendapatan:bendPendapatanPondok,
+      anggaran:bendAnggaran, spp:function(){renderSppSantri('main-content');},
+      persetujuan:function(){renderPersetujuanSaldo('main-content');},
+      pengaturan:bendPengaturanKantin, tarif:bendTarif, kategori:bendKategori,
+      // Pemilik Barang
+      kasir:pemilikKasir, riwayat:pemilikRiwayat, omzet:pemilikOmzet,
+      saldo:pemilikSaldo, riwsaldo:pemilikRiwayatSaldo,
+      // Pembina
+      absen:pembinaAbsen, rekap:pembinaRekap
+    };
+    return m;
   }
 
-  function routeByLevel(){
-    if(!STATE.user){ showBeranda(); return; }
+  function lanjutkanKeDashboard(){
+    simpanSesi();
     var roles = STATE.user.roles || [STATE.user.level];
-    if (roles.length > 1) { tampilkanPilihanRole(); return; }
-    lanjutkanKeDashboard();
+    // Admin/Mudir selalu pakai dashboard khusus mereka (terlalu kompleks untuk di-tab)
+    if (roles.includes('Admin') || roles.includes('Mudir')) return dashboardAdmin();
+    // WaliSantri (orang tua) selalu dashboard sendiri
+    if (roles.length === 1 && roles[0] === 'WaliSantri') return dashboardWali();
+    // Semua role lain: render dashboard multi-tab
+    dashboardMultiRole(roles);
   }
+
+  // ---- Dashboard Multi-Role (sistem TAB) ----
+  function dashboardMultiRole(roles, activeRoleTab, activeMenuKey){
+    // Hapus role yang tidak ada menu-nya (WaliSantri tidak masuk tab)
+    var validRoles = roles.filter(function(r){ return r !== 'WaliSantri' && MENU_PER_ROLE[r]; });
+    if (!validRoles.length){ showBeranda(true,'Tidak ada role yang valid.'); return; }
+
+    activeRoleTab = activeRoleTab || validRoles[0];
+    var menuAktif = MENU_PER_ROLE[activeRoleTab] || [];
+    activeMenuKey = activeMenuKey || (menuAktif[0] && menuAktif[0].key) || '';
+
+    // Bangun HTML
+    var app = document.getElementById('absensi-app');
+    app.innerHTML = topbar(labelRole(activeRoleTab));
+
+    // Tab role (hanya tampil kalau lebih dari 1 role)
+    var tabHtml = '';
+    if (validRoles.length > 1){
+      tabHtml = '<div class="role-tabs" style="display:flex;gap:0;background:#f1f5f9;border-bottom:2px solid #e2e8f0;padding:0 12px">';
+      validRoles.forEach(function(r){
+        var aktif = r === activeRoleTab;
+        tabHtml += '<button class="role-tab-btn" data-role="'+r+'" style="'+
+          'padding:10px 16px;border:none;cursor:pointer;font-size:13px;font-weight:600;'+
+          'background:'+(aktif?'#fff':'transparent')+';'+
+          'color:'+(aktif?'#0d9488':'#64748b')+';'+
+          'border-bottom:'+(aktif?'2px solid #0d9488':'2px solid transparent')+';'+
+          'margin-bottom:-2px;border-radius:0">'+
+          esc(labelRole(r))+'</button>';
+      });
+      tabHtml += '</div>';
+    }
+
+    // Sidebar + konten
+    var sidebarHtml = '<div class="sidebar"><ul class="nav-list">';
+    menuAktif.forEach(function(item){
+      var aktif = item.key === activeMenuKey;
+      sidebarHtml += '<li class="nav-item'+(aktif?' active':'')+'" data-key="'+item.key+'">'+
+        '<span class="nav-icon">'+item.icon+'</span>'+
+        '<span class="nav-label">'+esc(item.label)+'</span></li>';
+    });
+    sidebarHtml += '</ul></div>';
+
+    app.innerHTML = topbar(labelRole(activeRoleTab)) + tabHtml +
+      '<div class="app-body"><div class="sidebar-shell">'+sidebarHtml+
+      '<div class="main-content-wrap"><div id="main-content" class="main-content"></div></div></div></div>';
+
+    // Binding tombol Logout dan notif
+    bindTopbarEvents();
+    setTimeout(muatNotifBadge, 800);
+
+    // Binding tab role
+    app.querySelectorAll('.role-tab-btn').forEach(function(btn){
+      btn.onclick = function(){
+        var newRole = btn.dataset.role;
+        var firstKey = MENU_PER_ROLE[newRole] && MENU_PER_ROLE[newRole][0] && MENU_PER_ROLE[newRole][0].key;
+        dashboardMultiRole(roles, newRole, firstKey);
+      };
+    });
+
+    // Binding menu sidebar
+    var mapFn = getMapFungsi(activeRoleTab);
+    app.querySelectorAll('.nav-item[data-key]').forEach(function(li){
+      li.onclick = function(){
+        app.querySelectorAll('.nav-item').forEach(function(x){x.classList.remove('active');});
+        li.classList.add('active');
+        var fn = mapFn[li.dataset.key];
+        if (fn) { STATE._contentId='main-content'; fn(); }
+      };
+    });
+
+    // Jalankan menu aktif pertama
+    STATE._contentId = 'main-content';
+    var fn = mapFn[activeMenuKey];
+    if (fn) fn();
+  }
+
+  // Helper: patch fungsi-fungsi yang pakai hardcode contentId
+  // Semua fungsi guru/bendahara/pemilik yang memakai 'dg-content','db-content','dp-content'
+  // perlu dibaca dari STATE._contentId
+  function getContentEl(){ return document.getElementById(STATE._contentId || 'main-content'); }
 
   function topbar(judul){
     var logo = logoSrc() ? '<img src="'+esc(logoSrc())+'">' : '';
@@ -755,6 +1034,156 @@
     var btnGanti = document.getElementById('btnGantiRole');
     if (btnGanti) btnGanti.onclick = function(){ tampilkanPilihanRole(); };
   }
+  var bindTopbarEvents = bindLogout; // alias untuk multi-role dashboard
+
+  // ============================================================
+  // DASHBOARD WALI KELAS
+  // (diakses via tab di dashboard multi-role)
+  // ============================================================
+  function wkGetKelas(){
+    // Ambil kelas yang ditugaskan ke guru ini sebagai Wali Kelas
+    // Disimpan di kolom WaliKelas di sheet Guru, format: "7A" atau "7A,7B"
+    return STATE.user.waliKelas || '';
+  }
+
+  function wkRekapNilai(){
+    var kelas = wkGetKelas();
+    var c = document.getElementById(STATE._contentId||'main-content');
+    if (!kelas){ c.innerHTML='<div class="card">'+warnBox('Anda belum ditugaskan sebagai Wali Kelas di data Guru. Minta Admin mengisi kolom WaliKelas.')+'</div>'; return; }
+    c.innerHTML='<div class="card"><h3>&#128196; Rekap Nilai Rapor — Kelas '+esc(kelas)+'</h3>'+
+      '<label>Pilih Mata Pelajaran</label>'+
+      '<select id="wkMapelPilih"><option value="">Memuat...</option></select>'+
+      '<button id="btnWkMuatNilai" style="margin-top:8px">Tampilkan Rekap</button>'+
+      '</div><div id="wkNilaiContent" style="margin-top:10px;overflow-x:auto"></div>';
+    // Muat daftar mapel untuk kelas ini
+    api('getMapelUntukKelas',{kelas:kelas}).then(function(res){
+      if(!res.ok){ c.innerHTML=errBox(res.error); return; }
+      document.getElementById('wkMapelPilih').innerHTML=res.data.map(function(m,i){
+        return '<option value="'+i+'">'+esc(m.mapel)+' ('+esc(m.pengampu)+')</option>';
+      }).join('');
+      window.__wkMapelList=res.data;
+      document.getElementById('btnWkMuatNilai').onclick=function(){
+        var idx=Number(document.getElementById('wkMapelPilih').value);
+        var m=window.__wkMapelList[idx];
+        if(!m)return;
+        document.getElementById('wkNilaiContent').innerHTML='<p>Memuat...</p>';
+        api('getRekapNilaiRapor',{mapel:m.mapel,kelas:kelas,pengampu:m.pengampu}).then(function(r){
+          if(!r.ok){document.getElementById('wkNilaiContent').innerHTML=errBox(r.error);return;}
+          window.__wkLastData={mapel:m.mapel,kelas:kelas,data:r.data};
+          var maxT=0,maxK=0;
+          r.data.forEach(function(d){if(d.tugas.length>maxT)maxT=d.tugas.length;if(d.keterampilan.length>maxK)maxK=d.keterampilan.length;});
+          renderTabelRekap(r.data,m.mapel,kelas);
+        });
+      };
+    });
+  }
+
+  function wkRekapAbsensi(){
+    var kelas = wkGetKelas();
+    var c = document.getElementById(STATE._contentId||'main-content');
+    if (!kelas){ c.innerHTML='<div class="card">'+warnBox('Wali Kelas belum ditugaskan.')+'</div>'; return; }
+    var bt = bulanTahunSaatIni();
+    var tglMulai = bt.tahun+'-'+String(bt.bulan).padStart(2,'0')+'-01';
+    c.innerHTML='<div class="card"><h3>&#128202; Rekap Absensi Kelas '+esc(kelas)+'</h3>'+
+      '<div class="grid2">'+
+      '<div><label>Dari</label><input type="date" id="wkAbDari" value="'+tglMulai+'"></div>'+
+      '<div><label>Sampai</label><input type="date" id="wkAbSampai" value="'+todayStr()+'"></div>'+
+      '</div><label>Filter Mapel (kosong = semua)</label>'+
+      '<input id="wkAbMapel" placeholder="Nama mapel...">'+
+      '<button id="btnWkAbCari">Tampilkan</button></div>'+
+      '<div id="wkAbContent" style="margin-top:10px"></div>';
+    document.getElementById('btnWkAbCari').onclick=function(){
+      var dari=document.getElementById('wkAbDari').value;
+      var sampai=document.getElementById('wkAbSampai').value;
+      var mapel=document.getElementById('wkAbMapel').value.trim();
+      document.getElementById('wkAbContent').innerHTML='<p>Memuat...</p>';
+      api('getRekapAbsensiKelas',{kelas:kelas,mapel:mapel,tglMulai:dari,tglAkhir:sampai}).then(function(r){
+        if(!r.ok){document.getElementById('wkAbContent').innerHTML=errBox(r.error);return;}
+        tampilkanRekapAbsensiKelas(r.data,document.getElementById('wkAbContent'));
+      });
+    };
+  }
+
+  function tampilkanRekapAbsensiKelas(data, container){
+    if(!data||!data.length){container.innerHTML='<div class="card"><p class="muted">Belum ada data absensi.</p></div>';return;}
+    var rata=Math.round(data.reduce(function(s,d){return s+d.persenHadir;},0)/data.length);
+    container.innerHTML='<div class="card">'+
+      '<div class="ringkasan-grid" style="margin-bottom:10px">'+
+      '<div class="ringkasan-tile"><div class="ico">&#128101;</div><div class="nilai">'+data.length+'</div><div class="label">Santri</div></div>'+
+      '<div class="ringkasan-tile '+(rata>=75?'warna-hijau':'warna-merah')+'"><div class="ico">&#9989;</div><div class="nilai">'+rata+'%</div><div class="label">Rata Kehadiran</div></div>'+
+      '</div>'+
+      '<table><tr><th>Nama Santri</th><th>Hadir</th><th>Sakit</th><th>Izin</th><th>Alpa</th><th>% Hadir</th></tr>'+
+      data.map(function(d){
+        var w=d.persenHadir>=75?'#16a34a':'#dc2626';
+        return '<tr><td><b>'+esc(d.nama)+'</b></td>'+
+          '<td style="text-align:center;color:#16a34a">'+d.hadir+'</td>'+
+          '<td style="text-align:center">'+d.sakit+'</td>'+
+          '<td style="text-align:center">'+d.izin+'</td>'+
+          '<td style="text-align:center;color:#dc2626">'+d.alpa+'</td>'+
+          '<td><b style="color:'+w+'">'+d.persenHadir+'%</b></td></tr>';
+      }).join('')+'</table></div>';
+  }
+
+  function wkDataSantri(){
+    var kelas = wkGetKelas();
+    var c = document.getElementById(STATE._contentId||'main-content');
+    if (!kelas){ c.innerHTML='<div class="card">'+warnBox('Wali Kelas belum ditugaskan.')+'</div>'; return; }
+    c.innerHTML='<p>Memuat...</p>';
+    api('getSantriUntukAbsen',{kelas:kelas}).then(function(res){
+      if(!res.ok){c.innerHTML=errBox(res.error);return;}
+      c.innerHTML='<div class="card"><h3>&#128101; Santri Kelas '+esc(kelas)+'</h3>'+
+        '<p class="muted">'+res.data.length+' santri terdaftar</p>'+
+        '<table><tr><th>No</th><th>NISN</th><th>Nama Santri</th><th>Saldo Kantin</th><th>No WA Ortu</th></tr>'+
+        res.data.map(function(s,i){
+          return '<tr><td>'+(i+1)+'</td><td>'+esc(s.nisn)+'</td><td><b>'+esc(s.nama)+'</b></td>'+
+            '<td>'+rupiah(s.saldo||0)+'</td><td>'+esc(s.noWa||'-')+'</td></tr>';
+        }).join('')+'</table></div>';
+    });
+  }
+
+  function wkRekapHafalan(){
+    var kelas = wkGetKelas();
+    var c = document.getElementById(STATE._contentId||'main-content');
+    c.innerHTML='<div class="card"><h3>&#128214; Rekap Hafalan Kelas '+esc(kelas)+'</h3>'+
+      warnBox('Menampilkan rekap hafalan semua santri di kelas '+kelas+' lintas halaqoh.')+
+      '</div><p>Memuat...</p>';
+    api('getRekapHafalanPerKelas',{kelas:kelas}).then(function(res){
+      if(!res.ok){c.innerHTML=errBox(res.error);return;}
+      if(!res.data.length){c.innerHTML='<div class="card"><p class="muted">Belum ada data hafalan.</p></div>';return;}
+      c.innerHTML='<div class="card"><h3>&#128214; Rekap Hafalan Kelas '+esc(kelas)+'</h3>'+
+        '<table><tr><th>Nama Santri</th><th>Halaqoh</th><th>Total Sesi</th><th>Setoran</th><th>Murojaah</th><th>Juz Terakhir</th><th>Surah Terakhir</th><th>Nilai Rata</th></tr>'+
+        res.data.map(function(d){
+          var w=d.nilaiRata>=80?'#16a34a':d.nilaiRata>=60?'#d97706':'#dc2626';
+          return '<tr><td><b>'+esc(d.nama)+'</b></td><td>'+esc(d.namaHalaqoh)+'</td>'+
+            '<td style="text-align:center">'+d.totalSesi+'</td>'+
+            '<td style="text-align:center;color:#0d9488">'+d.totalSetor+'</td>'+
+            '<td style="text-align:center">'+d.totalMurojaah+'</td>'+
+            '<td style="text-align:center">'+esc(d.juzTerakhir?'Juz '+d.juzTerakhir:'-')+'</td>'+
+            '<td>'+esc(d.surahTerakhir||'-')+'</td>'+
+            '<td style="color:'+w+';font-weight:700">'+esc(d.nilaiRata||'-')+'</td></tr>';
+        }).join('')+'</table></div>';
+    });
+  }
+
+  function wkRekapPelanggaran(){
+    var kelas = wkGetKelas();
+    var c = document.getElementById(STATE._contentId||'main-content');
+    c.innerHTML='<p>Memuat...</p>';
+    api('getPelanggaranPerKelas',{kelas:kelas}).then(function(res){
+      if(!res.ok){c.innerHTML=errBox(res.error);return;}
+      c.innerHTML='<div class="card"><h3>&#9888;&#65039; Rekap Pelanggaran Kelas '+esc(kelas)+'</h3>'+
+        (res.data.length?
+          '<table><tr><th>Nama Santri</th><th>Total Pelanggaran</th><th>Total Poin</th></tr>'+
+          res.data.map(function(d){
+            return '<tr><td><b>'+esc(d.nama)+'</b></td>'+
+              '<td style="text-align:center">'+d.jumlah+'</td>'+
+              '<td style="text-align:center;color:#dc2626;font-weight:700">'+d.totalPoin+'</td></tr>';
+          }).join('')+'</table>':
+          '<p class="muted">Tidak ada catatan pelanggaran.</p>')+
+        '</div>';
+    });
+  }
+
 
   // Layout sidebar responsif dipakai Dashboard Guru & Admin/Mudir.
   // Desktop: sidebar tetap tampil di kiri. Mobile (<=860px): sidebar tersembunyi,
@@ -871,6 +1300,7 @@
       {key:'progresshafalan', label:'Progress Hafalan', icon:'&#128200;'},
       {key:'inputnilai', label:'Input Nilai', icon:'&#9999;&#65039;'},
       {key:'riwayatnilai', label:'Riwayat Nilai', icon:'&#128202;'},
+      {key:'rekapnilai', label:'Rekap Nilai Rapor', icon:'&#128196;'},
       {key:'pelanggaran', label:'Catat Pelanggaran', icon:'&#9888;&#65039;'},
       {key:'modulajar', label:'Modul Ajar & RPP', icon:'&#128218;'},
       {key:'riwayatjurnal', label:'Riwayat Jurnal', icon:'&#128221;'},
@@ -881,7 +1311,7 @@
     var map = {
       jadwal:guruJadwal, riwayatabsen:guruRiwayat, rekapabsen:guruRekapAbsensi,
       hafalan:guruIsiHafalan, riwayathafalan:guruRiwayatHafalan, progresshafalan:guruProgressHafalan,
-      inputnilai:guruInputNilai, riwayatnilai:guruRiwayatNilai,
+      inputnilai:guruInputNilai, riwayatnilai:guruRiwayatNilai, rekapnilai:guruRekapNilaiRapor,
       pelanggaran:guruCatatPelanggaran, santrisaya:guruSantriSaya, profilsaya:guruProfilSaya,
       modulajar:guruModulAjar, riwayatjurnal:guruRiwayatJurnal, sop:guruSOP
     };
@@ -1206,22 +1636,88 @@
   // ---- Jadwal & Absen Akademik ----
   function guruJadwal(){
     var c = document.getElementById('dg-content');
-    c.innerHTML = '<p>Memuat jadwal hari ini...</p>';
+    c.innerHTML = '<p>Memuat jadwal...</p>';
     api('getJadwalGuru', {pengampu: STATE.user.nama}).then(function(res){
-      if (!document.getElementById('dg-content')) return; // user sudah pindah tab
-      if(!res.ok){ c.innerHTML = errBox(res.error) + '<button id="btnUlangJadwal">Coba Lagi</button>'; var btnUlang=document.getElementById('btnUlangJadwal'); if(btnUlang) btnUlang.onclick=guruJadwal; return; }
-      if(!res.data.length){ c.innerHTML='<div class="card">Tidak ada jadwal mengajar untuk Anda hari ini.<br><span class="muted">Jika ini tidak sesuai, minta Admin memeriksa nama pengampu di sheet MataPelajaran agar sama persis dengan nama akun Anda.</span></div>'; return; }
-      var html = '';
-      res.data.forEach(function(j, idx){
-        var labelJam = j.jamKeList.length > 1 ? ('Jam ke-'+j.jamKeList.join(' & ')) : ('Jam ke-'+j.jamKeList[0]);
-        var labelPengganti = j.pengganti ? ('<div><span class="badge-hafalan tidaksetor" style="background:#7c3aed">Menggantikan: '+esc(j.guruAsli)+'</span></div>') : '';
-        html += '<div class="card"><b>'+esc(j.mapel)+'</b> - '+esc(j.kelas)+' ('+labelJam+', '+esc(j.hari)+')' + labelPengganti +
-          (j.jamKeList.length > 1 ? '<p class="muted" style="margin:4px 0 0">'+j.jamKeList.length+' jam pelajaran berurutan, cukup isi absen sekali untuk semuanya.</p>' : '') +
-          '<div><button class="small" data-idx="'+idx+'">Isi Absensi</button></div></div>';
-      });
+      if (!document.getElementById('dg-content')) return;
+      if(!res.ok){ c.innerHTML = errBox(res.error)+'<button id="btnUlangJadwal">Coba Lagi</button>'; var b=document.getElementById('btnUlangJadwal'); if(b) b.onclick=guruJadwal; return; }
+
+      var hariIni = HARI_LIST[new Date().getDay()];
+      var jadwalHariIni = res.data.filter(function(j){return j.hariIni;});
+      var jadwalLain = res.data.filter(function(j){return !j.hariIni;});
+
+      if (!res.data.length) {
+        c.innerHTML = '<div class="card">'+
+          warnBox('Belum ada jadwal terdaftar untuk Anda. Minta Admin melengkapi jadwal di menu Kelola Mata Pelajaran.')+
+          '</div>';
+        return;
+      }
+
+      var html = '<div class="card"><h3>&#128197; Jadwal Mengajar</h3>'+
+        '<p class="muted">Hari ini: <b>'+hariIni+'</b>. Jadwal hari ini aktif (bisa diisi absen). Jadwal hari lain ditampilkan samar.</p></div>';
+
+      // Jadwal hari ini -- AKTIF dan mencolok
+      if (jadwalHariIni.length) {
+        html += '<div class="card" style="border:2px solid #0d9488"><h4 style="color:#0d9488;margin-top:0">&#9989; Jadwal Hari Ini ('+hariIni+')</h4>';
+        jadwalHariIni.forEach(function(j, idx) {
+          var labelJam = j.jamKeList.length > 1 ? ('Jam ke-'+j.jamKeList.join(' & ')) : ('Jam ke-'+(j.jamKeList[0]||'?'));
+          var badgePengganti = j.pengganti ?
+            '<span style="background:#7c3aed;color:#fff;border-radius:10px;padding:2px 8px;font-size:11px;margin-left:6px">Menggantikan: '+esc(j.guruAsli)+'</span>' : '';
+          var idxGlobal = res.data.indexOf(j);
+          html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #e2e8f0">'+
+            '<div><b style="font-size:15px">'+esc(j.mapel)+'</b> &mdash; '+esc(j.kelas)+'<br>'+
+            '<span class="muted" style="font-size:12px">'+labelJam+' &bull; '+esc(j.hari)+'</span>'+badgePengganti+'</div>'+
+            '<button class="btnIsiAbsen" data-idx="'+idxGlobal+'" style="white-space:nowrap">&#9999;&#65039; Isi Absensi</button>'+
+            '</div>';
+        });
+        html += '</div>';
+      } else {
+        html += '<div class="card" style="border:2px solid #e2e8f0;opacity:.7">'+
+          '<h4 style="color:#64748b;margin-top:0">&#128197; Jadwal Hari Ini ('+hariIni+')</h4>'+
+          '<p class="muted">Tidak ada jadwal mengajar hari ini.</p></div>';
+      }
+
+      // Jadwal hari lain -- SAMAR, tidak bisa diklik
+      if (jadwalLain.length) {
+        // Kelompokkan per hari
+        var perHari = {};
+        var urutanHariList = ['Senin','Selasa','Rabu','Kamis',"Jum'at",'Jumat','Sabtu','Ahad',''];
+        jadwalLain.forEach(function(j){
+          var h = j.hari || '(Hari belum diisi)';
+          if (!perHari[h]) perHari[h] = [];
+          perHari[h].push(j);
+        });
+
+        html += '<div class="card" style="opacity:0.55;pointer-events:none;user-select:none">'+
+          '<h4 style="color:#94a3b8;margin-top:0">&#128337; Jadwal Hari Lain</h4>';
+
+        urutanHariList.forEach(function(hari){
+          var namaHariTampil = hari || '(Hari belum diisi)';
+          if (!perHari[namaHariTampil] && !perHari[hari]) return;
+          var list = perHari[namaHariTampil] || perHari[hari] || [];
+          html += '<div style="margin-bottom:10px"><div style="font-weight:600;color:#64748b;font-size:13px;margin-bottom:4px">'+
+            (hari==='(Hari belum diisi)'?'&#9888;&#65039; ':'')+esc(namaHariTampil)+'</div>';
+          list.forEach(function(j){
+            var labelJam = j.jamKeList && j.jamKeList.length ? ('Jam ke-'+j.jamKeList.join(' & ')) : '';
+            html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #e2e8f0;font-size:13px">'+
+              '<span><b>'+esc(j.mapel)+'</b> &mdash; '+esc(j.kelas)+'</span>'+
+              '<span class="muted">'+esc(labelJam)+'</span>'+
+              '</div>';
+          });
+          html += '</div>';
+        });
+
+        if (perHari['(Hari belum diisi)']) {
+          html += '<div style="background:#fef9c3;border-radius:6px;padding:8px;font-size:12px;color:#92400e">'+
+            '&#9888;&#65039; Beberapa jadwal belum memiliki hari/jam. Minta Admin melengkapi di menu Kelola Mata Pelajaran.</div>';
+        }
+        html += '</div>';
+      }
+
       c.innerHTML = html;
       window.__jadwalGuru = res.data;
-      c.querySelectorAll('button[data-idx]').forEach(function(btn){ btn.onclick = function(){ formAbsen(window.__jadwalGuru[Number(btn.dataset.idx)]); }; });
+      c.querySelectorAll('.btnIsiAbsen').forEach(function(btn){
+        btn.onclick = function(){ formAbsen(window.__jadwalGuru[Number(btn.dataset.idx)]); };
+      });
     });
   }
 
@@ -1795,9 +2291,9 @@
           surah: row.querySelector('.surahInput').value,
           ayatAwal: row.querySelector('.ayatAwalInput').value,
           ayatAkhir: row.querySelector('.ayatAkhirInput').value,
-          juz: row.querySelector('.juzSelect').value,
-          halamanAwal: row.querySelector('.halamanAwalSelect').value,
-          halamanAkhir: row.querySelector('.halamanAkhirSelect').value,
+          juz: row.querySelector('.juzInput').value,
+          halamanAwal: row.querySelector('.halamanAwalInput').value,
+          halamanAkhir: row.querySelector('.halamanAkhirInput').value,
           nilai: row.querySelector('.nilaiSelect').value
         };
       });
@@ -1849,7 +2345,7 @@
     api('getSantriUntukHafalan', {namaHalaqoh: namaHalaqoh, waktu: waktu, tanggal: tanggal, pengampu: STATE.user.nama}).then(function(res){
       if(!res.ok){ wrap.innerHTML = errBox(res.error); return; }
       if(!res.data.length){ wrap.innerHTML = warnBox(res.peringatan); return; }
-      var datalistHtml = '<datalist id="daftarSurah">' + DAFTAR_SURAH.map(function(s){return '<option value="'+esc(s)+'">';}).join('') + '</datalist>';
+      var datalistHtml = ''; // select dropdown}).join('') + '</datalist>';
       var opsiHalaman = Array.from({length:22},function(_,i){return i+1;});
       var opsiNilai = Array.from({length:10},function(_,i){return (i+1)*10;});
       var html = datalistHtml + '<h4>Halaqoh: '+esc(namaHalaqoh)+' (' + esc(waktu) + ')</h4>' +
@@ -1862,22 +2358,25 @@
           '<label class="muted">Jenis Hafalan</label>' +
           '<select class="jenisSelect">' + JENIS_HAFALAN_ALL.map(function(j){return '<option value="'+j+'">'+j+'</option>';}).join('') + '</select>' +
           '<div class="detailHafalan">' +
-          '<label class="muted">Nama Surah</label><input class="surahInput" list="daftarSurah">' +
+          '<label class="muted">Nama Surah</label>' +
+          '<div class="surahPickerWrap" style="position:relative">' +
+          '<input class="surahCari" placeholder="&#128269; Ketik nomor atau nama surah..." autocomplete="off" style="width:100%;margin-bottom:4px">' +
+          '<select class="surahInput" size="1" style="width:100%"><option value="">-- Ketik di atas untuk cari --</option>' + QURAN_DB.map(function(s){return '<option value="'+esc(s[1])+'">'+s[0]+'. '+esc(s[1])+'</option>';}).join('') + '</select>' +
+          '</div>' +
           '<div class="grid2">' +
-          '<div><label class="muted">Ayat (dari - sampai, contoh: 1 - 39)</label>' +
-          '<div style="display:flex;align-items:center;gap:6px">' +
-          '<input class="ayatAwalInput" type="number" min="1" placeholder="1" style="flex:1">' +
-          '<span>-</span>' +
-          '<input class="ayatAkhirInput" type="number" min="1" placeholder="39" style="flex:1">' +
-          '</div></div>' +
-          '<div><label class="muted">Juz</label><select class="juzSelect">' + Array.from({length:30},function(_,i){return i+1;}).map(function(j){return '<option value="'+j+'">'+j+'</option>';}).join('') + '</select></div>' +
+          '<div><label class="muted">Ayat Dari</label>' +
+          '<input class="ayatAwalInput" type="number" min="1" placeholder="1" style="width:100%"></div>' +
+          '<div><label class="muted">Ayat Sampai</label>' +
+          '<input class="ayatAkhirInput" type="number" min="1" placeholder="39" style="width:100%"></div>' +
           '</div>' +
-          '<label class="muted">Halaman (dari - sampai, isi sama kalau cuma 1 halaman)</label>' +
-          '<div style="display:flex;align-items:center;gap:6px">' +
-          '<select class="halamanAwalSelect">' + opsiHalaman.map(function(h){return '<option value="'+h+'">'+h+'</option>';}).join('') + '</select>' +
-          '<span>-</span>' +
-          '<select class="halamanAkhirSelect">' + opsiHalaman.map(function(h){return '<option value="'+h+'">'+h+'</option>';}).join('') + '</select>' +
+          '<div class="grid2">' +
+          '<div><label class="muted">Juz <span class="muted" style="font-weight:400;font-size:11px">(otomatis terisi)</span></label>' +
+          '<input class="juzInput" type="number" min="1" max="30" placeholder="?" style="width:100%;background:#f8fafc;font-weight:600;color:#0d9488"></div>' +
+          '<div><label class="muted">Halaman Dari <span class="muted" style="font-weight:400;font-size:11px">(otomatis)</span></label>' +
+          '<input class="halamanAwalInput" type="number" min="1" max="604" placeholder="?" style="width:100%;background:#f8fafc;font-weight:600;color:#0d9488"></div>' +
           '</div>' +
+          '<div style="margin-bottom:6px"><label class="muted">Halaman Sampai <span class="muted" style="font-weight:400;font-size:11px">(otomatis, bisa diubah manual)</span></label>' +
+          '<input class="halamanAkhirInput" type="number" min="1" max="604" placeholder="?" style="width:100%;background:#f8fafc;font-weight:600;color:#0d9488"></div>' +
           '<label class="muted">Nilai Hafalan</label>' +
           '<select class="nilaiSelect"><option value="">-- Pilih Nilai --</option>' + opsiNilai.map(function(n){return '<option value="'+n+'">'+n+'</option>';}).join('') + '</select>' +
           '</div></div>';
@@ -1904,17 +2403,122 @@
         var ayatRange = parseRange(t ? t.ayat : '');
         var halamanRange = parseRange(t ? t.halamanKe : '');
         row.querySelector('.surahInput').value = t ? (t.surah||'') : '';
+        // Sinkron search box dengan nilai dari riwayat
+        var cariEl = row.querySelector('.surahCari');
+        if (cariEl && t && t.surah) {
+          var opsi = row.querySelector('.surahInput').options;
+          var found = Array.from(opsi).find(function(o){return o.value===t.surah;});
+          cariEl.value = found ? found.text : t.surah;
+          cariEl.style.borderColor = found ? '#0d9488' : '';
+        } else if (cariEl) { cariEl.value = ''; cariEl.style.borderColor=''; }
         row.querySelector('.ayatAwalInput').value = ayatRange.awal;
         row.querySelector('.ayatAkhirInput').value = ayatRange.akhir;
-        if (t && t.juz) row.querySelector('.juzSelect').value = String(t.juz);
-        if (halamanRange.awal) row.querySelector('.halamanAwalSelect').value = halamanRange.awal;
-        if (halamanRange.akhir) row.querySelector('.halamanAkhirSelect').value = halamanRange.akhir;
+        // Isi juz dan halaman dari riwayat, tapi kalau ada data surah baru langsung hitung otomatis
+        var juzInput = row.querySelector('.juzInput');
+        var halAwalInput = row.querySelector('.halamanAwalInput');
+        var halAkhirInput = row.querySelector('.halamanAkhirInput');
+        if (t && t.juz) juzInput.value = String(t.juz);
+        if (halamanRange.awal) halAwalInput.value = halamanRange.awal;
+        if (halamanRange.akhir) halAkhirInput.value = halamanRange.akhir;
         row.querySelector('.nilaiSelect').value = (t && t.nilai!=null && t.nilai!=='') ? String(t.nilai) : '';
       }
+
+      // ---- Fungsi auto-isi Juz dan Halaman ----
+      function autoIsiJuzHalaman(row) {
+        var surah = row.querySelector('.surahInput').value.trim();
+        var ayatAwal = row.querySelector('.ayatAwalInput').value;
+        var ayatAkhir = row.querySelector('.ayatAkhirInput').value;
+        if (!surah) return;
+        var juzInput = row.querySelector('.juzInput');
+        var halAwalInput = row.querySelector('.halamanAwalInput');
+        var halAkhirInput = row.querySelector('.halamanAkhirInput');
+
+        // Hitung juz berdasarkan ayat awal
+        if (ayatAwal) {
+          var juz = hitungJuzDariAyat(surah, ayatAwal);
+          if (juz) {
+            juzInput.value = juz;
+            juzInput.style.color = '#0d9488';
+          }
+        }
+        // Hitung halaman berdasarkan ayat awal dan akhir
+        if (ayatAwal) {
+          var halAwal = hitungHalamanDariAyat(surah, ayatAwal);
+          if (halAwal) {
+            halAwalInput.value = halAwal;
+            halAwalInput.style.color = '#0d9488';
+          }
+        }
+        if (ayatAkhir) {
+          var halAkhir = hitungHalamanDariAyat(surah, ayatAkhir);
+          if (halAkhir) {
+            halAkhirInput.value = halAkhir;
+            halAkhirInput.style.color = '#0d9488';
+          }
+        }
+        // Kalau halaman awal dan akhir sama, biarkan saja (1 halaman)
+        // Kalau tidak ada surah yang cocok, biarkan input kosong untuk diisi manual
+        // surah dipilih dari select -- selalu valid
+      }
+
       wrap.querySelectorAll('.santriRowHafalan').forEach(function(row){
         var jenisAwal = row.querySelector('.jenisSelect').value;
         toggleDetail(row);
         terapkanRiwayat(row, jenisAwal);
+
+        // Auto-isi saat surah atau ayat berubah
+        var surahEl = row.querySelector('.surahInput');
+        var surahCari = row.querySelector('.surahCari');
+        var ayatAwalEl = row.querySelector('.ayatAwalInput');
+        var ayatAkhirEl = row.querySelector('.ayatAkhirInput');
+        function onSurahAyatChange(){ autoIsiJuzHalaman(row); }
+
+        // Search filter surah real-time
+        if (surahCari) {
+          surahCari.addEventListener('input', function(){
+            var q = this.value.toLowerCase().trim();
+            var opsi = surahEl.options;
+            var matches = [];
+            for (var i=1;i<opsi.length;i++) {
+              var teks = opsi[i].text.toLowerCase();
+              var nilai = opsi[i].value.toLowerCase();
+              var cocok = !q ||
+                teks.indexOf(q) !== -1 ||
+                teks.replace(/^\d+\.\s*/,'').indexOf(q) !== -1 ||
+                nilai.indexOf(q) !== -1;
+              opsi[i].hidden = !cocok;
+              if (cocok) matches.push(i);
+            }
+            // Auto-pilih jika hanya 1 hasil cocok
+            if (matches.length === 1) {
+              surahEl.selectedIndex = matches[0];
+              surahCari.style.borderColor = '#0d9488';
+              surahCari.value = surahEl.options[matches[0]].text;
+              onSurahAyatChange();
+            } else {
+              surahCari.style.borderColor = q && matches.length === 0 ? '#dc2626' : '';
+              if (!q) { // Reset filter kalau kosong
+                for (var i=1;i<opsi.length;i++) opsi[i].hidden = false;
+              }
+            }
+          });
+        }
+
+        // Saat pilih dari select, sinkron ke search box
+        surahEl.addEventListener('change', function(){
+          if (this.value && surahCari) {
+            var terpilih = surahEl.options[surahEl.selectedIndex];
+            surahCari.value = terpilih ? terpilih.text : '';
+            surahCari.style.borderColor = '#0d9488';
+            // Reset hidden semua option
+            Array.from(surahEl.options).forEach(function(o){o.hidden=false;});
+          }
+          onSurahAyatChange();
+        });
+
+        ayatAwalEl.addEventListener('input', onSurahAyatChange);
+        ayatAkhirEl.addEventListener('input', onSurahAyatChange);
+
         row.querySelector('.jenisSelect').onchange = function(){
           toggleDetail(row);
           terapkanRiwayat(row, row.querySelector('.jenisSelect').value);
@@ -1935,9 +2539,9 @@
           row.querySelector('.surahInput').value = d.surah || '';
           row.querySelector('.ayatAwalInput').value = d.ayatAwal || '';
           row.querySelector('.ayatAkhirInput').value = d.ayatAkhir || '';
-          if (d.juz) row.querySelector('.juzSelect').value = d.juz;
-          if (d.halamanAwal) row.querySelector('.halamanAwalSelect').value = d.halamanAwal;
-          if (d.halamanAkhir) row.querySelector('.halamanAkhirSelect').value = d.halamanAkhir;
+          if (d.juz) if (d.juz) row.querySelector('.juzInput').value = d.juz;
+          if (d.halamanAwal) row.querySelector('.halamanAwalInput').value = d.halamanAwal;
+          if (d.halamanAkhir) row.querySelector('.halamanAkhirInput').value = d.halamanAkhir;
           row.querySelector('.nilaiSelect').value = d.nilai || '';
         });
         document.getElementById('pesanSimpanHafalan').innerHTML = warnBox('Isian yang belum sempat tersimpan sebelumnya berhasil dipulihkan otomatis. Silakan lanjutkan dan klik Simpan.');
@@ -1964,12 +2568,12 @@
             if (ayatAwal && ayatAkhir && Number(ayatAkhir) < Number(ayatAwal)) { adaError = true; }
             it.surah = row.querySelector('.surahInput').value;
             it.ayat = ayatAwal && ayatAkhir ? (ayatAwal + ' - ' + ayatAkhir) : ayatAwal;
-            it.juz = row.querySelector('.juzSelect').value;
+            it.juz = row.querySelector('.juzInput').value;
             it.nilai = row.querySelector('.nilaiSelect').value;
-            var halamanAwal = row.querySelector('.halamanAwalSelect').value;
-            var halamanAkhir = row.querySelector('.halamanAkhirSelect').value;
-            if (Number(halamanAkhir) < Number(halamanAwal)) { adaError = true; }
-            it.halamanKe = halamanAwal === halamanAkhir ? halamanAwal : (halamanAwal + ' - ' + halamanAkhir);
+            var halamanAwal = row.querySelector('.halamanAwalInput').value;
+            var halamanAkhir = row.querySelector('.halamanAkhirInput').value || halamanAwal;
+            if (halamanAkhir && halamanAwal && Number(halamanAkhir) < Number(halamanAwal)) { adaError = true; }
+            it.halamanKe = (!halamanAkhir || halamanAwal === halamanAkhir) ? halamanAwal : (halamanAwal + ' - ' + halamanAkhir);
           }
           items.push(it);
         });
@@ -2289,6 +2893,194 @@
         });
       };
     });
+  }
+
+  // ---- Rekap Nilai Rapor (tampilan seperti screenshot) ----
+  function guruRekapNilaiRapor(){
+    var c = document.getElementById('dg-content');
+    c.innerHTML = '<div class="card"><h3>&#128196; Rekap Nilai Rapor</h3><p>Memuat mata pelajaran...</p></div>';
+    api('getMapelGuru', {pengampu: STATE.user.nama}).then(function(res){
+      if(!res.ok){ c.innerHTML=errBox(res.error); return; }
+      if(!res.data.length){ c.innerHTML='<div class="card">'+warnBox('Belum ada mata pelajaran yang diampu.')+'</div>'; return; }
+      c.innerHTML='<div class="card"><h3>&#128196; Rekap Nilai Rapor</h3>'+
+        '<div class="grid2">'+
+        '<div><label>Mata Pelajaran - Kelas</label>'+
+        '<select id="rnMapelKelas">'+res.data.map(function(m,i){return '<option value="'+i+'">'+esc(m.mapel)+' - '+esc(m.kelas)+'</option>';}).join('')+'</select></div>'+
+        '<div style="display:flex;align-items:flex-end;gap:8px">'+
+        '<button id="btnMuatRekap">Tampilkan Rekap</button>'+
+        '<button class="secondary" id="btnCetakRekap">&#128424; Cetak</button>'+
+        '<button class="secondary" id="btnExcelRekap">&#128196; Excel</button>'+
+        '</div></div></div>'+
+        '<div id="rekapNilaiContent" style="margin-top:10px;overflow-x:auto"></div>';
+
+      var mapelList = res.data;
+      var lastData = null;
+
+      function muat(){
+        var idx = Number(document.getElementById('rnMapelKelas').value);
+        var m = mapelList[idx];
+        document.getElementById('rekapNilaiContent').innerHTML='<p>Memuat rekap nilai...</p>';
+        api('getRekapNilaiRapor',{mapel:m.mapel, kelas:m.kelas, pengampu:STATE.user.nama}).then(function(r){
+          if(!r.ok){document.getElementById('rekapNilaiContent').innerHTML=errBox(r.error);return;}
+          lastData={mapel:m.mapel, kelas:m.kelas, data:r.data};
+          renderTabelRekap(r.data, m.mapel, m.kelas);
+        });
+      }
+
+      function renderTabelRekap(data, mapel, kelas){
+        if(!data.length){document.getElementById('rekapNilaiContent').innerHTML='<div class="card"><p class="muted">Belum ada data nilai.</p></div>';return;}
+        // Hitung max jumlah tugas dan keterampilan dari data
+        var maxT=0, maxK=0;
+        data.forEach(function(d){ if(d.tugas.length>maxT)maxT=d.tugas.length; if(d.keterampilan.length>maxK)maxK=d.keterampilan.length; });
+        maxT=Math.max(maxT,1); maxK=Math.max(maxK,1);
+        var TA=STATE.pengaturan.NamaTahunAjaran||new Date().getFullYear()+'/'+(new Date().getFullYear()+1);
+
+        var html='<div id="tabelRaporWrap">'+
+          // Header info
+          '<table style="width:100%;margin-bottom:6px;font-size:13px;border:none"><tr>'+
+          '<td style="border:none"><b>Penilaian Rapor Pelajaran/Kegiatan</b> : '+esc(mapel)+'</td>'+
+          '<td style="border:none;text-align:right"><b>Tahun Ajaran</b> : '+esc(TA)+'</td></tr><tr>'+
+          '<td style="border:none"><b>Nama Pengampu</b> : '+esc(STATE.user.nama)+'</td>'+
+          '<td style="border:none;text-align:right"><b>Semester</b> : 1 (Satu)</td></tr><tr>'+
+          '<td style="border:none"><b>Kelas</b> : '+esc(kelas)+'</td><td style="border:none"></td></tr></table>'+
+
+          // Tabel nilai
+          '<div style="overflow-x:auto"><table id="tabelNilaiRapor" style="font-size:11.5px;border-collapse:collapse;min-width:900px">'+
+          '<colgroup>'+
+          '<col style="width:30px"><col style="min-width:150px">'+
+          Array.from({length:maxT},function(){return '<col style="width:32px">';}).join('')+
+          '<col style="width:50px"><col style="width:40px"><col style="width:55px"><col style="width:40px">'+
+          '<col style="width:80px">'+
+          Array.from({length:maxK},function(){return '<col style="width:32px">';}).join('')+
+          '<col style="width:40px"><col style="width:45px"><col style="width:40px"><col style="width:55px"><col style="width:40px">'+
+          '</colgroup>'+
+
+          // Header baris 1
+          '<tr style="background:#2563eb;color:#fff;font-weight:700;text-align:center">'+
+          '<td rowspan="2" style="border:1px solid #1d4ed8;padding:5px">NO</td>'+
+          '<td rowspan="2" style="border:1px solid #1d4ed8;padding:5px">Nama Santri</td>'+
+          '<td colspan="'+maxT+'" style="border:1px solid #1d4ed8;padding:5px">Nilai Tugas</td>'+
+          '<td rowspan="2" style="border:1px solid #1d4ed8;padding:5px">Rata-Rata</td>'+
+          '<td rowspan="2" style="border:1px solid #1d4ed8;padding:5px">UTS</td>'+
+          '<td rowspan="2" style="border:1px solid #1d4ed8;padding:5px">KEHADIRAN</td>'+
+          '<td rowspan="2" style="border:1px solid #1d4ed8;padding:5px">UAS</td>'+
+          '<td rowspan="2" style="border:1px solid #1d4ed8;padding:5px;background:#1e40af">NILAI PENGETAHUAN RAPOR<br><small style="font-weight:400;font-size:9px">Rt×35%+UTS×25%+UAS×30%+Keh×10%</small></td>'+
+          '<td colspan="'+maxK+'" style="border:1px solid #1d4ed8;padding:5px">NILAI KETERAMPILAN</td>'+
+          '<td rowspan="2" style="border:1px solid #ca8a04;padding:5px;background:#b45309;color:#fff">NKR<br><small style="font-weight:400;font-size:9px">Rata K1-K5</small></td>'+
+          '<td rowspan="2" style="border:1px solid #1d4ed8;padding:5px">TOTAL<br><small style="font-weight:400;font-size:9px">Σ Poin Sikap</small></td>'+
+          '<td rowspan="2" style="border:1px solid #1d4ed8;padding:5px">NILAI MAX<br><small style="font-weight:400;font-size:9px">Sesi×16</small></td>'+
+          '<td rowspan="2" style="border:1px solid #1d4ed8;padding:5px">NILAI SIKAP<br><small style="font-weight:400;font-size:9px">(Σ÷Sesi÷16)×100</small></td>'+
+          '<td rowspan="2" style="border:1px solid #1d4ed8;padding:5px">HURUF<br><small style="font-weight:400;font-size:9px">dari Nilai Sikap</small></td>'+
+          '</tr>'+
+
+          // Header baris 2 (T1-Tn dan K1-Kn)
+          '<tr style="background:#3b82f6;color:#fff;font-weight:700;text-align:center">'+
+          Array.from({length:maxT},function(_,i){return '<td style="border:1px solid #2563eb;padding:3px">T'+(i+1)+'</td>';}).join('')+
+          Array.from({length:maxK},function(_,i){return '<td style="border:1px solid #2563eb;padding:3px">K'+(i+1)+'</td>';}).join('')+
+          '</tr>'+
+
+          // Baris data
+          data.map(function(d,i){
+            var nprWarna = d.npr<75?'background:#fee2e2':d.npr>=90?'background:#dcfce7':'background:#dbeafe';
+            var nkrWarna = d.nkr<75?'background:#fee2e2':d.nkr>=90?'background:#dcfce7':'background:#fef9c3';
+            var hurufWarna = d.huruf==='A'?'color:#16a34a;font-weight:800':d.huruf==='B'?'color:#2563eb;font-weight:700':d.huruf==='C'?'color:#d97706;font-weight:700':'color:#dc2626;font-weight:700';
+            var td=function(v,style){return '<td style="border:1px solid #e5e7eb;text-align:center;padding:3px '+(style?';'+style:'')+'">'+(v!==null&&v!==undefined&&v!==''?v:'')+'</td>';};
+            return '<tr style="background:'+(i%2===0?'#fff':'#f8fafc')+'">'+
+              td(i+1)+
+              '<td style="border:1px solid #e5e7eb;padding:3px 6px"><b>'+esc(d.nama)+'</b></td>'+
+              Array.from({length:maxT},function(_,j){return td(d.tugas[j]!==undefined?d.tugas[j]:'');}).join('')+
+              td(d.ratatugas,'font-weight:600')+
+              td(d.uts)+td(d.kehadiran)+td(d.uas)+
+              td(d.npr,nprWarna+';font-weight:700')+
+              Array.from({length:maxK},function(_,j){return td(d.keterampilan[j]!==undefined?d.keterampilan[j]:'');}).join('')+
+              td(d.nkr,nkrWarna+';font-weight:700')+
+              td(d.totalPoinSikap||'-')+
+              td(d.nilaiMax||'-')+
+              td(d.nilaiSikapRapor||'-')+
+              td(d.huruf,hurufWarna)+
+              '</tr>';
+          }).join('')+
+          '</table></div></div>';
+
+        document.getElementById('rekapNilaiContent').innerHTML=html;
+
+        // Tombol cetak dan excel
+        document.getElementById('btnCetakRekap').onclick=function(){
+          if(lastData) cetakRaporNilai(lastData.data, lastData.mapel, lastData.kelas, maxT, maxK);
+        };
+        document.getElementById('btnExcelRekap').onclick=function(){
+          if(lastData) excelRaporNilai(lastData.data, lastData.mapel, lastData.kelas, maxT, maxK);
+        };
+      }
+
+      document.getElementById('btnMuatRekap').onclick=muat;
+      muat(); // langsung muat yang pertama
+    });
+  }
+
+  // Cetak rapor nilai (print window)
+  function cetakRaporNilai(data, mapel, kelas, maxT, maxK){
+    var namaSekolah=STATE.pengaturan.NamaPesantren||'Pondok Pesantren';
+    var TA=STATE.pengaturan.NamaTahunAjaran||'2026/2027';
+    var wrap=document.getElementById('tabelRaporWrap');
+    if(!wrap)return;
+    var win=window.open('','_blank');
+    win.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Rekap Nilai</title>'+
+      '<style>body{font-family:Arial,sans-serif;margin:10px;font-size:10px}'+
+      'table{border-collapse:collapse;width:100%}td,th{border:1px solid #888;padding:3px 4px;text-align:center}'+
+      '.nama{text-align:left}.header-tbl{background:#2563eb;color:#fff;font-weight:700}'+
+      '.header2{background:#3b82f6;color:#fff;font-weight:700}'+
+      '.npr{background:#dbeafe;font-weight:700}.nkr{background:#fef9c3;font-weight:700}'+
+      '.merah{background:#fee2e2}.hijau{background:#dcfce7}'+
+      '@media print{@page{size:A3 landscape;margin:8mm}body{margin:0}}</style></head><body>'+
+      '<h3 style="text-align:center;margin:4px 0">REKAP NILAI RAPOR<br><small>'+esc(namaSekolah)+'</small></h3>'+
+      '<table style="width:auto;border:none;margin-bottom:6px"><tr><td style="border:none"><b>Pelajaran</b>: '+esc(mapel)+'</td>'+
+      '<td style="border:none;padding-left:20px"><b>Pengampu</b>: '+esc(STATE.user.nama)+'</td>'+
+      '<td style="border:none;padding-left:20px"><b>Kelas</b>: '+esc(kelas)+'</td>'+
+      '<td style="border:none;padding-left:20px"><b>TA</b>: '+esc(TA)+'</td></tr></table>'+
+      wrap.querySelector('table#tabelNilaiRapor').outerHTML+
+      '<script>setTimeout(function(){window.print();},400);<\/script></body></html>');
+    win.document.close();
+  }
+
+  // Export Excel (CSV)
+  function excelRaporNilai(data, mapel, kelas, maxT, maxK){
+    var bom='\uFEFF';
+    var header1=['NO','Nama Santri'];
+    for(var i=1;i<=maxT;i++) header1.push('T'+i);
+    header1.push('Rata-Rata','UTS','Kehadiran','UAS','NPR');
+    for(var i=1;i<=maxK;i++) header1.push('K'+i);
+    header1.push('NKR','Total Sikap','Nilai Sikap','Rata Sikap','Huruf');
+
+    var rows=[header1];
+    data.forEach(function(d,i){
+      var row=[i+1,d.nama];
+      for(var j=0;j<maxT;j++) row.push(d.tugas[j]!==undefined?d.tugas[j]:'');
+      row.push(d.ratatugas,d.uts,d.kehadiran,d.uas,d.npr);
+      for(var j=0;j<maxK;j++) row.push(d.keterampilan[j]!==undefined?d.keterampilan[j]:'');
+      row.push(d.nkr, d.totalPoinSikap||0, d.nilaiMax||0, d.nilaiSikapRapor||0, d.huruf);
+      rows.push(row);
+    });
+    // Info tambahan di bawah
+    rows.push([]);
+    rows.push(['Mapel',mapel,'','Kelas',kelas,'','Pengampu',STATE.user.nama]);
+    rows.push(['Formula NPR','Rata-Rata x35% + UTS x25% + UAS x30% + Kehadiran x10%']);
+
+    var csv=bom+rows.map(function(r){
+      return r.map(function(v){
+        var s=String(v==null?'':v);
+        if(s.includes(','))s='"'+s.replace(/"/g,'""')+'"';
+        return s;
+      }).join(',');
+    }).join('\n');
+
+    var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url;
+    a.download='Rekap_Nilai_'+mapel.replace(/\s+/g,'_')+'_'+kelas+'_'+todayStr()+'.csv';
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   function guruRiwayatNilai(){
