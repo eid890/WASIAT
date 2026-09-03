@@ -270,7 +270,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwwa_jNiH2au9uRU4yFl6jwxM396yEW1QfTl51gmAM5uQjh3CwB-gkMIwxLNZn194el/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -1467,7 +1467,7 @@
       '<div class="ttd-box">'+esc(d.namaPesantren)+', ___________<br>Wali Kelas<br><br><br>('+esc(d.waliKelas)+')</div>'+
       '<div class="ttd-box">Mudir Pesantren<br><br><br><br>(____________________)</div>'+
       '</div>'+
-      '<script>setTimeout(function(){window.print();},400);<\/script></body></html>');
+      '</body></html>');
     win.document.close();
   }
 
@@ -2358,7 +2358,7 @@
       '<td style="width:50%;padding:28px;text-align:center;border:1px solid #999">Mengetahui,<br>Kepala Pesantren<br><br><br><br>(__________________)</td>' +
       '<td style="width:50%;padding:28px;text-align:center;border:1px solid #999">Guru Pengampu,<br><br><br><br>'+esc(STATE.user.nama)+'</td>' +
       '</tr></table>' +
-      '<script>setTimeout(function(){window.print();},400);<\/script></body></html>');
+      '</body></html>');
     win.document.close();
   }
 
@@ -3122,7 +3122,7 @@
             '<p style="text-align:center">Guru: <b>'+esc(STATE.user.nama)+'</b>'+(mapel?' | Mapel: '+esc(mapel):'')+' | Periode: '+esc(dari)+' s/d '+esc(sampai)+'</p>'+
             '<table><tr><th>No</th><th>Nama Santri</th><th>Total</th><th>Hadir</th><th>Sakit</th><th>Izin</th><th>Alpa</th><th>% Hadir</th></tr>'+
             res.data.map(function(d,i){return '<tr><td class="center">'+(i+1)+'</td><td>'+esc(d.nama)+'</td><td class="center">'+d.total+'</td><td class="center">'+d.hadir+'</td><td class="center">'+d.sakit+'</td><td class="center">'+d.izin+'</td><td class="center bold">'+d.alpa+'</td><td class="center bold">'+d.persenHadir+'%</td></tr>';}).join('')+
-            '</table><script>setTimeout(function(){window.print();},400);<\/script></body></html>');
+            '</table></body></html>');
           win.document.close();
         };
       });
@@ -3488,7 +3488,7 @@
       '<td style="border:none;padding-left:20px"><b>Kelas</b>: '+esc(kelas)+'</td>'+
       '<td style="border:none;padding-left:20px"><b>TA</b>: '+esc(TA)+'</td></tr></table>'+
       wrap.querySelector('table#tabelNilaiRapor').outerHTML+
-      '<script>setTimeout(function(){window.print();},400);<\/script></body></html>');
+      '</body></html>');
     win.document.close();
   }
 
@@ -3734,11 +3734,51 @@
     return max;
   }
 
+  // Cetak kuitansi pembayaran SPP
+  function cetakKuitansiSPP(santri, bulan, tanggalLunas){
+    var namaSekolah = STATE.pengaturan.NamaPesantren || 'Pondok Pesantren';
+    var labelBulan = labelBulanSingkatSpp(bulan, santri.tahunMasuk);
+    var noRef = 'SPP-' + santri.nisn + '-' + bulan + '-' + todayStr().replace(/-/g,'');
+    var tgl = tanggalLunas ? tanggalLunas.replace('Lunas (','').replace(')','') : todayStr();
+    var win = window.open('','_blank');
+    win.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Kuitansi SPP</title>'+
+      '<style>body{font-family:Arial,sans-serif;max-width:400px;margin:20px auto;font-size:12px;color:#111}'+
+      'h2{text-align:center;font-size:14px;margin:0}h3{text-align:center;font-size:12px;margin:2px 0 8px;font-weight:400}'+
+      '.box{border:2px solid #111;border-radius:4px;padding:12px;margin-top:8px}'+
+      '.row{display:flex;justify-content:space-between;margin:4px 0;font-size:12px}'+
+      '.label{color:#555}.val{font-weight:600}'+
+      '.nominal{font-size:18px;font-weight:700;text-align:center;padding:8px;border-top:1px dashed #aaa;border-bottom:1px dashed #aaa;margin:8px 0}'+
+      '.ttd{display:flex;justify-content:flex-end;margin-top:20px;font-size:11px;text-align:center}'+
+      '.ttd-box{width:150px}'+
+      '.ref{font-size:10px;color:#aaa;text-align:center;margin-top:8px}'+
+      '@media print{body{margin:4px}@page{margin:4mm;size:80mm auto}}</style></head><body>'+
+      '<h2>'+esc(namaSekolah)+'</h2>'+
+      '<h3>KUITANSI PEMBAYARAN SPP</h3>'+
+      '<div class="box">'+
+      '<div class="row"><span class="label">No. Ref</span><span class="val">'+noRef+'</span></div>'+
+      '<div class="row"><span class="label">Tanggal</span><span class="val">'+tgl+'</span></div>'+
+      '<div class="row"><span class="label">Nama Santri</span><span class="val">'+esc(santri.nama)+'</span></div>'+
+      '<div class="row"><span class="label">NISN</span><span class="val">'+esc(santri.nisn)+'</span></div>'+
+      '<div class="row"><span class="label">Keterangan</span><span class="val">SPP '+esc(labelBulan)+'</span></div>'+
+      '<div class="nominal">Rp '+santri.biaya.toLocaleString('id-ID')+'</div>'+
+      '<div class="row"><span class="label">Status</span><span class="val" style="color:#16a34a">&#10003; LUNAS</span></div>'+
+      '</div>'+
+      '<div class="ttd"><div class="ttd-box">Bendahara<br><br><br><br>(____________________)</div></div>'+
+      '<div class="ref">Kuitansi ini dicetak oleh sistem WASIAT pada '+new Date().toLocaleString('id-ID')+'</div>'+
+      '</body></html>');
+    win.document.close();
+  }
+
   function renderSppSantri(containerId){
     var c = document.getElementById(containerId);
     c.innerHTML = '<p>Memuat data SPP...</p>';
     // Cek apakah ini dashboard Bendahara (tampilkan tab tambahan)
-    var isBendahara = STATE.user && (STATE.user.level==='Bendahara'||STATE.user.level==='Admin'||STATE.user.level==='Mudir');
+    var userRoles = STATE.user.roles || [STATE.user.level];
+    var isBendahara = STATE.user && (
+      userRoles.indexOf('Bendahara') !== -1 ||
+      userRoles.indexOf('Admin') !== -1 ||
+      userRoles.indexOf('Mudir') !== -1
+    );
 
     Promise.all([api('getSppList', {}), api('getSantriUntukTransaksiKantin', {}), api('getTunggakanSantri',{})]).then(function(hasil){
       var res = hasil[0], resSantri = hasil[1], resTg = hasil[2];
@@ -3792,7 +3832,17 @@
         '<div class="grid2">' + fieldAutocomplete('sppNisnBiaya','Nama Santri', daftarSantri.map(function(s){return s.nisn+' - '+s.nama;}), '', 'Ketik nama santri...') + fieldText('sppBiayaInput','Biaya SPP per Bulan (Rp)', '') + '</div>' +
         '<button id="btnSimpanBiayaSpp">Simpan Biaya SPP</button><div id="pesanBiayaSpp"></div></div>' +
 
-        '<div class="card"><h3>Tabel Pembayaran (36 Bulan)</h3><div id="sppTableWrap" style="overflow-x:auto"></div></div>';
+        '<div class="card"><h3>Tabel Pembayaran (36 Bulan)</h3>'+
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'+
+        '<input id="cariSppTabel" placeholder="&#128269; Cari nama santri..." style="flex:1;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px">'+
+        '<select id="filterSppStatus" style="padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px">'+
+        '<option value="">Semua santri</option>'+
+        '<option value="tunggak">Hanya yang menunggak</option>'+
+        '<option value="lunas">Hanya yang lunas semua</option>'+
+        '</select>'+
+        '<button id="btnExportSppExcel" class="secondary">&#128196; Export Excel</button>'+
+        '</div>'+
+        '<div id="sppTableWrap" style="overflow-x:auto"></div></div>';
       c.innerHTML = html;
 
       // Binding tunggakan
@@ -3894,9 +3944,76 @@
             td.style.color = paid ? '#16a34a' : '#d97706';
             td.style.background = paid ? '#eafaf0' : '#fff7ed';
             td.innerHTML = paid ? 'L' : '&middot;';
+            // Tawarkan cetak kuitansi saat baru ditandai LUNAS
+            if (paid) {
+              var santri = data.find(function(s){return s.nisn===td.dataset.nisn;});
+              if (santri && confirm('Cetak kuitansi pembayaran SPP '+esc(santri.nama)+'?')) {
+                cetakKuitansiSPP(santri, Number(td.dataset.bulan), r.nilaiBaru);
+              }
+            }
           });
         };
       });
+
+      // Filter cari nama santri di tabel
+      var allSppRows = document.querySelectorAll('#sppTableWrap tbody tr');
+      function filterSppTabel(){
+        var q = (document.getElementById('cariSppTabel').value||'').toLowerCase();
+        var st = document.getElementById('filterSppStatus').value;
+        allSppRows.forEach(function(row){
+          var nama = row.querySelector('td') ? row.querySelector('td').textContent.toLowerCase() : '';
+          var cells = row.querySelectorAll('td');
+          var adaTunggak = false;
+          cells.forEach(function(td){if(td.style.color==='rgb(217, 119, 6)') adaTunggak=true;});
+          var tampil = true;
+          if (q && nama.indexOf(q) === -1) tampil=false;
+          if (st==='tunggak' && !adaTunggak) tampil=false;
+          if (st==='lunas' && adaTunggak) tampil=false;
+          row.style.display = tampil ? '' : 'none';
+        });
+      }
+      if(document.getElementById('cariSppTabel')){
+        document.getElementById('cariSppTabel').oninput = filterSppTabel;
+        document.getElementById('filterSppStatus').onchange = filterSppTabel;
+      }
+
+      // Export Excel (CSV)
+      if(document.getElementById('btnExportSppExcel')){
+        document.getElementById('btnExportSppExcel').onclick = function(){
+          var bom='\uFEFF';
+          var maxBulan = 36;
+          var headerRow = ['No','Nama Santri','NISN','Biaya SPP'];
+          for(var m=1;m<=maxBulan;m++) headerRow.push('B'+m);
+          headerRow.push('Total Lunas','Total Tunggak','Jml Tunggak Bulan');
+          var rows = [headerRow];
+          data.forEach(function(s,i){
+            var due = bulanJatuhTempoSppFE(s.tahunMasuk);
+            var row = [i+1, s.nama, s.nisn, s.biaya];
+            var lunas=0, tunggak=0;
+            for(var m=1;m<=maxBulan;m++){
+              var paid = !!s.months[m-1];
+              var isFuture = m > due;
+              if(isFuture) row.push('-');
+              else if(paid){ row.push('L'); lunas++; }
+              else{ row.push(''); tunggak++; }
+            }
+            row.push(lunas*s.biaya, tunggak*s.biaya, tunggak);
+            rows.push(row);
+          });
+          var csv=bom+rows.map(function(r){
+            return r.map(function(v){
+              var s=String(v==null?'':v);
+              if(s.includes(','))s='"'+s.replace(/"/g,'""')+'"';
+              return s;
+            }).join(',');
+          }).join('\n');
+          var a=document.createElement('a');
+          a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+          a.download='SPP_'+todayStr()+'.csv';
+          a.click();
+          URL.revokeObjectURL(a.href);
+        };
+      }
     });
   }
 
@@ -4061,7 +4178,7 @@
             '<table><tr><th>Tanggal</th><th>Jenis</th><th>Keterangan</th><th>Santri</th><th>Nominal</th></tr>'+
             data.map(function(d,i){return '<tr><td>'+esc(d.tanggal)+'</td><td>'+esc(d.jenis)+'</td><td>'+esc(d.keterangan)+'</td><td>'+esc(d.namaSantri||'-')+'</td><td class="right">'+rupiah(d.nominal)+'</td></tr>';}).join('')+
             '<tr style="font-weight:700"><td colspan="4">TOTAL</td><td class="right">'+rupiah(totalAll)+'</td></tr>'+
-            '</table><script>setTimeout(function(){window.print();},400);<\/script></body></html>');
+            '</table></body></html>');
           win.document.close();
         };
       });
@@ -4495,7 +4612,7 @@
       '<table><tr><td class="bold">TOTAL</td><td class="right bold">Rp'+total.toLocaleString('id-ID')+'</td></tr>' +
       '<tr><td>Sisa saldo</td><td class="right">Rp'+Number(d.saldoSekarang).toLocaleString('id-ID')+'</td></tr></table></div>' +
       '<div class="footer">Terima kasih sudah berbelanja!<br>Barakallahu fiikum.</div>' +
-      '<script>setTimeout(function(){window.print();},400);<\/script></body></html>');
+      '</body></html>');
     win.document.close();
   }
 
@@ -4524,7 +4641,7 @@
       '<div class="row total-row"><span>Jumlah</span><span>'+rupiah(tr.nominal)+'</span></div>' +
       '<div class="foot">Petugas,<br><br><br>('+esc(tr.dicatatOleh||'____________')+')</div>' +
       '</div>' +
-      '<script>setTimeout(function(){window.print();},400);<\/script></body></html>');
+      '</body></html>');
     win.document.close();
   }
 
@@ -4556,7 +4673,7 @@
       '<div class="ttd">Mengetahui,<br>Mudir Pesantren<br><br><br><br>(____________________)</div>' +
       '<div class="ttd">'+esc(namaSekolah)+',<br>Bendahara<br><br><br><br>(____________________)</div>' +
       '</div>' +
-      '<script>setTimeout(function(){window.print();},400);<\/script></body></html>');
+      '</body></html>');
     win.document.close();
   }
 
@@ -4587,7 +4704,7 @@
       '<div class="ttd">Mengetahui,<br>Mudir Pesantren<br><br><br><br>(____________________)</div>' +
       '<div class="ttd">Bendahara,<br><br><br><br>(____________________)</div>' +
       '</div>' +
-      '<script>setTimeout(function(){window.print();},400);<\/script></body></html>');
+      '</body></html>');
     win.document.close();
   }
 
@@ -4880,7 +4997,7 @@
             '<table><tr><th>No</th><th>Tanggal</th><th>Santri</th><th>Barang</th><th>Qty</th><th class="right">Omzet</th><th class="right">Bersih</th></tr>' +
             data.map(function(t,i){ return '<tr><td>'+(i+1)+'</td><td>'+esc(t.tanggal)+'</td><td>'+esc(t.namaSantri)+'</td><td>'+esc(t.namaBarang)+'</td><td style="text-align:center">'+esc(String(t.jumlah||1))+'</td><td class="right">'+rupiah(t.nominal)+'</td><td class="right">'+rupiah(t.masuk||0)+'</td></tr>'; }).join('') +
             '<tr class="bold"><td colspan="5">TOTAL</td><td class="right">'+rupiah(totalOmzet)+'</td><td class="right">'+rupiah(totalBersih)+'</td></tr>' +
-            '</table><script>setTimeout(function(){window.print();},400);<\/script></body></html>');
+            '</table></body></html>');
           win.document.close();
         };
       });
@@ -5199,7 +5316,7 @@
       '</table>'+
       '<div class="ttd"><div class="ttd-box">Mengetahui,<br>Mudir Pesantren<br><br><br><br>(____________________)</div>'+
       '<div class="ttd-box">Pengampu,<br><br><br><br>('+esc(STATE.user.nama)+')</div></div>'+
-      '<script>setTimeout(function(){window.print();},400);<\/script></body></html>');
+      '</body></html>');
     win.document.close();
   }
 
@@ -5225,7 +5342,7 @@
           '<td>'+ket+'</td></tr>';
       }).join('')+
       '</table><p style="margin-top:20px;font-size:10px">Dicetak: '+new Date().toLocaleDateString('id-ID')+' | Pengampu: '+esc(STATE.user.nama)+'</p>'+
-      '<script>setTimeout(function(){window.print();},400);<\/script></body></html>');
+      '</body></html>');
     win.document.close();
   }
 
@@ -6866,7 +6983,7 @@
             '<table><tr><th>No</th><th>Tanggal</th><th>Guru</th><th>Mapel</th><th>Kelas</th><th>Status Jurnal</th><th>Materi Disampaikan</th><th>Metode</th></tr>' +
             res.data.map(function(j,i){ return '<tr><td>'+(i+1)+'</td><td>'+esc(j.tanggal)+'</td><td>'+esc(j.pengampu)+'</td><td>'+esc(j.mapel)+'</td><td>'+esc(j.kelas)+'</td><td>'+esc(j.statusJurnal)+'</td><td>'+esc(j.materiDisampaikan)+'</td><td>'+esc(j.metode)+'</td></tr>'; }).join('') +
             '</table><p style="margin-top:20px;font-size:11px">Dicetak: '+new Date().toLocaleDateString('id-ID')+'</p>' +
-            '<script>setTimeout(function(){window.print();},400);<\/script></body></html>');
+            '</body></html>');
           win.document.close();
         };
       });
