@@ -270,7 +270,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycby8eTTJPe4RhllwKJ9r3wcZxQmxiWx_H6FJbSvPE01GSK6lmjqrxt0v6DR8Jq-xhZsi/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -530,10 +530,39 @@
     var wrap = document.createElement('div');
     wrap.className = 'overlay';
     wrap.innerHTML = '<div class="modal"><h3>'+esc(title)+'</h3><div id="modalBody">'+fieldsHtml+'</div>' +
+      '<div id="modalStatus"></div>'+
       '<button id="modalSimpan">Simpan</button><button class="secondary" id="modalBatal">Batal</button></div>';
     root.appendChild(wrap);
     wrap.querySelector('#modalBatal').onclick = function(){ root.removeChild(wrap); };
-    wrap.querySelector('#modalSimpan').onclick = function(){ var ok = onSubmit(wrap); if (ok !== false) root.removeChild(wrap); };
+    wrap.querySelector('#modalSimpan').onclick = function(){
+      var btnSimpan = wrap.querySelector('#modalSimpan');
+      var btnBatal = wrap.querySelector('#modalBatal');
+      var statusEl = wrap.querySelector('#modalStatus');
+
+      // Jalankan onSubmit -- kalau return false, ada validasi yang gagal, jangan lanjut
+      var result = onSubmit(wrap);
+      if (result === false) return;
+
+      // Kalau onSubmit return Promise (async), tunggu selesai dulu
+      if (result && typeof result.then === 'function') {
+        btnSimpan.disabled = true;
+        btnSimpan.textContent = 'Menyimpan...';
+        btnBatal.disabled = true;
+        statusEl.innerHTML = '<p class="muted" style="margin:6px 0;font-size:13px">&#128337; Menyimpan data...</p>';
+        result.then(function(){
+          if (wrap.parentNode) root.removeChild(wrap);
+        }).catch(function(e){
+          btnSimpan.disabled = false;
+          btnSimpan.textContent = 'Simpan';
+          btnBatal.disabled = false;
+          statusEl.innerHTML = '<p style="color:#dc2626;margin:6px 0">&#9888;&#65039; Gagal: '+esc(String(e))+'</p>';
+        });
+        return;
+      }
+
+      // Kalau sync dan tidak return false, langsung tutup
+      if (wrap.parentNode) root.removeChild(wrap);
+    };
     return wrap;
   }
   function fieldText(id, label, value){ return '<label>'+esc(label)+'</label><input id="'+id+'" value="'+esc(value||'')+'">'; }
@@ -2290,7 +2319,7 @@
                 fieldSelect('editS3','Keaktifan',['1','2','3','4'], String(row.sikap3||4)) +
                 fieldSelect('editS4','Tanggung Jawab',['1','2','3','4'], String(row.sikap4||4)),
                 function(modal){
-                  api('updateAbsensi', {rowIndex: Number(btn.dataset.row), status: modal.querySelector('#editStatus').value, keterangan: modal.querySelector('#editKet').value,
+                  return api('updateAbsensi', {rowIndex: Number(btn.dataset.row), status: modal.querySelector('#editStatus').value, keterangan: modal.querySelector('#editKet').value,
                     sikap1:Number(modal.querySelector('#editS1').value), sikap2:Number(modal.querySelector('#editS2').value),
                     sikap3:Number(modal.querySelector('#editS3').value), sikap4:Number(modal.querySelector('#editS4').value)}).then(cari);
                 });
@@ -3447,7 +3476,7 @@
             document.querySelectorAll('.btnEditN').forEach(function(btn){
               btn.onclick = function(){
                 openModal('Edit Nilai', fieldText('editNilai','Nilai', btn.dataset.nilai), function(modal){
-                  api('updateNilai', {rowIndex:Number(btn.dataset.row), nilai: modal.querySelector('#editNilai').value}).then(cari);
+                  return api('updateNilai', {rowIndex:Number(btn.dataset.row), nilai: modal.querySelector('#editNilai').value}).then(cari);
                 });
               };
             });
@@ -5417,7 +5446,7 @@
         document.querySelectorAll('.btnEditWali').forEach(function(b){
           b.onclick = function(){
             openModal('Edit Wali Kelas untuk '+b.dataset.kelas, fieldAutocomplete('waliBaru','Wali Kelas', daftarNamaGuru, b.dataset.wali, 'Ketik nama guru...'), function(modal){
-              api('editWaliKelas', {kelas:b.dataset.kelas, waliKelasBaru: modal.querySelector('#waliBaru').value}).then(muatDaftar);
+              return api('editWaliKelas', {kelas:b.dataset.kelas, waliKelasBaru: modal.querySelector('#waliBaru').value}).then(muatDaftar);
             });
           };
         });
@@ -5461,14 +5490,14 @@
                 var raw = modal.querySelector('#cariSantriRombel').value;
                 var nisn = resolveSantriNisn(raw, resSantri.data);
                 if (!nisn) { alert('Santri tidak ditemukan. Pilih salah satu saran yang muncul saat mengetik.'); return false; }
-                api('tambahSantriKeRombel', {nisn: nisn, kelas:kelas}).then(function(r){ if(!r.ok) alert(r.error); else tampilkanDetailRombel(kelas); });
+                return api('tambahSantriKeRombel', {nisn: nisn, kelas:kelas}).then(function(r){ if(!r.ok) alert(r.error); else tampilkanDetailRombel(kelas); });
               });
           });
         };
         wrap.querySelectorAll('.btnPindah').forEach(function(b){
           b.onclick = function(){
             openModal('Pindah Rombel', fieldSelect('kelasTujuan','Pindah ke Kelas', daftarKelasLain, kelas), function(modal){
-              api('pindahSantriRombel', {nisn:b.dataset.nisn, kelasBaru: modal.querySelector('#kelasTujuan').value}).then(function(r){ if(!r.ok) alert(r.error); else tampilkanDetailRombel(kelas); });
+              return api('pindahSantriRombel', {nisn:b.dataset.nisn, kelasBaru: modal.querySelector('#kelasTujuan').value}).then(function(r){ if(!r.ok) alert(r.error); else tampilkanDetailRombel(kelas); });
             });
           };
         });
@@ -5628,7 +5657,7 @@
               function(modal){
                 var pengampuBaru = Array.prototype.map.call(modal.querySelectorAll('.editPengampuChk:checked'), function(el){return el.value;}).join(', ');
                 if (!pengampuBaru) { alert('Pilih minimal satu guru pengampu.'); return false; }
-                api('editHalaqoh', {namaHalaqoh:b.dataset.h, pengampu: pengampuBaru, waktu: modal.querySelector('#editWaktu').value, gender: modal.querySelector('#editGender').value}).then(muatDaftar);
+                return api('editHalaqoh', {namaHalaqoh:b.dataset.h, pengampu: pengampuBaru, waktu: modal.querySelector('#editWaktu').value, gender: modal.querySelector('#editGender').value}).then(muatDaftar);
               });
           };
         });
@@ -5671,7 +5700,7 @@
                 var raw = modal.querySelector('#cariSantriHalaqoh').value;
                 var nisn = resolveSantriNisn(raw, resSantri.data);
                 if (!nisn) { alert('Santri tidak ditemukan.'); return false; }
-                api('tambahSantriKeHalaqoh', {nisn:nisn, namaHalaqoh:namaHalaqoh}).then(function(r){
+                return api('tambahSantriKeHalaqoh', {nisn:nisn, namaHalaqoh:namaHalaqoh}).then(function(r){
                   if(!r.ok) alert(r.error); else tampilkanDetailHalaqoh(namaHalaqoh);
                 });
               });
@@ -5686,7 +5715,7 @@
               openModal('Pindah dari '+namaHalaqoh,
                 fieldSelect('halaqohTujuan','Pindah ke Halaqoh', daftarTujuan, ''),
                 function(modal){
-                  api('pindahSantriHalaqoh', {nisn:b.dataset.nisn, halaqohLama:namaHalaqoh, halaqohBaru:modal.querySelector('#halaqohTujuan').value})
+                  return api('pindahSantriHalaqoh', {nisn:b.dataset.nisn, halaqohLama:namaHalaqoh, halaqohBaru:modal.querySelector('#halaqohTujuan').value})
                     .then(function(r){ if(!r.ok) alert(r.error); else tampilkanDetailHalaqoh(namaHalaqoh); });
                 });
             };
@@ -5928,7 +5957,10 @@
                 } else { values[h] = raw; }
               });
               if (gagal) { alert(gagal); return false; }
-              api('saveMasterRow', {sheet:sheet, rowIndex: existing? existing.rowIndex : 0, values: values}).then(function(r){ if(!r.ok) alert(r.error); else muat(); });
+              return api('saveMasterRow', {sheet:sheet, rowIndex: existing? existing.rowIndex : 0, values: values}).then(function(r){
+                if(!r.ok){ alert(r.error); throw new Error(r.error); }
+                else muat();
+              });
             });
           }
           document.getElementById('btnTambahRow').onclick = function(){ bukaForm(null); };
@@ -6620,9 +6652,9 @@
             };
             if(!payload.namaMapel||!payload.namaKelompok){alert('Isi semua field.');return false;}
             if(item) payload.rowIndex=item.rowIndex;
-            api('saveKelompokMapel',payload).then(function(r){
+            return api('saveKelompokMapel',payload).then(function(r){
               if(!r.ok){alert(r.error);return;}
-              api('getKelompokMapelList',{}).then(function(r2){data=r2.data||[];render();});
+              return api('getKelompokMapelList',{}).then(function(r2){data=r2.data||[];render();});
             });
           });
       }
