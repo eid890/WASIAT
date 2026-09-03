@@ -270,7 +270,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwe9HMCwJSrMhL8xEOltqrSolj6rCWMpq5wN-UkSyBDgJiLn3PWJGyFtLGyy-2zOoKh/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -793,7 +793,7 @@
         }
         STATE.user = res.user;
         if (modeKhusus === 'kantin') { STATE.user.level = 'PemilikBarang'; simpanSesi(); lanjutkanKeDashboard(); return; }
-        routeByLevel();
+        lanjutkanKeDashboard();
       });
     };
   }
@@ -840,6 +840,7 @@
       {key:'inputnilai',      label:'Input Nilai',         icon:'&#9999;&#65039;'},
       {key:'riwayatnilai',    label:'Riwayat Nilai',       icon:'&#128202;'},
       {key:'rekapnilai',      label:'Rekap Nilai Rapor',   icon:'&#128196;'},
+      {key:'raporkelassaya',  label:'Rapor Santri',        icon:'&#128203;'},
       {key:'pelanggaran',     label:'Catat Pelanggaran',   icon:'&#9888;&#65039;'},
       {key:'modulajar',       label:'Modul Ajar & RPP',    icon:'&#128218;'},
       {key:'riwayatjurnal',   label:'Riwayat Jurnal',      icon:'&#128221;'},
@@ -852,7 +853,8 @@
       {key:'wk_rekapabsen',   label:'Rekap Absensi Kelas', icon:'&#128202;'},
       {key:'wk_santri',       label:'Data Santri Kelas',   icon:'&#128101;'},
       {key:'wk_hafalan',      label:'Rekap Hafalan',       icon:'&#128214;'},
-      {key:'wk_pelanggaran',  label:'Rekap Pelanggaran',   icon:'&#9888;&#65039;'}
+      {key:'wk_pelanggaran',  label:'Rekap Pelanggaran',   icon:'&#9888;&#65039;'},
+      {key:'wk_rapor',        label:'Rapor Santri',        icon:'&#128203;'}
     ],
     'Bendahara': [
       {key:'dasbor',          label:'Dasbor Keuangan',     icon:'&#128200;'},
@@ -890,11 +892,14 @@
       jadwal:guruJadwal, riwayatabsen:guruRiwayat, rekapabsen:guruRekapAbsensi,
       hafalan:guruIsiHafalan, riwayathafalan:guruRiwayatHafalan, progresshafalan:guruProgressHafalan,
       inputnilai:guruInputNilai, riwayatnilai:guruRiwayatNilai, rekapnilai:guruRekapNilaiRapor,
+      raporkelassaya:guruRaporKelas,
       pelanggaran:guruCatatPelanggaran, santrisaya:guruSantriSaya, profilsaya:guruProfilSaya,
       modulajar:guruModulAjar, riwayatjurnal:guruRiwayatJurnal, sop:guruSOP,
       // Wali Kelas
       wk_rekapnilai:wkRekapNilai, wk_rekapabsen:wkRekapAbsensi,
-      wk_santri:wkDataSantri, wk_hafalan:wkRekapHafalan, wk_pelanggaran:wkRekapPelanggaran,
+      wk_santri:wkDataSantri, wk_hafalan:wkRekapHafalan,
+      wk_pelanggaran:wkRekapPelanggaran,
+      wk_rapor:function(){ raporSemuaSantriKelas(wkGetKelas()); },
       // Bendahara
       dasbor:bendDasbor, transaksi:bendTransaksi, tarikkasir:bendTarikSaldoSantri,
       bku:bendBKU, laporan:bendLaporan, pendapatan:bendPendapatanPondok,
@@ -905,7 +910,10 @@
       kasir:pemilikKasir, riwayat:pemilikRiwayat, omzet:pemilikOmzet,
       saldo:pemilikSaldo, riwsaldo:pemilikRiwayatSaldo,
       // Pembina
-      absen:pembinaAbsen, rekap:pembinaRekap
+      absen:pembinaAbsen, rekap:pembinaRekap,
+      // Admin/Mudir (kalau multi-role)
+      raporkelas:adminRaporKelas, kelompokpapel:adminKelompokMapel,
+      rekaphalaqoh:adminRekapHalaqoh, rekapjurnal:adminRekapJurnal
     };
     return m;
   }
@@ -923,77 +931,112 @@
 
   // ---- Dashboard Multi-Role (sistem TAB) ----
   function dashboardMultiRole(roles, activeRoleTab, activeMenuKey){
-    // Hapus role yang tidak ada menu-nya (WaliSantri tidak masuk tab)
     var validRoles = roles.filter(function(r){ return r !== 'WaliSantri' && MENU_PER_ROLE[r]; });
-    if (!validRoles.length){ showBeranda(true,'Tidak ada role yang valid.'); return; }
+    if (!validRoles.length){ showBeranda(true,'Tidak ada role yang valid. Hubungi Admin.'); return; }
 
     activeRoleTab = activeRoleTab || validRoles[0];
+    STATE._contentId = 'multi-content';
     var menuAktif = MENU_PER_ROLE[activeRoleTab] || [];
     activeMenuKey = activeMenuKey || (menuAktif[0] && menuAktif[0].key) || '';
 
-    // Bangun HTML
-    var app = document.getElementById('absensi-app');
-    app.innerHTML = topbar(labelRole(activeRoleTab));
+    // Bangun sidebar menu
+    var navHtml = menuAktif.map(function(n){
+      return '<div class="nav-item'+(n.key===activeMenuKey?' active':'')+'" data-key="'+n.key+'">'+
+        '<span class="ic">'+n.icon+'</span><span>'+esc(n.label)+'</span></div>';
+    }).join('');
 
-    // Tab role (hanya tampil kalau lebih dari 1 role)
+    // Bangun tab role (hanya kalau lebih dari 1 role)
     var tabHtml = '';
-    if (validRoles.length > 1){
-      tabHtml = '<div class="role-tabs" style="display:flex;gap:0;background:#f1f5f9;border-bottom:2px solid #e2e8f0;padding:0 12px">';
-      validRoles.forEach(function(r){
-        var aktif = r === activeRoleTab;
-        tabHtml += '<button class="role-tab-btn" data-role="'+r+'" style="'+
-          'padding:10px 16px;border:none;cursor:pointer;font-size:13px;font-weight:600;'+
-          'background:'+(aktif?'#fff':'transparent')+';'+
-          'color:'+(aktif?'#0d9488':'#64748b')+';'+
-          'border-bottom:'+(aktif?'2px solid #0d9488':'2px solid transparent')+';'+
-          'margin-bottom:-2px;border-radius:0">'+
-          esc(labelRole(r))+'</button>';
-      });
-      tabHtml += '</div>';
+    if (validRoles.length > 1) {
+      tabHtml = '<div style="display:flex;gap:0;background:#f1f5f9;border-bottom:2px solid #e2e8f0;padding:0 12px;overflow-x:auto">'+
+        validRoles.map(function(r){
+          var aktif = r === activeRoleTab;
+          return '<button data-role="'+r+'" style="padding:10px 16px;border:none;cursor:pointer;font-size:13px;font-weight:600;'+
+            'white-space:nowrap;background:'+(aktif?'#fff':'transparent')+';'+
+            'color:'+(aktif?'#0d9488':'#64748b')+';'+
+            'border-bottom:'+(aktif?'2px solid #0d9488':'2px solid transparent')+';'+
+            'margin-bottom:-2px;border-radius:0">'+esc(labelRole(r))+'</button>';
+        }).join('')+'</div>';
     }
 
-    // Sidebar + konten
-    var sidebarHtml = '<div class="sidebar"><ul class="nav-list">';
-    menuAktif.forEach(function(item){
-      var aktif = item.key === activeMenuKey;
-      sidebarHtml += '<li class="nav-item'+(aktif?' active':'')+'" data-key="'+item.key+'">'+
-        '<span class="nav-icon">'+item.icon+'</span>'+
-        '<span class="nav-label">'+esc(item.label)+'</span></li>';
-    });
-    sidebarHtml += '</ul></div>';
+    // Gunakan renderSidebarShell yang sudah ada
+    var navItems = menuAktif;
+    render(
+      '<div class="app-shell">'+
+        '<div class="sidebar-overlay" id="sbOverlay"></div>'+
+        '<nav class="sidebar" id="sbNav">'+
+          '<div class="sidebar-brand">'+
+            (logoSrc()?'<img src="'+esc(logoSrc())+'" style="height:38px;border-radius:8px;margin-right:8px">':'')+
+            '<div class="nm">'+esc(STATE.pengaturan.NamaPesantren||'WASIAT')+'</div>'+
+          '</div>'+
+          (validRoles.length>1?
+            '<div style="padding:4px 10px 0">'+
+              validRoles.map(function(r){
+                var aktif=r===activeRoleTab;
+                var s='display:block;width:100%;text-align:left;padding:7px 10px;margin-bottom:3px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;border:1px solid '+(aktif?'#0d9488':'#e2e8f0')+';background:'+(aktif?'#0d9488':'#fff')+';color:'+(aktif?'#fff':'#475569');
+                return '<button data-role="'+r+'" class="tab-role-btn" style="'+s+'">'+esc(labelRole(r))+'</button>';
+              }).join('')+
+            '</div><hr style="margin:8px 0;border-color:#e2e8f0">':'')+
+          '<div class="sidebar-nav" id="sidebarNav">'+navHtml+'</div>'+
+          '<div class="sidebar-user">'+
+            '<div class="nm">'+esc(STATE.user.nama)+'</div>'+
+            '<div class="lvl">'+esc(validRoles.map(labelRole).join(', '))+'</div>'+
+            '<button class="small" id="sbLogout">Keluar</button>'+
+          '</div>'+
+        '</nav>'+
+        '<div class="main-content">'+
+          '<div class="mobile-topbar">'+
+            '<button class="hamburger-btn" id="btnHamburger">&#9776;</button>'+
+            '<span class="mobile-title">'+esc(labelRole(activeRoleTab))+'</span>'+
+          '</div>'+
+          '<div id="slideBarWrap"></div>'+
+          '<div id="multi-content"></div>'+
+        '</div>'+
+      '</div>'
+    );
 
-    app.innerHTML = topbar(labelRole(activeRoleTab)) + tabHtml +
-      '<div class="app-body"><div class="sidebar-shell">'+sidebarHtml+
-      '<div class="main-content-wrap"><div id="main-content" class="main-content"></div></div></div></div>';
+    renderSlideBar('slideBarWrap');
 
-    // Binding tombol Logout dan notif
-    bindTopbarEvents();
-    setTimeout(muatNotifBadge, 800);
+    // Binding logout
+    document.getElementById('sbLogout').onclick = function(){ STATE.user=null; hapusSesiTersimpan(); showBeranda(); };
 
-    // Binding tab role
-    app.querySelectorAll('.role-tab-btn').forEach(function(btn){
+    // Hamburger
+    var sidebar=document.getElementById('sbNav'), overlay=document.getElementById('sbOverlay');
+    var btnH=document.getElementById('btnHamburger');
+    if (btnH) {
+      btnH.onclick = function(){
+        var open=sidebar.classList.toggle('open');
+        overlay.classList.toggle('show',open);
+        btnH.innerHTML=open?'&#10005;':'&#9776;';
+      };
+    }
+    if (overlay) overlay.onclick=function(){ sidebar.classList.remove('open'); overlay.classList.remove('show'); if(btnH)btnH.innerHTML='&#9776;'; };
+
+    // Binding tab role di sidebar
+    document.querySelectorAll('.tab-role-btn').forEach(function(btn){
       btn.onclick = function(){
-        var newRole = btn.dataset.role;
-        var firstKey = MENU_PER_ROLE[newRole] && MENU_PER_ROLE[newRole][0] && MENU_PER_ROLE[newRole][0].key;
-        dashboardMultiRole(roles, newRole, firstKey);
+        var r = btn.dataset.role;
+        var firstKey = MENU_PER_ROLE[r] && MENU_PER_ROLE[r][0] && MENU_PER_ROLE[r][0].key;
+        dashboardMultiRole(roles, r, firstKey);
       };
     });
 
     // Binding menu sidebar
     var mapFn = getMapFungsi(activeRoleTab);
-    app.querySelectorAll('.nav-item[data-key]').forEach(function(li){
+    document.getElementById('sidebarNav').querySelectorAll('.nav-item[data-key]').forEach(function(li){
       li.onclick = function(){
-        app.querySelectorAll('.nav-item').forEach(function(x){x.classList.remove('active');});
+        document.getElementById('sidebarNav').querySelectorAll('.nav-item').forEach(function(x){x.classList.remove('active');});
         li.classList.add('active');
         var fn = mapFn[li.dataset.key];
-        if (fn) { STATE._contentId='main-content'; fn(); }
+        if (fn) fn();
       };
     });
 
     // Jalankan menu aktif pertama
-    STATE._contentId = 'main-content';
     var fn = mapFn[activeMenuKey];
     if (fn) fn();
+
+    setTimeout(muatNotifBadge, 800);
   }
 
   // Helper: patch fungsi-fungsi yang pakai hardcode contentId
@@ -1122,6 +1165,268 @@
           '<td style="text-align:center;color:#dc2626">'+d.alpa+'</td>'+
           '<td><b style="color:'+w+'">'+d.persenHadir+'%</b></td></tr>';
       }).join('')+'</table></div>';
+  }
+
+  // ============================================================
+  // RAPOR LENGKAP PER SANTRI
+  // ============================================================
+
+  // ---- Fungsi utama cetak rapor (dipakai di Wali Kelas, Admin, Mudir, Guru) ----
+  function bukaRaporSantri(nisn, namaOptions){
+    // namaOptions: {kelas, nama} opsional untuk pre-fill
+    var c = document.getElementById(STATE._contentId||'main-content');
+    c.innerHTML='<div class="card"><h3>&#128196; Rapor Santri</h3>'+
+      '<p class="muted">Pilih santri untuk melihat rapor lengkap semua mata pelajaran.</p>'+
+      (nisn?'<p>Memuat rapor...</p>':
+        '<div class="grid2">'+
+        '<div><label>Kelas</label><input id="raporKelas" placeholder="Contoh: 7A"></div>'+
+        '<div><label>NISN Santri</label><input id="raporNisn" placeholder="Ketik NISN..."></div>'+
+        '</div><button id="btnMuatRapor">Tampilkan Rapor</button>')+
+      '</div><div id="raporContent" style="margin-top:10px"></div>';
+
+    if (!nisn) {
+      document.getElementById('btnMuatRapor').onclick=function(){
+        var k=document.getElementById('raporKelas').value.trim();
+        var n=document.getElementById('raporNisn').value.trim();
+        if(!k||!n){alert('Isi Kelas dan NISN.');return;}
+        muatRapor(n,k);
+      };
+      return;
+    }
+    muatRapor(nisn, namaOptions&&namaOptions.kelas||'');
+  }
+
+  function muatRapor(nisn, kelas){
+    var c = document.getElementById(STATE._contentId||'main-content');
+    document.getElementById('raporContent').innerHTML='<p>Memuat rapor santri...</p>';
+    api('getRaporSantriLengkap',{nisn:nisn,kelas:kelas}).then(function(r){
+      if(!r.ok){document.getElementById('raporContent').innerHTML=errBox(r.error);return;}
+      var d=r.data;
+      renderRaporLengkap(d);
+    });
+  }
+
+  function renderRaporLengkap(d){
+    var kontainer = document.getElementById('raporContent');
+    if (!kontainer) return;
+
+    var hurufFn=function(n){return n===null?'-':n>=90?'A':n>=80?'B':n>=70?'C':n>=60?'D':'E';};
+    var tdN=function(v){
+      if(v===null||v===undefined||v==='')return '<td style="text-align:center;border:1px solid #d1d5db">-</td>';
+      var w=v>=85?'#dcfce7':v<70?'#fee2e2':'';
+      return '<td style="text-align:center;border:1px solid #d1d5db;font-weight:600;background:'+w+'">'+v+'</td>';
+    };
+
+    var html='<div id="raporPrintArea">'+
+
+    // Header rapor
+    '<div class="card" style="border:2px solid #0d9488">'+
+    '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">'+
+    '<div style="font-size:13px">'+
+    '<b style="font-size:16px;color:#0d9488">'+esc(d.namaPesantren)+'</b><br>'+
+    '<span>LAPORAN HASIL BELAJAR SEMESTER</span>'+
+    '</div>'+
+    '<div style="text-align:right;font-size:13px">'+
+    '<b>Tahun Ajaran: '+esc(d.tahunAjaran)+'</b><br>'+
+    '<span>Semester: 1 (Satu)</span>'+
+    '</div></div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:13px">'+
+    '<div><b>Nama Santri</b> : '+esc(d.nama)+'</div>'+
+    '<div><b>Kelas</b> : '+esc(d.kelas)+'</div>'+
+    '<div><b>NISN</b> : '+esc(d.nisn)+'</div>'+
+    '<div><b>Wali Kelas</b> : '+esc(d.waliKelas)+'</div>'+
+    '</div></div>'+
+
+    // Tabel nilai
+    '<div class="card" style="overflow-x:auto">'+
+    '<table style="width:100%;border-collapse:collapse;font-size:13px">'+
+    '<thead>'+
+    '<tr style="background:#0d9488;color:#fff">'+
+    '<th style="border:1px solid #0a7a70;padding:8px;text-align:center;width:40px">No</th>'+
+    '<th style="border:1px solid #0a7a70;padding:8px;text-align:left">Kompetensi</th>'+
+    '<th style="border:1px solid #0a7a70;padding:8px;text-align:center;width:90px">Pengetahuan</th>'+
+    '<th style="border:1px solid #0a7a70;padding:8px;text-align:center;width:90px">Keterampilan</th>'+
+    '<th style="border:1px solid #0a7a70;padding:8px;text-align:center;width:70px">Sikap</th>'+
+    '</tr>'+
+    '</thead><tbody>';
+
+    var noUrut=0;
+    d.kelompok.forEach(function(kg){
+      // Baris header kelompok
+      html+='<tr style="background:#f0fdf4"><td colspan="5" style="border:1px solid #d1d5db;padding:7px 10px;font-weight:700;color:#065f46">'+
+        esc(kg.kode)+'. '+esc(kg.nama)+'</td></tr>';
+      kg.mapel.forEach(function(m){
+        noUrut++;
+        html+='<tr style="background:'+(noUrut%2===0?'#f9fafb':'#fff')+'">'+
+          '<td style="text-align:center;border:1px solid #d1d5db;padding:6px">'+noUrut+'</td>'+
+          '<td style="border:1px solid #d1d5db;padding:6px">'+esc(m.nama)+'</td>'+
+          tdN(m.pengetahuan)+
+          tdN(m.keterampilan)+
+          tdN(m.sikap)+
+          '</tr>';
+      });
+    });
+
+    html+='</tbody></table></div>'+
+
+    // Footer keterangan nilai
+    '<div class="card" style="font-size:12px">'+
+    '<div style="display:flex;gap:16px;flex-wrap:wrap">'+
+    '<div><b>Keterangan:</b></div>'+
+    ['A = ≥ 90 (Sangat Baik)','B = 80-89 (Baik)','C = 70-79 (Cukup)','D = 60-69 (Kurang)','E = < 60 (Sangat Kurang)'].map(function(k){
+      return '<div>'+k+'</div>';
+    }).join('')+'</div>'+
+    '<div style="display:flex;justify-content:space-between;margin-top:20px">'+
+    '<div style="text-align:center"><br><br><br>(____________________)<br>Orang Tua/Wali Santri</div>'+
+    '<div style="text-align:center">'+esc(d.namaPesantren)+', _______________<br><br><br>(____________________)<br>Wali Kelas</div>'+
+    '<div style="text-align:center"><br><br><br>(____________________)<br>Mudir Pesantren</div>'+
+    '</div></div>'+
+    '</div>'; // tutup raporPrintArea
+
+    html+='<div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap">'+
+      '<button id="btnCetakRaporSantri">&#128424; Cetak</button>'+
+      '<button class="secondary" id="btnExcelRaporSantri">&#128196; Export Excel</button>'+
+      '<button class="secondary" id="btnPDFRaporSantri">&#128196; Export PDF (Print ke PDF)</button>'+
+      '</div></div>';
+
+    kontainer.innerHTML=html;
+
+    // Binding tombol
+    document.getElementById('btnCetakRaporSantri').onclick=function(){ cetakRaporSantri(d); };
+    document.getElementById('btnExcelRaporSantri').onclick=function(){ excelRaporSantri(d); };
+    document.getElementById('btnPDFRaporSantri').onclick=function(){ cetakRaporSantri(d, true); };
+  }
+
+  // Cetak rapor santri (Print / Print ke PDF)
+  function cetakRaporSantri(d, pdf){
+    var hurufFn=function(n){return n===null?'-':n>=90?'A':n>=80?'B':n>=70?'C':n>=60?'D':'E';};
+    var win=window.open('','_blank');
+    var noUrut=0;
+    var barisHtml='';
+    d.kelompok.forEach(function(kg){
+      barisHtml+='<tr class="kelompok-header"><td colspan="5"><b>'+esc(kg.kode)+'. '+esc(kg.nama)+'</b></td></tr>';
+      kg.mapel.forEach(function(m){
+        noUrut++;
+        var wP=m.pengetahuan!==null&&m.pengetahuan<70?'background:#fee2e2':'';
+        var wK=m.keterampilan!==null&&m.keterampilan<70?'background:#fee2e2':'';
+        var wS=m.sikap!==null&&m.sikap<70?'background:#fee2e2':'';
+        barisHtml+='<tr><td class="center">'+noUrut+'</td><td>'+esc(m.nama)+'</td>'+
+          '<td class="center '+(wP?'merah':'')+'">'+((m.pengetahuan!==null)?m.pengetahuan:'-')+'</td>'+
+          '<td class="center '+(wK?'merah':'')+'">'+((m.keterampilan!==null)?m.keterampilan:'-')+'</td>'+
+          '<td class="center '+(wS?'merah':'')+'">'+((m.sikap!==null)?m.sikap:'-')+'</td></tr>';
+      });
+    });
+
+    win.document.write('<!DOCTYPE html><html><head><meta charset="utf-8">'+
+      '<title>Rapor '+esc(d.nama)+'</title>'+
+      '<style>'+
+      'body{font-family:Arial,sans-serif;max-width:700px;margin:20px auto;font-size:12px}'+
+      'h2{text-align:center;font-size:15px;margin:4px 0;color:#0d9488}'+
+      'h3{text-align:center;font-size:12px;margin:2px 0}'+
+      '.info{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:10px 0;font-size:12px;border:1px solid #e2e8f0;padding:8px;border-radius:4px}'+
+      'table{width:100%;border-collapse:collapse;margin-top:10px}'+
+      'td,th{border:1px solid #aaa;padding:5px 7px}'+
+      'th{background:#0d9488;color:#fff;text-align:center}'+
+      '.center{text-align:center}.merah{background:#fee2e2}'+
+      '.kelompok-header td{background:#f0fdf4;font-weight:700;color:#065f46;padding:6px 8px}'+
+      '.ket{font-size:11px;margin-top:10px;display:flex;gap:12px;flex-wrap:wrap}'+
+      '.ttd{display:flex;justify-content:space-between;margin-top:30px;font-size:11px}'+
+      '.ttd-box{text-align:center;width:180px}'+
+      '@media print{body{margin:8px;max-width:100%}@page{margin:10mm;size:A4}}'+
+      '</style></head><body>'+
+      '<h2>'+esc(d.namaPesantren)+'</h2>'+
+      '<h3>LAPORAN HASIL BELAJAR SEMESTER</h3>'+
+      '<div style="text-align:right;font-size:11px">Tahun Ajaran: '+esc(d.tahunAjaran)+' | Semester: 1</div>'+
+      '<div class="info">'+
+      '<div><b>Nama Santri</b> : '+esc(d.nama)+'</div>'+
+      '<div><b>Kelas</b> : '+esc(d.kelas)+'</div>'+
+      '<div><b>NISN</b> : '+esc(d.nisn)+'</div>'+
+      '<div><b>Wali Kelas</b> : '+esc(d.waliKelas)+'</div>'+
+      '</div>'+
+      '<table>'+
+      '<tr><th style="width:40px">No</th><th>Kompetensi / Mata Pelajaran</th>'+
+      '<th style="width:90px">Pengetahuan</th><th style="width:90px">Keterampilan</th><th style="width:70px">Sikap</th></tr>'+
+      barisHtml+'</table>'+
+      '<div class="ket"><b>Keterangan:</b>'+
+      '<span>A=≥90 (Sangat Baik)</span><span>B=80-89 (Baik)</span>'+
+      '<span>C=70-79 (Cukup)</span><span>D=60-69 (Kurang)</span><span>E=&lt;60 (Sangat Kurang)</span></div>'+
+      '<div class="ttd">'+
+      '<div class="ttd-box">Orang Tua/Wali Santri<br><br><br><br>(____________________)</div>'+
+      '<div class="ttd-box">'+esc(d.namaPesantren)+', ___________<br>Wali Kelas<br><br><br>('+esc(d.waliKelas)+')</div>'+
+      '<div class="ttd-box">Mudir Pesantren<br><br><br><br>(____________________)</div>'+
+      '</div>'+
+      '<script>setTimeout(function(){window.print();},400);<\/script></body></html>');
+    win.document.close();
+  }
+
+  // Export Excel rapor santri
+  function excelRaporSantri(d){
+    var bom='\uFEFF';
+    var rows=[
+      [d.namaPesantren],
+      ['LAPORAN HASIL BELAJAR SEMESTER'],
+      ['Nama Santri',d.nama,'','Kelas',d.kelas],
+      ['NISN',d.nisn,'','Wali Kelas',d.waliKelas],
+      ['Tahun Ajaran',d.tahunAjaran,'','Semester','1 (Satu)'],
+      [],
+      ['No','Kompetensi / Mata Pelajaran','Pengetahuan','Keterampilan','Sikap']
+    ];
+    var no=0;
+    d.kelompok.forEach(function(kg){
+      rows.push([kg.kode+'. '+kg.nama,'','','','']);
+      kg.mapel.forEach(function(m){
+        no++;
+        rows.push([no, m.nama, m.pengetahuan!==null?m.pengetahuan:'-', m.keterampilan!==null?m.keterampilan:'-', m.sikap!==null?m.sikap:'-']);
+      });
+    });
+    rows.push([]);
+    rows.push(['Keterangan: A=≥90 (Sangat Baik), B=80-89 (Baik), C=70-79 (Cukup), D=60-69 (Kurang), E=<60 (Sangat Kurang)']);
+
+    var csv=bom+rows.map(function(r){
+      return r.map(function(v){
+        var s=String(v==null?'':v);
+        if(s.includes(','))s='"'+s.replace(/"/g,'""')+'"';
+        return s;
+      }).join(',');
+    }).join('\n');
+
+    var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url;
+    a.download='Rapor_'+d.nama.replace(/\s+/g,'_')+'_'+d.kelas+'_'+todayStr()+'.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ---- Rapor untuk semua santri dalam satu kelas (Wali Kelas / Admin) ----
+  function raporSemuaSantriKelas(kelas){
+    var c = document.getElementById(STATE._contentId||'main-content');
+    c.innerHTML='<div class="card"><h3>&#128196; Rapor Kelas '+esc(kelas)+'</h3>'+
+      '<p>Memuat daftar santri...</p></div>';
+    api('getSantriUntukAbsen',{kelas:kelas}).then(function(res){
+      if(!res.ok){c.innerHTML=errBox(res.error);return;}
+      c.innerHTML='<div class="card"><h3>&#128196; Rapor Kelas '+esc(kelas)+'</h3>'+
+        '<p class="muted">Klik nama santri untuk melihat rapor lengkap.</p>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:8px">'+
+        res.data.map(function(s,i){
+          return '<button class="secondary btnLihatRapor" data-nisn="'+esc(s.nisn)+'" data-kelas="'+esc(kelas)+'">'+
+            esc(i+1+'. '+s.nama)+'</button>';
+        }).join('')+
+        '</div></div>'+
+        '<div id="raporContent" style="margin-top:10px"></div>';
+
+      document.querySelectorAll('.btnLihatRapor').forEach(function(btn){
+        btn.onclick=function(){
+          document.querySelectorAll('.btnLihatRapor').forEach(function(b){b.style.background='';});
+          btn.style.background='#0d9488';btn.style.color='#fff';
+          api('getRaporSantriLengkap',{nisn:btn.dataset.nisn,kelas:btn.dataset.kelas}).then(function(r){
+            if(!r.ok){document.getElementById('raporContent').innerHTML=errBox(r.error);return;}
+            renderRaporLengkap(r.data);
+          });
+        };
+      });
+    });
   }
 
   function wkDataSantri(){
@@ -1291,6 +1596,7 @@
   // DASHBOARD GURU
   // =====================================================================
   function dashboardGuru(activeKey){
+    STATE._contentId = 'dg-content';
     var navItems = [
       {key:'jadwal', label:'Jadwal & Absen', icon:'&#128197;'},
       {key:'riwayatabsen', label:'Riwayat Absensi', icon:'&#128203;'},
@@ -1371,7 +1677,7 @@
   }
 
   function guruProfilSaya(){
-    var c = document.getElementById('dg-content');
+    var c = document.getElementById(STATE._contentId||'dg-content');
     c.innerHTML = '<div class="card"><h3>Profil Saya</h3>' +
       warnBox('Kalau Nama diubah, semua jadwal, riwayat absensi/hafalan/nilai lama, dan rekap jam mengajar Anda TETAP UTUH dan otomatis mengikuti nama baru -- tidak akan hilang atau terputus.') +
       fieldText('gpNama','Nama', STATE.user.nama) +
@@ -1396,7 +1702,7 @@
   // ---- Santri Saya: daftar semua santri lintas kelas & halaqoh yang diajar guru ini ----
   // ---- Modul Ajar & RPP (khusus mapel yang diajarkan guru ini) ----
   function guruModulAjar(){
-    var c = document.getElementById('dg-content');
+    var c = document.getElementById(STATE._contentId||'dg-content');
     c.innerHTML = '<p>Memuat...</p>';
     // Ambil daftar mapel yang diajarkan guru ini dari jadwal
     api('getJadwalGuru', {pengampu: STATE.user.nama}).then(function(resJadwal){
@@ -1522,7 +1828,7 @@
 
   // ---- Riwayat Jurnal Mengajar Guru ----
   function guruRiwayatJurnal(){
-    var c = document.getElementById('dg-content');
+    var c = document.getElementById(STATE._contentId||'dg-content');
     c.innerHTML = '<div class="card"><h3>Riwayat Jurnal Mengajar</h3>' +
       '<div class="grid2"><div><label>Dari Tanggal</label><input type="date" id="jrDari"></div>' +
       '<div><label>Sampai Tanggal</label><input type="date" id="jrSampai"></div></div>' +
@@ -1557,7 +1863,7 @@
 
   // ---- SOP Mengajar (bacaan guru, dikelola Admin) ----
   function guruSOP(){
-    var c = document.getElementById('dg-content');
+    var c = document.getElementById(STATE._contentId||'dg-content');
     c.innerHTML = '<p>Memuat SOP...</p>';
     api('getSOPList', {}).then(function(res){
       if (!res.ok){ c.innerHTML = errBox(res.error); return; }
@@ -1582,7 +1888,7 @@
   }
 
   function guruSantriSaya(){
-    var c = document.getElementById('dg-content');
+    var c = document.getElementById(STATE._contentId||'dg-content');
     c.innerHTML = '<p>Memuat daftar santri...</p>';
     api('getSantriDiajarGuru', {pengampu: STATE.user.nama}).then(function(res){
       if(!res.ok){ c.innerHTML = errBox(res.error); return; }
@@ -1635,10 +1941,10 @@
 
   // ---- Jadwal & Absen Akademik ----
   function guruJadwal(){
-    var c = document.getElementById('dg-content');
+    var c = document.getElementById(STATE._contentId||'dg-content');
     c.innerHTML = '<p>Memuat jadwal...</p>';
     api('getJadwalGuru', {pengampu: STATE.user.nama}).then(function(res){
-      if (!document.getElementById('dg-content')) return;
+      if (!document.getElementById(STATE._contentId||'dg-content')) return;
       if(!res.ok){ c.innerHTML = errBox(res.error)+'<button id="btnUlangJadwal">Coba Lagi</button>'; var b=document.getElementById('btnUlangJadwal'); if(b) b.onclick=guruJadwal; return; }
 
       var hariIni = HARI_LIST[new Date().getDay()];
@@ -1722,7 +2028,7 @@
   }
 
   function formAbsen(j){
-    var c = document.getElementById('dg-content');
+    var c = document.getElementById(STATE._contentId||'dg-content');
     c.innerHTML = '<p>Memuat...</p>';
     Promise.all([
       api('getSantriUntukAbsen', {kelas: j.kelas}),
@@ -1843,7 +2149,7 @@
 
   // Form jurnal mengajar WAJIB setelah simpan absensi berhasil
   function tampilkanFormJurnal(j, rppAktif, tanggal, jurnalExisting){
-    var c = document.getElementById('dg-content');
+    var c = document.getElementById(STATE._contentId||'dg-content');
     api('getDefaultJurnal', {mapel: j.mapel}).then(function(resDefault){
       var teksDefault = resDefault.ok ? resDefault.data : 'Pembelajaran berlangsung sesuai RPP.';
       var isEdit = !!jurnalExisting;
@@ -1944,7 +2250,7 @@
   }
 
   function guruRiwayat(){
-    var c = document.getElementById('dg-content');
+    var c = document.getElementById(STATE._contentId||'dg-content');
     c.innerHTML = '<p>Memuat...</p>';
     Promise.all([api('getMapelGuru', {pengampu: STATE.user.nama}), api('getSemuaSantri', {})]).then(function(hasil){
       var daftarMapel = hasil[0].ok ? hasil[0].data.map(function(m){return m.mapel;}) : [];
@@ -2246,7 +2552,7 @@
 
   // ---- Isi Hafalan ----
   function guruIsiHafalan(){
-    var c = document.getElementById('dg-content');
+    var c = document.getElementById(STATE._contentId||'dg-content');
     c.innerHTML = '<div class="card"><h3>Isi Hafalan</h3>' +
       '<div class="grid2"><div><label>Tanggal</label><input type="date" id="hfTanggal" value="'+todayStr()+'" '+(STATE.pengaturan.IzinkanGantiTanggal?'':'disabled')+'></div>' +
       '<div><label>Waktu Halaqoh</label><select id="hfWaktu">' + WAKTU_HALAQOH.map(function(w){return '<option value="'+w+'">'+w+'</option>';}).join('') + '</select></div></div>' +
@@ -2639,7 +2945,7 @@
 
   // ---- Rekap Absensi per Santri (dilihat Guru) ----
   function guruRekapAbsensi(){
-    var c = document.getElementById('dg-content');
+    var c = document.getElementById(STATE._contentId||'dg-content');
     c.innerHTML='<div class="card"><h3>&#128203; Rekap Absensi Santri</h3>'+
       '<div class="grid2">'+
       '<div><label>Dari Tanggal</label><input type="date" id="raGuru_dari"></div>'+
@@ -2713,7 +3019,7 @@
 
   // ---- Progress & Rekap Hafalan Halaqoh ----
   function guruProgressHafalan(){
-    var c = document.getElementById('dg-content');
+    var c = document.getElementById(STATE._contentId||'dg-content');
     c.innerHTML='<p>Memuat...</p>';
     // Ambil halaqoh yang dimiliki guru ini
     api('getHalaqohGuru',{pengampu:STATE.user.nama, waktu:'Subuh'}).then(function(resH){
@@ -2790,7 +3096,7 @@
   }
 
   function guruRiwayatHafalan(){
-    var c = document.getElementById('dg-content');
+    var c = document.getElementById(STATE._contentId||'dg-content');
     c.innerHTML = '<p>Memuat...</p>';
     Promise.all([api('getHalaqohList', {}), api('getSemuaSantri', {})]).then(function(hasil){
       var daftarHalaqoh = hasil[0].ok ? hasil[0].data.filter(function(h){return h.pengampuList && h.pengampuList.indexOf(STATE.user.nama)!==-1;}).map(function(h){return h.namaHalaqoh;}) : [];
@@ -2833,7 +3139,7 @@
   var JENIS_NILAI_LIST = ['UTS','UAS','Tugas','Keterampilan'];
 
   function guruInputNilai(){
-    var c = document.getElementById('dg-content');
+    var c = document.getElementById(STATE._contentId||'dg-content');
     c.innerHTML = '<div class="card"><h3>Input Nilai</h3><p>Memuat mata pelajaran Anda...</p></div>';
     api('getMapelGuru', {pengampu: STATE.user.nama}).then(function(res){
       if(!res.ok){ c.innerHTML = errBox(res.error); return; }
@@ -2896,8 +3202,37 @@
   }
 
   // ---- Rekap Nilai Rapor (tampilan seperti screenshot) ----
+  // Guru: cetak rapor santri (hanya untuk kelas yang diampu guru ini)
+  function guruRaporKelas(){
+    var c = document.getElementById(STATE._contentId||'dg-content');
+    c.innerHTML = '<p>Memuat kelas yang Anda ampu...</p>';
+    api('getMapelGuru',{pengampu:STATE.user.nama}).then(function(res){
+      if(!res.ok){c.innerHTML=errBox(res.error);return;}
+      // Kumpulkan daftar kelas unik
+      var kelasList=[], kelasSet={};
+      (res.data||[]).forEach(function(m){
+        if(!kelasSet[m.kelas]){kelasSet[m.kelas]=true;kelasList.push(m.kelas);}
+      });
+      if(!kelasList.length){
+        c.innerHTML='<div class="card">'+warnBox('Anda belum memiliki kelas yang diampu.')+'</div>';
+        return;
+      }
+      c.innerHTML='<div class="card"><h3>&#128203; Rapor Santri</h3>'+
+        '<label>Pilih Kelas</label>'+
+        '<select id="guruRaporKelasSelect">'+
+        kelasList.map(function(k){return '<option value="'+esc(k)+'">'+esc(k)+'</option>';}).join('')+
+        '</select>'+
+        '<button id="btnGuruMuatRapor" style="margin-top:8px">Tampilkan Santri</button>'+
+        '</div><div id="raporContent" style="margin-top:10px"></div>';
+      document.getElementById('btnGuruMuatRapor').onclick=function(){
+        var kelas=document.getElementById('guruRaporKelasSelect').value;
+        raporSemuaSantriKelas(kelas);
+      };
+    });
+  }
+
   function guruRekapNilaiRapor(){
-    var c = document.getElementById('dg-content');
+    var c = document.getElementById(STATE._contentId||'dg-content');
     c.innerHTML = '<div class="card"><h3>&#128196; Rekap Nilai Rapor</h3><p>Memuat mata pelajaran...</p></div>';
     api('getMapelGuru', {pengampu: STATE.user.nama}).then(function(res){
       if(!res.ok){ c.innerHTML=errBox(res.error); return; }
@@ -3084,7 +3419,7 @@
   }
 
   function guruRiwayatNilai(){
-    var c = document.getElementById('dg-content');
+    var c = document.getElementById(STATE._contentId||'dg-content');
     c.innerHTML = '<p>Memuat...</p>';
     Promise.all([api('getMapelGuru', {pengampu: STATE.user.nama}), api('getSemuaSantri', {})]).then(function(hasil){
       var daftarMapel = hasil[0].ok ? hasil[0].data.map(function(m){return m.mapel;}) : [];
@@ -3452,6 +3787,7 @@
   }
 
   function dashboardBendahara(activeKey){
+    STATE._contentId = 'db-content';
     var navItems = [
       {key:'dasbor',       label:'Dasbor Keuangan',      icon:'&#128200;'},
       {key:'transaksi',    label:'Catat Transaksi',       icon:'&#128221;'},
@@ -3487,7 +3823,7 @@
 
   // ---- TARIK SALDO SANTRI (oleh Bendahara) ----
   function bendTarikSaldoSantri(){
-    var c=document.getElementById('db-content');
+    var c=document.getElementById(STATE._contentId||'db-content');
     c.innerHTML='<p>Memuat...</p>';
     api('getSantriUntukTransaksiKantin',{}).then(function(res){
       if(!res.ok){c.innerHTML=errBox(res.error);return;}
@@ -3559,7 +3895,7 @@
 
   // ---- PENDAPATAN PONDOK DARI KANTIN ----
   function bendPendapatanPondok(){
-    var c=document.getElementById('db-content');
+    var c=document.getElementById(STATE._contentId||'db-content');
     var bt=bulanTahunSaatIni();
     var tglMulai=bt.tahun+'-'+String(bt.bulan).padStart(2,'0')+'-01';
     var tglAkhir=todayStr();
@@ -3622,7 +3958,7 @@
 
   // ---- PENGATURAN KANTIN (biaya admin top-up) ----
   function bendPengaturanKantin(){
-    var c=document.getElementById('db-content');
+    var c=document.getElementById(STATE._contentId||'db-content');
     c.innerHTML='<p>Memuat...</p>';
     api('getBiayaAdminTopup',{}).then(function(res){
       var biaya=res.ok?res.data:0;
@@ -3650,7 +3986,7 @@
 
   // ---- DASBOR KEUANGAN ----
   function bendDasbor(){
-    var c=document.getElementById('db-content');
+    var c=document.getElementById(STATE._contentId||'db-content');
     c.innerHTML='<p>Memuat dasbor...</p>';
     var bt=bulanTahunSaatIni();
     Promise.all([
@@ -3720,7 +4056,7 @@
 
   // ---- CATAT TRANSAKSI ----
   function bendTransaksi(){
-    var c=document.getElementById('db-content');
+    var c=document.getElementById(STATE._contentId||'db-content');
     c.innerHTML='<p>Memuat...</p>';
     var bt=bulanTahunSaatIni();
     Promise.all([api('getKategoriKasList',{}), api('getKasUmumList',{bulan:bt.bulan,tahun:bt.tahun})]).then(function(hasil){
@@ -3822,7 +4158,7 @@
 
   // ---- BKU (BUKU KAS UMUM) SIAP CETAK ----
   function bendBKU(){
-    var c=document.getElementById('db-content'); var bt=bulanTahunSaatIni();
+    var c=document.getElementById(STATE._contentId||'db-content'); var bt=bulanTahunSaatIni();
     c.innerHTML='<div class="card"><h3>&#128218; Buku Kas Umum</h3>' +
       '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
       '<select id="bkuBulan">'+BULAN_INDO_B.map(function(b,i){return '<option value="'+(i+1)+'" '+(i+1===bt.bulan?'selected':'')+'>'+b+'</option>';}).join('')+'</select>' +
@@ -3864,7 +4200,7 @@
 
   // ---- LAPORAN BULANAN ----
   function bendLaporan(){
-    var c=document.getElementById('db-content'); var bt=bulanTahunSaatIni();
+    var c=document.getElementById(STATE._contentId||'db-content'); var bt=bulanTahunSaatIni();
     c.innerHTML='<div class="card"><h3>&#128202; Laporan Bulanan</h3>' +
       '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
       '<select id="lapTahun">'+[bt.tahun-1,bt.tahun].map(function(t){return '<option value="'+t+'" '+(t===bt.tahun?'selected':'')+'>'+t+'</option>';}).join('')+'</select>' +
@@ -3899,7 +4235,7 @@
 
   // ---- ANGGARAN KEGIATAN ----
   function bendAnggaran(){
-    var c=document.getElementById('db-content'); var bt=bulanTahunSaatIni();
+    var c=document.getElementById(STATE._contentId||'db-content'); var bt=bulanTahunSaatIni();
     c.innerHTML='<p>Memuat...</p>';
     api('getAnggaranList',{tahun:bt.tahun}).then(function(res){
       if(!res.ok){c.innerHTML=errBox(res.error);return;}
@@ -3946,7 +4282,7 @@
 
   // ---- KELOLA KATEGORI ----
   function bendKategori(){
-    var c=document.getElementById('db-content'); c.innerHTML='<p>Memuat...</p>';
+    var c=document.getElementById(STATE._contentId||'db-content'); c.innerHTML='<p>Memuat...</p>';
     api('getKategoriKasList',{}).then(function(res){
       if(!res.ok){c.innerHTML=errBox(res.error);return;}
       var data=res.data;
@@ -3980,7 +4316,7 @@
 
   // ---- KELOLA TARIF ----
   function bendTarif(){
-    var c=document.getElementById('db-content'); c.innerHTML='<p>Memuat...</p>';
+    var c=document.getElementById(STATE._contentId||'db-content'); c.innerHTML='<p>Memuat...</p>';
     api('getTarifList',{}).then(function(res){
       if(!res.ok){c.innerHTML=errBox(res.error);return;}
       var data=res.data;
@@ -4147,6 +4483,7 @@
   var kantinCart = []; // keranjang sementara (di memori, reset tiap buka halaman Kasir)
 
   function dashboardPemilikBarang(activeKey){
+    STATE._contentId = 'dp-content';
     var navItems = [
       {key:'kasir',   label:'Kasir (Jual)',      icon:'&#128717;'},
       {key:'riwayat', label:'Riwayat Transaksi', icon:'&#128203;'},
@@ -4161,7 +4498,7 @@
   }
 
   function pemilikKasir(){
-    var c = document.getElementById('dp-content');
+    var c = document.getElementById(STATE._contentId||'dp-content');
     c.innerHTML = '<p>Memuat menu...</p>';
     kantinCart = [];
     api('getBarangSaya', {pemilik: STATE.user.nama}).then(function(res){
@@ -4301,7 +4638,7 @@
   }
 
   function pemilikRiwayat(){
-    var c = document.getElementById('dp-content');
+    var c = document.getElementById(STATE._contentId||'dp-content');
     c.innerHTML = '<div class="card"><h3>Riwayat Transaksi</h3>' +
       '<div class="grid2"><div><label>Dari Tanggal</label><input type="date" id="rtDari"></div><div><label>Sampai Tanggal</label><input type="date" id="rtSampai"></div></div>' +
       '<button id="btnCariRiwayatKantin">Cari</button><div id="riwayatKantinWrap"></div></div>';
@@ -4325,7 +4662,7 @@
   }
 
   function pemilikSaldo(){
-    var c = document.getElementById('dp-content');
+    var c = document.getElementById(STATE._contentId||'dp-content');
     c.innerHTML = '<p>Memuat...</p>';
     api('getSaldoPemilikSaya', {pemilik: STATE.user.nama}).then(function(resSaldo){
       var saldo = resSaldo.ok ? resSaldo.data : 0;
@@ -4357,7 +4694,7 @@
 
   // ---- Pemilik: Laporan Omzet per periode ----
   function pemilikOmzet(){
-    var c = document.getElementById('dp-content');
+    var c = document.getElementById(STATE._contentId||'dp-content');
     var bt = bulanTahunSaatIni();
     var tglMulai = bt.tahun+'-'+String(bt.bulan).padStart(2,'0')+'-01';
     c.innerHTML = '<div class="card"><h3>&#128200; Laporan Omzet</h3>' +
@@ -4440,7 +4777,7 @@
 
   // ---- Pemilik: Riwayat Saldo Naik-Turun ----
   function pemilikRiwayatSaldo(){
-    var c = document.getElementById('dp-content');
+    var c = document.getElementById(STATE._contentId||'dp-content');
     c.innerHTML = '<p>Memuat...</p>';
     api('getRiwayatSaldoPemilikSaya', {pemilik: STATE.user.nama}).then(function(res){
       if(!res.ok){ c.innerHTML = errBox(res.error); return; }
@@ -4561,6 +4898,7 @@
   // DASHBOARD PEMBINA HALAQOH
   // ============================================================
   function dashboardPembina(activeKey){
+    STATE._contentId = 'dpb-content';
     var navItems = [
       {key:'absen',    label:'Absen Maghrib',      icon:'&#127774;'},
       {key:'rekap',    label:'Rekap Kehadiran',     icon:'&#128202;'},
@@ -4574,7 +4912,7 @@
 
   // ---- Absen Maghrib ----
   function pembinaAbsen(){
-    var c = document.getElementById('dpb-content');
+    var c = document.getElementById(STATE._contentId||'dpb-content');
     c.innerHTML = '<p>Memuat halaqoh...</p>';
     // Ambil semua halaqoh yang diampu pembina ini
     api('getSantriHalaqohGuru', {pengampu: STATE.user.nama}).then(function(res){
@@ -4650,7 +4988,7 @@
 
   // ---- Rekap Kehadiran Pembina ----
   function pembinaRekap(){
-    var c = document.getElementById('dpb-content');
+    var c = document.getElementById(STATE._contentId||'dpb-content');
     c.innerHTML = '<p>Memuat...</p>';
     api('getSantriHalaqohGuru', {pengampu: STATE.user.nama}).then(function(res){
       var halaqohList = res.ok ? res.data : [];
@@ -4866,6 +5204,7 @@
   // DASHBOARD ADMIN / MUDIR
   // =====================================================================
   function dashboardAdmin(activeKey){
+    STATE._contentId = 'da-content';
     var navItems = [
       {key:'ringkasan', label:'Ringkasan', icon:'&#127968;'},
       {key:'tahun', label:'Kelola Semester', icon:'&#128197;'},
@@ -4888,6 +5227,8 @@
       {key:'modulajar', label:'Modul Ajar & RPP', icon:'&#128218;'},
       {key:'rekapjurnal', label:'Rekap Jurnal Guru', icon:'&#128221;'},
       {key:'rekaphalaqoh', label:'Rekap Halaqoh', icon:'&#127774;'},
+      {key:'raporkelas', label:'Rapor Santri', icon:'&#128203;'},
+      {key:'kelompokpapel', label:'Kelompok Mata Pelajaran', icon:'&#128204;'},
       {key:'sop', label:'SOP Guru', icon:'&#128203;'},
       {key:'defaultjurnal', label:'Default Jurnal Mengajar', icon:'&#128221;'},
       {key:'website', label:'Info Website', icon:'&#127760;'},
@@ -4898,7 +5239,8 @@
       catatpelanggaran:function(){ renderFormCatatPelanggaran('da-content'); }, pelanggaran:adminKelolaPelanggaran,
       slide:adminSlide, artikel:adminArtikel, fiturberanda:adminFiturBeranda, barangkantin:adminBarangKantin,
       persetujuansaldo:function(){ renderPersetujuanSaldo('da-content'); }, spp:function(){ renderSppSantri('da-content'); },
-      modulajar:adminModulAjar, rekapjurnal:adminRekapJurnal, rekaphalaqoh:adminRekapHalaqoh, sop:adminSOP, defaultjurnal:adminDefaultJurnal,
+      modulajar:adminModulAjar, rekapjurnal:adminRekapJurnal, rekaphalaqoh:adminRekapHalaqoh,
+      raporkelas:adminRaporKelas, kelompokpapel:adminKelompokMapel, sop:adminSOP, defaultjurnal:adminDefaultJurnal,
       website:adminInfoWebsite, tampilan:adminTampilan};
     activeKey = activeKey && map[activeKey] ? activeKey : 'ringkasan';
     renderSidebarShell({title:'Dashboard '+STATE.user.level, navItems:navItems, activeKey:activeKey, contentId:'da-content', onSelect:function(key){ map[key](); }});
@@ -4907,7 +5249,7 @@
   }
 
   function adminRingkasan(){
-    var c = document.getElementById('da-content');
+    var c = document.getElementById(STATE._contentId||'da-content');
     c.innerHTML = '<p>Memuat...</p>';
     Promise.all([api('getDashboardAdmin', {}), api('getStatusJurnalHariIni', {})]).then(function(hasil){
       var res = hasil[0], resJurnal = hasil[1];
@@ -4971,7 +5313,7 @@
 
   // ---------------- SETTING TAHUN AJARAN ----------------
   function adminTahunAjaran(){
-    var c = document.getElementById('da-content');
+    var c = document.getElementById(STATE._contentId||'da-content');
     c.innerHTML = '<div class="card"><h3>Tambah Semester Baru</h3>' +
       warnBox('Membuat semester baru akan otomatis membuat <b>1 folder Drive</b> + <b>3 spreadsheet</b> (Absensi, Kantin, Pelanggaran). Data induk Santri/Guru/Rombel/Halaqoh/Role disalin. Absensi/Hafalan/Nilai/Catatan Pelanggaran selalu kosong. Barang Kantin dan Saldo Pemilik disalin. <b>SPP tidak dibuat ulang</b> -- berjalan terus lintas semester.') +
       '<label>Nama Semester</label>' +
@@ -5043,7 +5385,7 @@
 
   // ---------------- KELOLA ROMBEL (akademik) ----------------
   function adminRombel(){
-    var c = document.getElementById('da-content');
+    var c = document.getElementById(STATE._contentId||'da-content');
     c.innerHTML = '<div class="card"><h3>Buat Rombel Baru</h3><p>Memuat...</p></div>';
     api('getMasterData', {sheet:'Guru'}).then(function(resGuru){
       var daftarNamaGuru = resGuru.ok ? resGuru.data.data.map(function(g){return g.Nama;}) : [];
@@ -5152,7 +5494,7 @@
   // ---------------- KELOLA HALAQOH (tahfidz) ----------------
   // ---------------- GURU PENGGANTI ----------------
   function adminPenggantian(){
-    var c = document.getElementById('da-content');
+    var c = document.getElementById(STATE._contentId||'da-content');
     c.innerHTML = '<p>Memuat...</p>';
     api('getMasterData', {sheet:'Guru'}).then(function(resGuru){
       var daftarNamaGuru = resGuru.ok ? resGuru.data.data.map(function(g){return g.Nama;}) : [];
@@ -5240,7 +5582,7 @@
   }
 
   function adminHalaqoh(){
-    var c = document.getElementById('da-content');
+    var c = document.getElementById(STATE._contentId||'da-content');
     c.innerHTML = '<div class="card"><h3>Buat Halaqoh Baru</h3><p>Memuat...</p></div>';
     api('getMasterData', {sheet:'Guru'}).then(function(resGuru){
       var daftarNamaGuru = resGuru.ok ? resGuru.data.data.map(function(g){return g.Nama;}) : [];
@@ -5379,7 +5721,7 @@
 
   // ---------------- DATA SANTRI ----------------
   function adminDataSantri(){
-    var c = document.getElementById('da-content');
+    var c = document.getElementById(STATE._contentId||'da-content');
     c.innerHTML =
       '<div class="card"><h3>Tambah Santri Manual</h3><div class="grid2">' +
         '<div><label>NISN</label><input id="nsNisn"></div><div><label>Nama</label><input id="nsNama"></div>' +
@@ -5515,7 +5857,7 @@
 
   // ---------------- DATA MASTER LAIN ----------------
   function adminDataMaster(){
-    var c = document.getElementById('da-content');
+    var c = document.getElementById(STATE._contentId||'da-content');
     var sheets = ['Guru','MataPelajaran','RoleAkses','JamPelajaran'];
     c.innerHTML = '<div class="card"><h3>Kelola Data Master</h3>' +
       '<select id="pilihSheet">' + sheets.map(function(s){return '<option value="'+s+'">'+(s==='JamPelajaran'?'Jam Pelajaran (acuan rekap jam mengajar)':s)+'</option>';}).join('') + '</select>' +
@@ -5600,7 +5942,7 @@
 
   // ---------------- REKAP JAM MENGAJAR GURU (acuan penggajian) ----------------
   function adminRekapGuru(){
-    var c = document.getElementById('da-content');
+    var c = document.getElementById(STATE._contentId||'da-content');
     c.innerHTML = '<p>Memuat daftar guru...</p>';
     api('getMasterData', {sheet:'Guru'}).then(function(resGuru){
       var daftarNamaGuru = resGuru.ok ? resGuru.data.data.map(function(g){return g.Nama;}) : [];
@@ -5659,7 +6001,7 @@
 
   // ---------------- REKAP SANTRI ----------------
   function adminRekapSantri(){
-    var c = document.getElementById('da-content');
+    var c = document.getElementById(STATE._contentId||'da-content');
     c.innerHTML = '<div class="card"><h3>Rekap Santri</h3><p>Memuat daftar santri...</p></div>';
     api('getSemuaSantri', {}).then(function(resSantri){
       var daftarSantri = resSantri.ok ? resSantri.data : [];
@@ -5704,7 +6046,7 @@
 
   // ---------------- REKAP NILAI & RAPOR ----------------
   function adminRaporSantri(){
-    var c = document.getElementById('da-content');
+    var c = document.getElementById(STATE._contentId||'da-content');
     c.innerHTML = '<div class="card"><h3>Rapor Akademik Santri</h3><p>Memuat daftar santri...</p></div>';
     api('getSemuaSantri', {}).then(function(resSantri){
       var daftarSantri = resSantri.ok ? resSantri.data : [];
@@ -5765,7 +6107,7 @@
   // ---------------- KELOLA SLIDE PENGUMUMAN ----------------
   // ---------------- KELOLA PELANGGARAN (Admin/Mudir) ----------------
   function adminKelolaPelanggaran(){
-    var c = document.getElementById('da-content');
+    var c = document.getElementById(STATE._contentId||'da-content');
     c.innerHTML = '<p>Memuat...</p>';
     Promise.all([api('getPelanggaranSSList', {}), api('getPengaturan', {})]).then(function(hasil){
       var resList = hasil[0], resP = hasil[1];
@@ -5901,7 +6243,7 @@
 
   // ---------------- KELOLA ARTIKEL / BERITA (untuk halaman depan) ----------------
   function adminArtikel(){
-    var c = document.getElementById('da-content');
+    var c = document.getElementById(STATE._contentId||'da-content');
     c.innerHTML = '<div class="card"><h3>Artikel / Berita</h3>' +
       warnBox('Artikel berstatus "Published" akan tampil di halaman depan (Beranda) untuk umum, termasuk yang belum login. Status "Draft" hanya terlihat di sini.') +
       '<button class="small" id="btnTambahArtikel">+ Tulis Artikel Baru</button><div id="daftarArtikelWrap">Memuat...</div></div>';
@@ -5952,7 +6294,7 @@
   // ---------------- INFO WEBSITE (deskripsi, PPDB, kontak untuk halaman depan) ----------------
   // ---------------- KELOLA FITUR HALAMAN DEPAN (Program Unggulan & Fasilitas, dengan foto) ----------------
   function adminFiturBeranda(){
-    var c = document.getElementById('da-content');
+    var c = document.getElementById(STATE._contentId||'da-content');
     c.innerHTML = '<div class="card"><h3>Program Unggulan &amp; Fasilitas (Halaman Depan)</h3>' +
       warnBox('Tambahkan foto asli supaya halaman depan tampil seperti website sungguhan. Kalau foto tidak diisi, akan tampil ikon polos sebagai gantinya.') +
       '<button class="small" id="btnTambahFitur">+ Tambah Item</button>' +
@@ -6025,7 +6367,7 @@
   }
 
   function adminInfoWebsite(){
-    var c = document.getElementById('da-content');
+    var c = document.getElementById(STATE._contentId||'da-content');
     c.innerHTML = '<p>Memuat...</p>';
     api('getPengaturan', {}).then(function(res){
       var d = res.ok ? res.data : {};
@@ -6134,7 +6476,7 @@
 
   // ---------------- KELOLA BARANG KANTIN ----------------
   function adminBarangKantin(){
-    var c = document.getElementById('da-content');
+    var c = document.getElementById(STATE._contentId||'da-content');
     c.innerHTML = '<p>Memuat...</p>';
     api('getMasterData', {sheet:'Guru'}).then(function(resGuru){
       var daftarNamaGuru = resGuru.ok ? resGuru.data.data.map(function(g){return g.Nama;}) : [];
@@ -6180,9 +6522,118 @@
     });
   }
 
+  // ============ ADMIN: RAPOR SANTRI ============
+  function adminRaporKelas(){
+    var c = document.getElementById(STATE._contentId||'da-content');
+    c.innerHTML='<div class="card"><h3>&#128203; Rapor Santri</h3>'+
+      '<p class="muted">Pilih kelas untuk melihat dan mencetak rapor semua santri.</p>'+
+      '</div><p>Memuat daftar kelas...</p>';
+    api('getDaftarKelas',{}).then(function(res){
+      if(!res.ok){c.innerHTML=errBox(res.error);return;}
+      var kelasList=res.data||[];
+      c.innerHTML='<div class="card"><h3>&#128203; Rapor Santri</h3>'+
+        '<label>Pilih Kelas</label>'+
+        '<select id="adminRaporKelasSelect">'+
+        kelasList.map(function(k){return '<option value="'+esc(k)+'">'+esc(k)+'</option>';}).join('')+
+        '</select>'+
+        '<button id="btnAdminMuatRapor" style="margin-top:8px">Tampilkan Santri</button>'+
+        '</div><div id="raporContent" style="margin-top:10px"></div>';
+      document.getElementById('btnAdminMuatRapor').onclick=function(){
+        var kelas=document.getElementById('adminRaporKelasSelect').value;
+        raporSemuaSantriKelas(kelas);
+      };
+      // Auto-muat kelas pertama
+      if(kelasList.length){
+        setTimeout(function(){ document.getElementById('btnAdminMuatRapor').click(); },100);
+      }
+    });
+  }
+
+  // ============ ADMIN: KELOLA KELOMPOK MATA PELAJARAN ============
+  function adminKelompokMapel(){
+    var c = document.getElementById(STATE._contentId||'da-content');
+    c.innerHTML='<p>Memuat...</p>';
+    api('getKelompokMapelList',{}).then(function(res){
+      if(!res.ok){c.innerHTML=errBox(res.error);return;}
+      var data=res.data||[];
+
+      function render(){
+        var html='<div class="card"><h3>&#128204; Kelompok Mata Pelajaran Rapor</h3>'+
+          warnBox('Pengelompokan ini menentukan tampilan rapor santri. '+
+            'A = Umum, B = Kepesantrenan, C = Muatan Lokal. '+
+            'Kode kelompok harus huruf kapital (A, B, atau C).')+
+          '<button id="btnTambahKelompok" style="margin-top:8px">+ Tambah Mapel</button>'+
+          '<table style="margin-top:10px">'+
+          '<tr><th>Nama Mapel</th><th>Kode</th><th>Nama Kelompok</th><th>Urutan</th><th>Aksi</th></tr>'+
+          data.map(function(d,i){
+            var warna=d.kodeKelompok==='A'?'#dbeafe':d.kodeKelompok==='B'?'#dcfce7':'#fef9c3';
+            return '<tr style="background:'+warna+'">'+
+              '<td>'+esc(d.namaMapel)+'</td>'+
+              '<td style="text-align:center;font-weight:700">'+esc(d.kodeKelompok)+'</td>'+
+              '<td>'+esc(d.namaKelompok)+'</td>'+
+              '<td style="text-align:center">'+d.urutan+'</td>'+
+              '<td style="white-space:nowrap">'+
+              '<button class="small btnEditKM" data-idx="'+i+'">Edit</button> '+
+              '<button class="small danger btnHapusKM" data-row="'+d.rowIndex+'">Hapus</button>'+
+              '</td></tr>';
+          }).join('')+'</table></div>';
+        c.innerHTML=html;
+        bindKelompokEvents();
+      }
+
+      function bindKelompokEvents(){
+        document.getElementById('btnTambahKelompok').onclick=function(){ bukaFormKelompok(null); };
+        c.querySelectorAll('.btnEditKM').forEach(function(btn){
+          btn.onclick=function(){ bukaFormKelompok(data[Number(btn.dataset.idx)]); };
+        });
+        c.querySelectorAll('.btnHapusKM').forEach(function(btn){
+          btn.onclick=function(){
+            if(!confirm('Hapus mapel ini dari kelompok rapor?'))return;
+            api('deleteKelompokMapel',{rowIndex:Number(btn.dataset.row)}).then(function(r){
+              if(!r.ok){alert(r.error);return;}
+              api('getKelompokMapelList',{}).then(function(r2){data=r2.data||[];render();});
+            });
+          };
+        });
+      }
+
+      function bukaFormKelompok(item){
+        openModal(item?'Edit Kelompok Mapel':'Tambah Mapel ke Kelompok',
+          '<div class="grid2">'+
+          '<div><label>Nama Mapel *</label><input id="kmMapel" value="'+esc(item?item.namaMapel:'')+'" placeholder="Bahasa Indonesia"></div>'+
+          '<div><label>Kode Kelompok *</label>'+
+          '<select id="kmKode">'+
+          ['A','B','C'].map(function(k){
+            return '<option value="'+k+'"'+(item&&item.kodeKelompok===k?' selected':'')+'>'+k+'</option>';
+          }).join('')+
+          '</select></div></div>'+
+          '<label>Nama Kelompok *</label>'+
+          '<input id="kmNamaKelompok" value="'+esc(item?item.namaKelompok:'')+'" placeholder="Mata Pelajaran Umum">'+
+          '<label>Urutan (dalam kelompok)</label>'+
+          '<input id="kmUrutan" type="number" min="1" value="'+(item?item.urutan:1)+'" style="width:80px">',
+          function(modal){
+            var payload={
+              namaMapel:modal.querySelector('#kmMapel').value.trim(),
+              kodeKelompok:modal.querySelector('#kmKode').value,
+              namaKelompok:modal.querySelector('#kmNamaKelompok').value.trim(),
+              urutan:Number(modal.querySelector('#kmUrutan').value)||1
+            };
+            if(!payload.namaMapel||!payload.namaKelompok){alert('Isi semua field.');return false;}
+            if(item) payload.rowIndex=item.rowIndex;
+            api('saveKelompokMapel',payload).then(function(r){
+              if(!r.ok){alert(r.error);return;}
+              api('getKelompokMapelList',{}).then(function(r2){data=r2.data||[];render();});
+            });
+          });
+      }
+
+      render();
+    });
+  }
+
   // ============ ADMIN: REKAP HALAQOH MAGHRIB ============
   function adminRekapHalaqoh(){
-    var c = document.getElementById('da-content');
+    var c = document.getElementById(STATE._contentId||'da-content');
     var bt = bulanTahunSaatIni();
     var tglMulai = bt.tahun+'-'+String(bt.bulan).padStart(2,'0')+'-01';
 
@@ -6254,7 +6705,7 @@
 
   // ============ ADMIN: REKAP JURNAL MENGAJAR ============
   function adminRekapJurnal(){
-    var c = document.getElementById('da-content');
+    var c = document.getElementById(STATE._contentId||'da-content');
     c.innerHTML = '<div class="card"><h3>Rekap Jurnal Mengajar Guru</h3>' +
       '<div class="grid2">' +
       '<div><label>Dari Tanggal</label><input type="date" id="rjDari" value="'+todayStr()+'"></div>' +
@@ -6308,7 +6759,7 @@
 
   // ============ ADMIN: KELOLA MODUL AJAR & RPP ============
   function adminModulAjar(){
-    var c = document.getElementById('da-content');
+    var c = document.getElementById(STATE._contentId||'da-content');
     c.innerHTML = '<div class="card"><h3>&#128218; Modul Ajar & RPP Pertemuan</h3>' +
       warnBox('Upload beberapa file sekaligus untuk satu mapel. Tentukan kelas tujuan (pisah koma) — sistem mendaftarkan semua file ke setiap kelas otomatis. Contoh: "7, 7A, 7B" = 3 kelas, 1 klik.') +
       '</div><div id="maContent">Memuat...</div>';
@@ -6578,7 +7029,7 @@
 
   // ============ ADMIN: SOP ============
   function adminSOP(){
-    var c = document.getElementById('da-content');
+    var c = document.getElementById(STATE._contentId||'da-content');
     c.innerHTML = '<p>Memuat...</p>';
     api('getSOPList',{}).then(function(res){
       if(!res.ok){ c.innerHTML = errBox(res.error); return; }
@@ -6622,7 +7073,7 @@
 
   // ============ ADMIN: DEFAULT JURNAL MENGAJAR ============
   function adminDefaultJurnal(){
-    var c = document.getElementById('da-content');
+    var c = document.getElementById(STATE._contentId||'da-content');
     c.innerHTML = '<p>Memuat...</p>';
     api('getDefaultJurnalList',{}).then(function(res){
       if(!res.ok){ c.innerHTML = errBox(res.error); return; }
@@ -6664,7 +7115,7 @@
   }
 
   function adminSlide(){
-    var c = document.getElementById('da-content');
+    var c = document.getElementById(STATE._contentId||'da-content');
     c.innerHTML = '<p>Memuat...</p>';
     api('getPengaturan', {}).then(function(resP){
       var jeda = (resP.ok && resP.data.SlideJedaDetik) ? resP.data.SlideJedaDetik : '5';
@@ -6763,7 +7214,7 @@
   }
 
   function adminTampilan(){
-    var c = document.getElementById('da-content');
+    var c = document.getElementById(STATE._contentId||'da-content');
     c.innerHTML = '<p>Memuat pengaturan...</p>';
     api('getPengaturan', {}).then(function(resP){
       var p = resP.ok ? resP.data : {};
