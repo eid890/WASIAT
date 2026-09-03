@@ -270,7 +270,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwzFpiBvQCJYVogTuh9317A-F5ubsYYpk6tz3NWhHfPMGZvMVW2nKILqN4_26sSoOrJ/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -436,88 +436,161 @@
   // aplikasi berikutnya (termasuk saat offline) bisa langsung masuk ke dashboard tanpa
   // perlu verifikasi ulang ke server. Sesi ini hilang hanya kalau user klik Keluar.
   var SESI_KEY = 'wasiatSesiUserV1';
-  function simpanSesi(){ try { localStorage.setItem(SESI_KEY, JSON.stringify(STATE.user)); } catch(e) {} }
+  function simpanSesi(){
+    try { localStorage.setItem(SESI_KEY, JSON.stringify(STATE.user)); } catch(e) {}
+  }
   function ambilSesiTersimpan(){
-    try { var raw = localStorage.getItem(SESI_KEY); return raw ? JSON.parse(raw) : null; } catch(e) { return null; }
+    try {
+      var raw = localStorage.getItem(SESI_KEY);
+      if (!raw) return null;
+      var user = JSON.parse(raw);
+      // Pastikan field wajib ada (untuk kompatibilitas sesi lama)
+      if (!user.roles) user.roles = [user.level || 'Guru'];
+      if (!user.waliKelas) user.waliKelas = '';
+      if (!user.nama) return null; // sesi corrupt
+      return user;
+    } catch(e) { return null; }
   }
   function hapusSesiTersimpan(){ try { localStorage.removeItem(SESI_KEY); } catch(e) {} }
 
   // ---------------- MODE OFFLINE: antrian & auto-sinkron ----------------
-  // Aksi "menyimpan data" boleh diantre saat offline dan otomatis dikirim ulang
-  // begitu koneksi kembali. Aksi "membaca data" (getX) TIDAK diantre -- kalau
-  // offline, cukup tampilkan pesan gagal seperti biasa (data tidak mungkin dibaca
-  // tanpa jaringan sama sekali, jadi tidak ada gunanya diantre).
-  var AKSI_BISA_OFFLINE = ['submitAbsensi','submitHafalan','submitNilai'];
+  // Aksi "menyimpan data" yang boleh diantre saat offline
+  // Semua aksi POST/write yang tidak butuh response real-time bisa masuk sini
+  var AKSI_BISA_OFFLINE = [
+    'submitAbsensi',        // absensi akademik
+    'submitAbsensiHalaqoh', // absensi halaqoh maghrib
+    'submitHafalan',        // input hafalan
+    'submitNilai',          // input nilai
+    'submitJurnal',         // jurnal mengajar
+    'updateAbsensi',        // edit absensi
+    'updateHafalan',        // edit hafalan
+    'updateNilai',          // edit nilai
+    'catatPelanggaran',     // catat pelanggaran santri
+  ];
+
   var OUTBOX_KEY = 'wasiatOutboxV1';
   function getOutbox(){ try{ return JSON.parse(localStorage.getItem(OUTBOX_KEY) || '[]'); } catch(e){ return []; } }
-  function setOutbox(arr){ localStorage.setItem(OUTBOX_KEY, JSON.stringify(arr)); perbaruiLencanaOutbox(); }
-  function perbaruiLencanaOutbox(){
-    var n = getOutbox().length;
-    var el = document.getElementById('outboxBadge');
-    if (el) el.style.display = n > 0 ? 'flex' : 'none';
-    var elN = document.getElementById('outboxCount');
-    if (elN) elN.textContent = n;
-  }
+  function setOutbox(arr){ try{ localStorage.setItem(OUTBOX_KEY, JSON.stringify(arr)); } catch(e){} perbaruiLencanaOutbox(); }
 
-  function apiJaringan(action, payload){
-    if (!WEBAPP_URL || WEBAPP_URL.indexOf('PASTE_URL_WEBAPP') === 0) {
-      return Promise.resolve({ok:false, error:'URL Web App belum diisi. Buka index.html dan isi WEBAPP_URL.'});
+  function perbaruiLencanaOutbox(){
+    var box = getOutbox();
+    var n = box.length;
+    var el = document.getElementById('outboxBadge');
+    if (el) {
+      el.style.display = n > 0 ? 'flex' : 'none';
+      // Tampilkan rincian aksi yang tertunda
+      var elN = document.getElementById('outboxCount');
+      if (elN) elN.textContent = n;
+      // Warna: kuning = ada data pending, merah = ada yang gagal
+      var adaGagal = box.some(function(x){ return x.retryCount && x.retryCount >= 3; });
+      el.style.background = adaGagal ? '#dc2626' : '#f59e0b';
     }
-    return fetch(WEBAPP_URL, { method:'POST', body: JSON.stringify({action:action, payload:payload||{}}) })
-      .then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
-      .then(function(txt){ try { return JSON.parse(txt); } catch(e){ throw new Error('Respon server tidak valid'); } })
-      .catch(function(err){
-        // Kalau memang sedang tidak ada koneksi internet sama sekali, beri pesan yang
-        // jelas dalam Bahasa Indonesia -- jangan tampilkan pesan mentah dari browser
-        // (misal "Failed to fetch") yang membingungkan bagi pengguna.
-        var pesan = (typeof navigator!=='undefined' && navigator.onLine===false)
-          ? 'Tidak ada koneksi internet. Data ini butuh koneksi untuk diambil/diperiksa -- coba lagi setelah tersambung ke internet.'
-          : 'Gagal terhubung ke server. Periksa koneksi internet Anda, lalu coba lagi.';
-        return {ok:false, error: pesan, _jaringanGagal:true};
-      });
   }
 
   function api(action, payload){
     var bisaDiantre = AKSI_BISA_OFFLINE.indexOf(action) !== -1;
-    if (bisaDiantre && !navigator.onLine) {
-      var outbox = getOutbox();
-      outbox.push({action:action, payload:payload, waktu:new Date().toISOString()});
-      setOutbox(outbox);
-      return Promise.resolve({ok:true, offline:true, ditambah:(payload && payload.items ? payload.items.length : 0), diupdate:0,
-        pesanOffline:'Sedang offline -- data disimpan di perangkat ini dan akan otomatis terkirim begitu internet tersambung lagi.'});
+
+    // Offline: langsung antre
+    if (bisaDiantre && typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return _antrePesan(action, payload, 'offline');
     }
+
     return apiJaringan(action, payload).then(function(res){
+      // Gagal karena jaringan (bukan error logika): antre kalau bisa
       if (bisaDiantre && !res.ok && res._jaringanGagal) {
-        var outbox2 = getOutbox();
-        outbox2.push({action:action, payload:payload, waktu:new Date().toISOString()});
-        setOutbox(outbox2);
-        return {ok:true, offline:true, ditambah:(payload && payload.items ? payload.items.length : 0), diupdate:0,
-          pesanOffline:'Sedang offline -- data disimpan di perangkat ini dan akan otomatis terkirim begitu internet tersambung lagi.'};
+        return _antrePesan(action, payload, 'jaringan_gagal');
       }
       return res;
     });
   }
 
-  // Kirim ulang semua data yang tertunda, satu-satu berurutan, berhenti kalau ada
-  // yang masih gagal (dicoba lagi nanti saat online lagi / dipicu manual).
+  function _antrePesan(action, payload, alasan){
+    var outbox = getOutbox();
+    outbox.push({
+      action:action, payload:payload,
+      waktu:new Date().toISOString(),
+      alasan:alasan, retryCount:0
+    });
+    setOutbox(outbox);
+    var jumlah = payload && payload.items ? payload.items.length : 1;
+    return Promise.resolve({
+      ok:true, offline:true,
+      ditambah:jumlah, diupdate:0,
+      pesanOffline:'&#128225; Sedang offline — '+jumlah+' data tersimpan di perangkat dan akan otomatis dikirim saat online kembali.'
+    });
+  }
+
+  // Kirim ulang semua data tertunda — dipanggil otomatis saat online
   var SEDANG_SINKRON = false;
   function sinkronkanOutbox(){
-    if (SEDANG_SINKRON) return;
+    if (SEDANG_SINKRON || !navigator.onLine) return;
     var sisa = getOutbox();
     if (!sisa.length) return;
     SEDANG_SINKRON = true;
-    function prosesSatu(){
-      if (!sisa.length) { setOutbox(sisa); SEDANG_SINKRON = false; return; }
-      var item = sisa[0];
-      apiJaringan(item.action, item.payload).then(function(res){
-        if (res.ok) { sisa.shift(); setOutbox(sisa); prosesSatu(); }
-        else { setOutbox(sisa); SEDANG_SINKRON = false; }
-      }).catch(function(){ setOutbox(sisa); SEDANG_SINKRON = false; });
+
+    // Update badge — tampilkan progress
+    var elBadge = document.getElementById('outboxBadge');
+    if (elBadge) {
+      elBadge.innerHTML = '&#9203; Mengirim '+sisa.length+' data tersimpan...';
+      elBadge.style.display = 'flex';
+      elBadge.style.background = '#2563eb';
     }
-    prosesSatu();
+
+    function prosesSatu(arr, berhasil, gagal){
+      if (!arr.length){
+        // Selesai
+        SEDANG_SINKRON = false;
+        // Simpan yang masih gagal
+        var sisaGagal = gagal.map(function(x){
+          x.retryCount = (x.retryCount||0)+1;
+          return x;
+        }).filter(function(x){ return x.retryCount < 5; }); // hapus kalau sudah 5x gagal
+        setOutbox(sisaGagal);
+        if (berhasil > 0) {
+          // Tampilkan notif sukses singkat
+          var elB = document.getElementById('outboxBadge');
+          if (elB) {
+            elB.innerHTML = '&#10003; '+berhasil+' data berhasil dikirim!';
+            elB.style.background = '#16a34a';
+            elB.style.display = 'flex';
+            setTimeout(function(){ perbaruiLencanaOutbox(); }, 3000);
+          }
+        } else {
+          perbaruiLencanaOutbox();
+        }
+        return;
+      }
+      var item = arr[0];
+      var sisa2 = arr.slice(1);
+      apiJaringan(item.action, item.payload).then(function(res){
+        if (res.ok) prosesSatu(sisa2, berhasil+1, gagal);
+        else prosesSatu(sisa2, berhasil, gagal.concat([item]));
+      }).catch(function(){
+        SEDANG_SINKRON = false;
+        // Koneksi putus lagi saat sinkron -- simpan sisa dan berhenti
+        setOutbox(arr.concat(gagal));
+        perbaruiLencanaOutbox();
+      });
+    }
+    prosesSatu(sisa, 0, []);
   }
-  window.addEventListener('online', sinkronkanOutbox);
-  window.addEventListener('load', function(){ perbaruiLencanaOutbox(); if (navigator.onLine) sinkronkanOutbox(); });
+
+  // Trigger otomatis
+  window.addEventListener('online', function(){
+    setTimeout(sinkronkanOutbox, 1500); // tunggu 1.5 detik agar koneksi stabil dulu
+  });
+  window.addEventListener('load', function(){
+    perbaruiLencanaOutbox();
+    if (navigator.onLine && getOutbox().length > 0){
+      setTimeout(sinkronkanOutbox, 2000); // kirim data tertunda saat app dibuka
+    }
+  });
+  // Cek berkala setiap 5 menit jika masih ada data tertunda
+  setInterval(function(){
+    if (navigator.onLine && getOutbox().length > 0 && !SEDANG_SINKRON){
+      sinkronkanOutbox();
+    }
+  }, 5 * 60 * 1000);
 
   function render(html){ root.innerHTML = html; }
   function setHtmlSafe(id, html){ var el = document.getElementById(id); if (el) el.innerHTML = html; return !!el; }
@@ -629,14 +702,23 @@
   function loadPengaturanLaluTampilkanLogin(){
     var sesiTersimpan = ambilSesiTersimpan();
     if (sesiTersimpan) {
-      // Sudah pernah login sebelumnya -- langsung masuk ke dashboard TANPA menunggu
-      // percobaan koneksi ke server dulu, supaya tetap instan walau sedang offline.
       STATE.user = sesiTersimpan;
       lanjutkanKeDashboard();
-      // Pengaturan (logo/tema/dll) tetap dicoba diperbarui di latar belakang -- kalau
-      // memang online, tampilan akan ikut ter-update begitu selesai; kalau offline,
-      // dashboard yang sudah terlanjur tampil di atas tidak terganggu sama sekali.
+      // Di background: perbarui pengaturan tampilan dan validasi sesi masih valid
       api('getPengaturan', {}).then(terapkanPengaturan);
+      // Kalau online, verifikasi akun masih aktif di server (role bisa saja diubah Admin)
+      // Kalau gagal (offline), biarkan sesi lama — tidak logout paksa saat offline
+      if (navigator.onLine) {
+        api('cekSesiAktif', {nama: sesiTersimpan.nama, noWa: sesiTersimpan.noWa}).then(function(res){
+          if (!res.ok || res.nonaktif) {
+            // Akun dinonaktifkan atau dihapus Admin — logout
+            STATE.user = null; hapusSesiTersimpan(); showBeranda(true, res.pesan || 'Sesi Anda telah berakhir. Silakan login kembali.');
+          } else if (res.user) {
+            // Update data user terbaru (misal role berubah) tanpa refresh halaman
+            STATE.user = res.user; simpanSesi();
+          }
+        }).catch(function(){}); // gagal (offline) → biarkan sesi lama
+      }
       return;
     }
     render('<div style="text-align:center;padding:30px">Memuat...</div>');
@@ -822,6 +904,7 @@
         }
         STATE.user = res.user;
         if (modeKhusus === 'kantin') { STATE.user.level = 'PemilikBarang'; simpanSesi(); lanjutkanKeDashboard(); return; }
+        simpanSesi(); // simpan sesi supaya tidak perlu login ulang saat buka app lagi
         lanjutkanKeDashboard();
       });
     };
@@ -2150,6 +2233,7 @@
         api('submitAbsensi',{tanggal:tanggalDipakai, hari:hariDariTanggal(tanggalDipakai)||j.hari, jamKeList:j.jamKeList, mapel:j.mapel, kelas:j.kelas, pengampu:STATE.user.nama, items:items})
           .then(function(res2){
             if(!res2.ok){ document.getElementById('pesanSimpanAbsen').innerHTML=errBox(res2.error); btn.disabled=false; btn.innerText='Simpan Absensi'; return; }
+            if(res2.offline){ document.getElementById('pesanSimpanAbsen').innerHTML='<div style="background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:10px;font-size:13px">'+res2.pesanOffline+'</div>'; btn.disabled=false; btn.innerText='Simpan Absensi'; return; }
             tampilkanFormJurnal(j, rppAktif, tanggalDipakai, resJurnal.ok?resJurnal.data.find(function(jr){return jr.mapel===j.mapel&&jr.kelas===j.kelas;}):null);
           });
       };
@@ -2917,6 +3001,7 @@
         api('submitHafalan', {tanggal: document.getElementById('hfTanggal').value, waktu: waktu, halaqoh: namaHalaqoh, pengampu: STATE.user.nama, items: items})
           .then(function(res2){
             if(!res2.ok){ document.getElementById('pesanSimpanHafalan').innerHTML = errBox(res2.error); btn.disabled=false; btn.innerText='Simpan Hafalan'; return; }
+            if(res2.offline){ document.getElementById('pesanSimpanHafalan').innerHTML='<div style="background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:10px;font-size:13px">'+res2.pesanOffline+'</div>'; btn.disabled=false; btn.innerText='Simpan Hafalan'; return; }
             hapusDraftHafalan(draftKey);
             alert('Hafalan tersimpan (baru: '+res2.ditambah+', diperbarui: '+res2.diupdate+').');
             guruIsiHafalan();
@@ -5000,6 +5085,7 @@
             }).then(function(res2){
               btn.disabled=false; btn.textContent='Simpan Absensi';
               if(!res2.ok){ document.getElementById('pbPesan').innerHTML=errBox(res2.error); return; }
+              if(res2.offline){ document.getElementById('pbPesan').innerHTML='<div style="background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:10px;font-size:13px">'+res2.pesanOffline+'</div>'; btn.disabled=false; btn.textContent='Simpan Absensi'; return; }
               var hadir = items.filter(function(i){return i.status==='Hadir';}).length;
               document.getElementById('pbPesan').innerHTML=
                 '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;font-size:13px">'+
@@ -7327,11 +7413,79 @@
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function(){
       try {
-        navigator.serviceWorker.register('/sw.js').catch(function(err){
-          console.warn('Service worker tidak aktif di konteks ini (wajar kalau bukan domain hosting asli):', err.message || err);
+        navigator.serviceWorker.register('/sw.js').then(function(reg) {
+
+          // Cek kalau ada SW baru yang menunggu (misal user buka tab lama setelah deploy)
+          if (reg.waiting) {
+            tampilkanNotifUpdate(reg.waiting);
+          }
+
+          // SW baru ditemukan — menunggu untuk aktif
+          reg.addEventListener('updatefound', function() {
+            var swBaru = reg.installing;
+            if (!swBaru) return;
+            swBaru.addEventListener('statechange', function() {
+              if (swBaru.state === 'installed' && navigator.serviceWorker.controller) {
+                tampilkanNotifUpdate(swBaru);
+              }
+            });
+          });
+
+        }).catch(function(err) {
+          console.warn('Service worker tidak aktif:', err.message || err);
         });
-      } catch (err) { /* abaikan, bukan fitur wajib */ }
+
+        // Terima pesan dari SW (misal: SW_UPDATED setelah activate)
+        navigator.serviceWorker.addEventListener('message', function(e) {
+          if (e.data && e.data.type === 'SW_UPDATED') {
+            tampilkanNotifUpdate(null); // sudah aktif, langsung minta reload
+          }
+        });
+
+        // Kalau SW controller berubah (versi baru aktif) → reload otomatis
+        var refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', function() {
+          if (!refreshing) { refreshing = true; window.location.reload(); }
+        });
+
+      } catch (err) { /* bukan fitur wajib */ }
     });
+  }
+
+  // Tampilkan banner di atas halaman: "Versi baru tersedia — Perbarui Sekarang"
+  function tampilkanNotifUpdate(swMenunggu) {
+    // Jangan tampilkan dua kali
+    if (document.getElementById('bannerUpdate')) return;
+    var banner = document.createElement('div');
+    banner.id = 'bannerUpdate';
+    banner.style.cssText = [
+      'position:fixed;top:0;left:0;right:0;z-index:99999',
+      'background:#0d9488;color:#fff',
+      'padding:10px 16px',
+      'display:flex;align-items:center;justify-content:space-between',
+      'font-family:\'Segoe UI\',Arial,sans-serif;font-size:13px;font-weight:500',
+      'box-shadow:0 2px 8px rgba(0,0,0,.25)'
+    ].join(';');
+    banner.innerHTML =
+      '<span>&#127381; Versi baru WASIAT tersedia!</span>' +
+      '<div style="display:flex;gap:8px">' +
+      '<button id="btnUpdateSekarang" style="background:#fff;color:#0d9488;border:none;padding:5px 12px;border-radius:6px;font-weight:600;cursor:pointer;font-size:12px">Perbarui Sekarang</button>' +
+      '<button id="btnTutupBannerUpdate" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px">Nanti</button>' +
+      '</div>';
+    document.body.prepend(banner);
+
+    document.getElementById('btnUpdateSekarang').onclick = function() {
+      if (swMenunggu) {
+        // Perintahkan SW yang menunggu untuk langsung aktif
+        swMenunggu.postMessage({ type: 'SKIP_WAITING' });
+        // controllerchange event akan reload otomatis
+      } else {
+        window.location.reload();
+      }
+    };
+    document.getElementById('btnTutupBannerUpdate').onclick = function() {
+      banner.remove();
+    };
   }
 
   // ============ PWA: tombol Install ============
