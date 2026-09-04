@@ -1,79 +1,128 @@
-// Service Worker aplikasi WASIAT.
+// Service Worker WASIAT — strategi cache + notifikasi update otomatis
 //
 // STRATEGI:
-// - Halaman utama (navigasi/index.html): NETWORK-FIRST -- selalu coba ambil versi
-//   terbaru dari internet dulu (supaya update aplikasi/fitur baru tidak pernah
-//   "macet" di versi lama), baru kalau gagal (offline) baru pakai cache.
-// - Aset statis (ikon, manifest): CACHE-FIRST -- supaya aplikasi tetap bisa
-//   dibuka & tampil normal walau sedang offline.
-// - Data absensi/hafalan/nilai ke Apps Script (script.google.com) TIDAK PERNAH
-//   disentuh service worker ini -- selalu langsung ke jaringan, supaya data yang
-//   dilihat guru/wali santri selalu yang terbaru, tidak pernah basi dari cache.
+// - index.html: NETWORK-FIRST — selalu ambil terbaru, cache sebagai fallback offline
+// - Aset statis (ikon, manifest): CACHE-FIRST — instan, update di background
+// - Panggilan ke Apps Script: TIDAK di-intercept — selalu langsung ke jaringan
 //
-// Naikkan CACHE_NAME (misal jadi wasiat-v3) setiap kali ingin memaksa semua
-// pengguna mengambil ulang seluruh aset statis dari awal.
+// Auto-update: saat versi baru deploy, SW baru aktif & kirim pesan ke semua tab
+// supaya user bisa reload tanpa harus tutup browser manual.
+//
+// CACHE_VERSION diisi otomatis saat build — ubah ini kalau mau paksa re-cache semua.
 
-const CACHE_NAME = 'wasiat-v3';
+const CACHE_VERSION = 'wasiat-422ca859'; // diupdate otomatis tiap build
+const CACHE_NAME = CACHE_VERSION;
 const APP_SHELL = [
   '/',
   '/index.html',
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png',
-  '/apple-touch-icon.png'
+  '/icon-192-maskable.png',
+  '/icon-512-maskable.png',
+  '/apple-touch-icon.png',
+  '/favicon-32.png'
 ];
 
-self.addEventListener('install', function (e) {
-  e.waitUntil(caches.open(CACHE_NAME).then(function (c) { return c.addAll(APP_SHELL); }));
-  self.skipWaiting();
-});
-
-self.addEventListener('activate', function (e) {
+// ============ INSTALL ============
+// Ambil semua aset shell, lalu langsung aktif (tidak tunggu tab lama ditutup)
+self.addEventListener('install', function(e) {
   e.waitUntil(
-    caches.keys().then(function (keys) {
-      return Promise.all(keys.filter(function (k) { return k !== CACHE_NAME; }).map(function (k) { return caches.delete(k); }));
+    caches.open(CACHE_NAME).then(function(cache) {
+      return cache.addAll(APP_SHELL);
+    }).then(function() {
+      return self.skipWaiting(); // langsung aktif tanpa tunggu tab lama
     })
   );
-  self.clients.claim();
 });
 
-self.addEventListener('fetch', function (e) {
-  const req = e.request;
-  const url = new URL(req.url);
+// ============ ACTIVATE ============
+// Hapus cache versi lama, ambil kontrol semua tab yang terbuka
+self.addEventListener('activate', function(e) {
+  e.waitUntil(
+    caches.keys().then(function(keys) {
+      return Promise.all(
+        keys
+          .filter(function(k) { return k !== CACHE_NAME; })
+          .map(function(k) { return caches.delete(k); })
+      );
+    }).then(function() {
+      return self.clients.claim(); // ambil kontrol tab yang sudah terbuka
+    }).then(function() {
+      // Beritahu semua tab bahwa versi baru sudah aktif → tab bisa tampilkan notif
+      return self.clients.matchAll({ type: 'window' }).then(function(clients) {
+        clients.forEach(function(client) {
+          client.postMessage({ type: 'SW_UPDATED', version: CACHE_VERSION });
+        });
+      });
+    })
+  );
+});
 
-  // Jangan pernah intercept panggilan ke Apps Script -- selalu langsung ke jaringan.
-  if (url.hostname.indexOf('script.google.com') !== -1 || url.hostname.indexOf('googleusercontent.com') !== -1) {
-    return;
-  }
-  if (req.method !== 'GET') return;
+// ============ FETCH ============
+self.addEventListener('fetch', function(e) {
+  var req = e.request;
+  var url = new URL(req.url);
 
-  // Halaman utama: network-first, supaya pembaruan aplikasi langsung kepakai.
-  const isNavigasi = req.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('/index.html');
-  if (isNavigasi) {
+  // Jangan intercept: Apps Script, Google APIs, request non-GET
+  if (
+    url.hostname.indexOf('script.google.com') !== -1 ||
+    url.hostname.indexOf('googleusercontent.com') !== -1 ||
+    url.hostname.indexOf('googleapis.com') !== -1 ||
+    req.method !== 'GET'
+  ) return;
+
+  // index.html & navigasi: NETWORK-FIRST
+  // Selalu coba ambil versi terbaru, cache sebagai fallback offline
+  var isNav = req.mode === 'navigate' ||
+              url.pathname === '/' ||
+              url.pathname.endsWith('/index.html');
+
+  if (isNav) {
     e.respondWith(
-      fetch(req).then(function (resp) {
-        const salinan = resp.clone();
-        caches.open(CACHE_NAME).then(function (cache) { cache.put(req, salinan); });
-        return resp;
-      }).catch(function () {
-        return caches.match(req).then(function (cached) { return cached || caches.match('/index.html'); });
-      })
+      fetch(req, { cache: 'no-cache' })
+        .then(function(resp) {
+          // Simpan versi terbaru ke cache untuk offline
+          if (resp && resp.status === 200) {
+            var salinan = resp.clone();
+            caches.open(CACHE_NAME).then(function(cache) {
+              cache.put(req, salinan);
+            });
+          }
+          return resp;
+        })
+        .catch(function() {
+          // Offline: pakai cache
+          return caches.match(req).then(function(cached) {
+            return cached || caches.match('/index.html');
+          });
+        })
     );
     return;
   }
 
-  // Aset statis lain (ikon, manifest, dsb): cache-first supaya instan & tetap
-  // tampil offline, tapi tetap diperbarui di cache di belakang layar.
+  // Aset statis: STALE-WHILE-REVALIDATE
+  // Langsung pakai cache (instan), tapi update cache di background
   e.respondWith(
-    caches.match(req).then(function (cached) {
-      const jaringan = fetch(req).then(function (resp) {
-        if (resp && resp.status === 200) {
-          const salinan = resp.clone();
-          caches.open(CACHE_NAME).then(function (cache) { cache.put(req, salinan); });
-        }
-        return resp;
-      }).catch(function () { return cached; });
-      return cached || jaringan;
+    caches.open(CACHE_NAME).then(function(cache) {
+      return cache.match(req).then(function(cached) {
+        var jaringan = fetch(req).then(function(resp) {
+          if (resp && resp.status === 200) {
+            cache.put(req, resp.clone());
+          }
+          return resp;
+        }).catch(function() { return cached; });
+
+        return cached || jaringan;
+      });
     })
   );
+});
+
+// ============ MESSAGE ============
+// Terima perintah dari tab (misal: "skipWaiting sekarang")
+self.addEventListener('message', function(e) {
+  if (e.data && e.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });

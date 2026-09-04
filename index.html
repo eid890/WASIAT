@@ -143,6 +143,7 @@
   }
 
   #absensi-app .muted{color:#64748b;font-size:12px}
+  @keyframes spin{to{transform:rotate(360deg)}}
   #absensi-app .faded{color:#94a3b8;font-size:11px;font-style:italic}
   #absensi-app .warn{background:#fffbeb;border:1px solid #fcd34d;padding:10px;border-radius:8px;color:#92400e;font-size:13px}
   #absensi-app .err{background:#fef2f2;border:1px solid #fca5a5;padding:10px;border-radius:8px;color:#b91c1c;font-size:13px}
@@ -270,7 +271,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbzgD0Y4vVgVb0Y05e0gwN5hpW7sTdIYImOOzN697N7T-RN0lBueUDM7Sn8EWBy5hMT0/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -1173,10 +1174,17 @@
 
     // Binding menu sidebar
     var mapFn = getMapFungsi(activeRoleTab);
+    function tutupSidebarMulti(){
+      var sb=document.getElementById('sbNav'), ov=document.getElementById('sbOverlay'), bh=document.getElementById('btnHamburger');
+      if(sb) sb.classList.remove('open');
+      if(ov) ov.classList.remove('show');
+      if(bh) bh.innerHTML='&#9776;';
+    }
     document.getElementById('sidebarNav').querySelectorAll('.nav-item[data-key]').forEach(function(li){
       li.onclick = function(){
         document.getElementById('sidebarNav').querySelectorAll('.nav-item').forEach(function(x){x.classList.remove('active');});
         li.classList.add('active');
+        tutupSidebarMulti(); // tutup sidebar di mobile saat menu dipilih
         var fn = mapFn[li.dataset.key];
         if (fn) fn();
       };
@@ -1723,12 +1731,12 @@
     if (sbGanti) sbGanti.onclick = function(){ tampilkanPilihanRole(); };
     var sidebar = document.getElementById('sbNav'), overlay = document.getElementById('sbOverlay');
     var btnHamburger = document.getElementById('btnHamburger');
-    btnHamburger.onclick = function(){
+    if (btnHamburger) btnHamburger.onclick = function(){
       var isOpen = sidebar.classList.toggle('open');
       overlay.classList.toggle('show', isOpen);
       btnHamburger.innerHTML = isOpen ? '&#10005;' : '&#9776;';
     };
-    function tutupSidebar(){ sidebar.classList.remove('open'); overlay.classList.remove('show'); btnHamburger.innerHTML = '&#9776;'; }
+    function tutupSidebar(){ sidebar.classList.remove('open'); overlay.classList.remove('show'); if(btnHamburger) btnHamburger.innerHTML = '&#9776;'; }
     overlay.onclick = tutupSidebar;
     document.querySelectorAll('.nav-item').forEach(function(item){
       item.onclick = function(){
@@ -1851,7 +1859,10 @@
   // ---- Modul Ajar & RPP (khusus mapel yang diajarkan guru ini) ----
   function guruModulAjar(){
     var c = document.getElementById(STATE._contentId||'dg-content');
-    c.innerHTML = '<p>Memuat...</p>';
+    c.innerHTML = '<div class="card"><h3>&#128218; Modul Ajar & RPP</h3>'+
+      '<div style="display:flex;align-items:center;gap:10px;padding:12px 0">'+
+      '<div style="width:20px;height:20px;border:3px solid #0d9488;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite"></div>'+
+      '<span>Memuat modul ajar... (mungkin butuh beberapa detik)</span></div></div>';
     // Ambil daftar mapel yang diajarkan guru ini dari jadwal
     api('getJadwalGuru', {pengampu: STATE.user.nama}).then(function(resJadwal){
       var mapelSet = {};
@@ -1880,6 +1891,12 @@
             }).join('') + '</div>';
 
           html += '<h3>&#128218; '+esc(selected.mapel)+' &mdash; '+esc(selected.kelas)+'</h3>';
+
+          // Tombol upload modul ajar (link ke Drive untuk upload)
+          html += '<div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">' +
+            '<button class="secondary small" id="btnUploadModulAjar">&#128196; Upload Modul Ajar ke Drive</button>' +
+            '<button class="secondary small" id="btnInputLinkModul">&#128279; Tambah via Link</button>' +
+            '</div>';
 
           // File-file modul ajar
           if (resMA.ok && resMA.data.length) {
@@ -1928,6 +1945,35 @@
           c.querySelectorAll('.btnTabMapel').forEach(function(btn){
             btn.onclick = function(){ renderTabMapel({mapel:btn.dataset.mapel, kelas:btn.dataset.kelas}); };
           });
+
+          // Tombol upload modul ajar via link Google Drive
+          var btnUpload = document.getElementById('btnUploadModulAjar');
+          if (btnUpload) {
+            btnUpload.onclick = function(){
+              openModal('Upload Modul Ajar — '+esc(selected.mapel),
+                '<p class="muted" style="margin-bottom:10px">Upload file ke Google Drive Anda dulu, lalu tempel link-nya di sini.</p>'+
+                '<label>Nama File *</label><input id="maFileName" placeholder="Modul Ajar Bab 1 - '+esc(selected.mapel)+'" style="width:100%">'+
+                '<label>Link Google Drive *</label><input id="maFileUrl" placeholder="https://drive.google.com/..." style="width:100%">'+
+                '<label>Kategori</label>'+
+                '<select id="maKategori" style="width:100%"><option value="Modul Ajar">Modul Ajar</option><option value="Bahan Ajar">Bahan Ajar</option><option value="LKPD">LKPD</option><option value="Media">Media Pembelajaran</option></select>',
+                function(modal){
+                  var nama = modal.querySelector('#maFileName').value.trim();
+                  var url  = modal.querySelector('#maFileUrl').value.trim();
+                  var kat  = modal.querySelector('#maKategori').value;
+                  if (!nama || !url){ alert('Nama file dan link wajib diisi.'); return false; }
+                  return api('saveModulAjar', {mapel:selected.mapel, kelas:selected.kelas,
+                    namaFile:nama, urlAsli:url, kategori:kat, diuploadOleh:STATE.user.nama,
+                    kurikulum:'Merdeka'}).then(function(r){
+                    if (!r.ok){ alert(r.error); throw new Error(r.error); }
+                    guruModulAjar();
+                  });
+                });
+            };
+          }
+
+          // Tombol input link modul (sama tapi lebih ringkas labelnya)
+          var btnLink = document.getElementById('btnInputLinkModul');
+          if (btnLink) btnLink.onclick = function(){ if(btnUpload) btnUpload.click(); };
 
           // Toggle accordion RPP
           c.querySelectorAll('.rppToggleHeader').forEach(function(header){
@@ -2012,15 +2058,32 @@
   // ---- SOP Mengajar (bacaan guru, dikelola Admin) ----
   function guruSOP(){
     var c = document.getElementById(STATE._contentId||'dg-content');
-    c.innerHTML = '<p>Memuat SOP...</p>';
-    api('getSOPList', {}).then(function(res){
-      if (!res.ok){ c.innerHTML = errBox(res.error); return; }
-      if (!res.data.length){ c.innerHTML = '<div class="card">'+warnBox('Belum ada SOP yang diatur. Hubungi Admin/Mudir.')+'</div>'; return; }
+    c.innerHTML = '<div class="card"><h3>&#128203; Standar Operasional Prosedur</h3>'+
+      '<div style="display:flex;align-items:center;gap:10px;padding:16px 0">'+
+      '<div style="width:20px;height:20px;border:3px solid #0d9488;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite"></div>'+
+      '<span>Memuat SOP... (mungkin butuh beberapa detik pertama kali)</span></div></div>';
 
+    // Timeout 25 detik -- kalau lebih dari itu tampilkan pesan
+    var timeout = setTimeout(function(){
+      if(c.querySelector('.card') && c.innerHTML.indexOf('Memuat SOP') !== -1){
+        c.innerHTML = '<div class="card"><h3>&#128203; SOP Mengajar</h3>'+
+          errBox('Koneksi ke server lambat. Coba klik menu SOP sekali lagi.')+
+          '<button id="btnRetrySOP">&#128260; Coba Lagi</button></div>';
+        document.getElementById('btnRetrySOP').onclick = guruSOP;
+      }
+    }, 25000);
+
+    api('getSOPList', {}).then(function(res){
+      clearTimeout(timeout);
+      if (!document.getElementById(STATE._contentId||'dg-content')) return;
+      if (!res.ok){ c.innerHTML = '<div class="card">'+errBox(res.error)+'<button id="btnRetrySOP2">Coba Lagi</button></div>'; document.getElementById('btnRetrySOP2').onclick=guruSOP; return; }
+      if (!res.data || !res.data.length){
+        c.innerHTML = '<div class="card"><h3>&#128203; SOP Mengajar</h3>'+
+          warnBox('Belum ada SOP yang diatur. Minta Admin/Mudir menambahkan SOP melalui menu Kelola SOP.')+'</div>';
+        return;
+      }
       var html = '<div class="card"><h3>&#128203; Standar Operasional Prosedur</h3>' +
         '<p class="muted">Panduan pelaksanaan tugas mengajar dan penanganan situasi di pesantren.</p></div>';
-
-      // Kelompokkan per kategori
       var cats = {};
       res.data.forEach(function(s){ if(!cats[s.kategori]) cats[s.kategori]=[]; cats[s.kategori].push(s); });
       Object.keys(cats).forEach(function(cat){
@@ -2032,6 +2095,11 @@
         html += '</div>';
       });
       c.innerHTML = html;
+    }).catch(function(){
+      clearTimeout(timeout);
+      c.innerHTML = '<div class="card">'+errBox('Gagal memuat SOP. Periksa koneksi internet.')+
+        '<button id="btnRetrySOP3">Coba Lagi</button></div>';
+      document.getElementById('btnRetrySOP3').onclick=guruSOP;
     });
   }
 
@@ -3770,40 +3838,281 @@
   }
 
   // Cetak kuitansi pembayaran SPP
+  // ============================================================
+  // KUITANSI SPP — gambar Canvas bergaya struk mobile banking
+  // ============================================================
   function cetakKuitansiSPP(santri, bulan, tanggalLunas){
     var namaSekolah = STATE.pengaturan.NamaPesantren || 'Pondok Pesantren';
-    var labelBulan = labelBulanSingkatSpp(bulan, santri.tahunMasuk);
+    var labelBulan  = labelBulanSingkatSpp(bulan, santri.tahunMasuk);
     var noRef = 'SPP-' + santri.nisn + '-' + bulan + '-' + todayStr().replace(/-/g,'');
-    var tgl = tanggalLunas ? tanggalLunas.replace('Lunas (','').replace(')','') : todayStr();
-    var win = window.open('','_blank');
-    win.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Kuitansi SPP</title>'+
-      '<style>body{font-family:Arial,sans-serif;max-width:400px;margin:20px auto;font-size:12px;color:#111}'+
-      'h2{text-align:center;font-size:14px;margin:0}h3{text-align:center;font-size:12px;margin:2px 0 8px;font-weight:400}'+
-      '.box{border:2px solid #111;border-radius:4px;padding:12px;margin-top:8px}'+
-      '.row{display:flex;justify-content:space-between;margin:4px 0;font-size:12px}'+
-      '.label{color:#555}.val{font-weight:600}'+
-      '.nominal{font-size:18px;font-weight:700;text-align:center;padding:8px;border-top:1px dashed #aaa;border-bottom:1px dashed #aaa;margin:8px 0}'+
-      '.ttd{display:flex;justify-content:flex-end;margin-top:20px;font-size:11px;text-align:center}'+
-      '.ttd-box{width:150px}'+
-      '.ref{font-size:10px;color:#aaa;text-align:center;margin-top:8px}'+
-      '@media print{body{margin:4px}@page{margin:4mm;size:80mm auto}}</style></head><body>'+
-      '<h2>'+esc(namaSekolah)+'</h2>'+
-      '<h3>KUITANSI PEMBAYARAN SPP</h3>'+
-      '<div class="box">'+
-      '<div class="row"><span class="label">No. Ref</span><span class="val">'+noRef+'</span></div>'+
-      '<div class="row"><span class="label">Tanggal</span><span class="val">'+tgl+'</span></div>'+
-      '<div class="row"><span class="label">Nama Santri</span><span class="val">'+esc(santri.nama)+'</span></div>'+
-      '<div class="row"><span class="label">NISN</span><span class="val">'+esc(santri.nisn)+'</span></div>'+
-      '<div class="row"><span class="label">Keterangan</span><span class="val">SPP '+esc(labelBulan)+'</span></div>'+
-      '<div class="nominal">Rp '+santri.biaya.toLocaleString('id-ID')+'</div>'+
-      '<div class="row"><span class="label">Status</span><span class="val" style="color:#16a34a">&#10003; LUNAS</span></div>'+
-      '</div>'+
-      '<div class="ttd"><div class="ttd-box">Bendahara<br><br><br><br>(____________________)</div></div>'+
-      '<div class="ref">Kuitansi ini dicetak oleh sistem WASIAT pada '+new Date().toLocaleString('id-ID')+'</div>'+
-      '</body></html>');
-    win.document.close();
+    var tgl   = todayStr();
+    var jam   = new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
+    var nominal = 'Rp '+Number(santri.biaya).toLocaleString('id-ID');
+    var noWaOrtu = santri.noWa || '';
+
+    // Buat gambar struk via Canvas
+    function buatGambarStruk(callback){
+      var W = 600, pad = 36;
+      var baris = [
+        {t:'pesantren', v: namaSekolah},
+        {t:'judul', v: 'BUKTI PEMBAYARAN SPP'},
+        {t:'gap'},
+        {t:'nominal', v: nominal},
+        {t:'status', v: 'LUNAS'},
+        {t:'gap'},
+        {t:'row', l:'Tanggal', v: tgl+' '+jam},
+        {t:'row', l:'No. Referensi', v: noRef},
+        {t:'sep'},
+        {t:'row', l:'Nama Santri', v: santri.nama},
+        {t:'row', l:'NISN', v: santri.nisn},
+        {t:'row', l:'Keterangan', v: 'SPP '+labelBulan},
+        {t:'sep'},
+        {t:'row', l:'Status Pembayaran', v:'LUNAS ✓'},
+        {t:'gap'},
+        {t:'footer', v: 'Terima kasih telah membayar tepat waktu'},
+        {t:'footer2', v: noRef+' • WASIAT '+namaSekolah},
+      ];
+
+      // Hitung tinggi canvas dulu
+      var canvas = document.createElement('canvas');
+      canvas.width = W;
+      var ctx = canvas.getContext('2d');
+      var y = 0, lineH = 44;
+      baris.forEach(function(b){
+        if(b.t==='pesantren') y+=70;
+        else if(b.t==='judul') y+=36;
+        else if(b.t==='nominal') y+=80;
+        else if(b.t==='status') y+=44;
+        else if(b.t==='gap') y+=20;
+        else if(b.t==='sep') y+=24;
+        else if(b.t==='row') y+=lineH;
+        else if(b.t==='footer') y+=32;
+        else if(b.t==='footer2') y+=28;
+      });
+      var H = y + 60;
+      canvas.height = H;
+      ctx = canvas.getContext('2d');
+
+      // Background putih
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0,0,W,H);
+
+      // Header gradient
+      var grad = ctx.createLinearGradient(0,0,W,90);
+      grad.addColorStop(0,'#0d9488');
+      grad.addColorStop(1,'#0891b2');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(0,0); ctx.lineTo(W,0); ctx.lineTo(W,90); ctx.lineTo(0,90);
+      ctx.fill();
+
+      // Garis bergelombang di bawah header (efek khas struk)
+      ctx.beginPath();
+      ctx.moveTo(0,90);
+      for(var x=0;x<W;x+=20){
+        ctx.quadraticCurveTo(x+10,80,x+20,90);
+      }
+      ctx.lineTo(W,H); ctx.lineTo(0,H); ctx.closePath();
+      ctx.fillStyle='#ffffff';
+      ctx.fill();
+
+      var cy = 30;
+      function txt(str,x,sy,size,color,align,bold){
+        ctx.font=(bold?'bold ':'')+size+'px Arial, sans-serif';
+        ctx.fillStyle=color||'#1e293b';
+        ctx.textAlign=align||'left';
+        ctx.fillText(str,x,sy);
+        ctx.textAlign='left';
+      }
+      function dashedLine(sy){
+        ctx.setLineDash([6,5]);
+        ctx.strokeStyle='#e2e8f0';
+        ctx.lineWidth=1.5;
+        ctx.beginPath();
+        ctx.moveTo(pad,sy); ctx.lineTo(W-pad,sy);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      function solidLine(sy){
+        ctx.setLineDash([]);
+        ctx.strokeStyle='#e2e8f0';
+        ctx.lineWidth=1;
+        ctx.beginPath();
+        ctx.moveTo(pad,sy); ctx.lineTo(W-pad,sy);
+        ctx.stroke();
+      }
+
+      // Nama pesantren di header (putih)
+      txt(namaSekolah, W/2, cy+18, 17, '#ffffff', 'center', true); cy+=40;
+      txt('BUKTI PEMBAYARAN SPP', W/2, cy, 13, 'rgba(255,255,255,.85)', 'center', false); cy+=15;
+
+      // Garis bergelombang buffer
+      cy = 108;
+
+      // Nominal besar
+      txt('NOMINAL PEMBAYARAN', W/2, cy+20, 11, '#94a3b8', 'center', false); cy+=28;
+      txt(nominal, W/2, cy+46, 46, '#0d9488', 'center', true); cy+=60;
+
+      // Badge LUNAS
+      var bw=120, bh=34, bx=(W-bw)/2;
+      ctx.fillStyle='#f0fdf4';
+      _roundRect(ctx,bx,cy,bw,bh,8);
+      ctx.fillStyle='#16a34a';
+      ctx.font='bold 14px Arial';
+      ctx.textAlign='center';
+      ctx.fillText('✓  LUNAS',W/2,cy+22);
+      ctx.textAlign='left';
+      cy+=50;
+
+      dashedLine(cy); cy+=20;
+
+      // Baris data
+      function rowData(label,val){
+        txt(label,pad,cy+20,12,'#64748b');
+        // Wrap val jika panjang
+        if(val.length>28){
+          txt(val.substring(0,28),W-pad,cy+12,12,'#1e293b','right',true);
+          txt(val.substring(28),W-pad,cy+26,12,'#1e293b','right',true);
+          cy+=44;
+        } else {
+          txt(val,W-pad,cy+20,13,'#1e293b','right',true);
+          cy+=lineH;
+        }
+        solidLine(cy-8);
+      }
+
+      rowData('Tanggal Bayar', tgl+' '+jam);
+      rowData('No. Referensi', noRef);
+      dashedLine(cy); cy+=16;
+      rowData('Nama Santri', santri.nama);
+      rowData('NISN', santri.nisn);
+      rowData('Keterangan', 'SPP '+labelBulan);
+      dashedLine(cy); cy+=16;
+      rowData('Status Pembayaran', 'LUNAS ✓');
+
+      cy+=16;
+      // Footer
+      txt('Terima kasih telah membayar tepat waktu', W/2, cy+16, 11, '#94a3b8', 'center');
+      cy+=28;
+      txt(noRef+' • WASIAT', W/2, cy, 10, '#cbd5e1', 'center');
+
+      // Logo/watermark pojok kanan bawah
+      ctx.font='bold 11px Arial';
+      ctx.fillStyle='#e2e8f0';
+      ctx.textAlign='right';
+      ctx.fillText('WASIAT © '+namaSekolah, W-pad, H-12);
+      ctx.textAlign='left';
+
+      callback(canvas.toDataURL('image/png'));
+    }
+
+    function _roundRect(ctx,x,y,w,h,r){
+      ctx.beginPath();
+      ctx.moveTo(x+r,y);
+      ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+      ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+      ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+      ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);
+      ctx.closePath();ctx.fill();
+    }
+
+    // Buat gambar, lalu tampilkan modal
+    buatGambarStruk(function(dataUrl){
+      var overlay = document.createElement('div');
+      overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;overflow-y:auto';
+      overlay.innerHTML=
+        '<div style="background:#f8fafc;border-radius:20px;width:100%;max-width:380px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.4)">'+
+        // Pratinjau gambar struk
+        '<div style="background:#e2e8f0;padding:16px;text-align:center">'+
+        '<img id="imgStrukSPP" src="'+dataUrl+'" style="width:100%;max-width:300px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.2)">'+
+        '</div>'+
+        // Tombol aksi
+        '<div style="padding:16px;display:flex;flex-direction:column;gap:10px">'+
+        (noWaOrtu?
+          '<button id="btnKirimWA" style="background:#25D366;color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px">'+
+          '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>'+
+          'Kirim ke WA Orang Tua</button>'
+          :
+          '<button id="btnKirimWA" style="background:#25D366;color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:700;cursor:pointer">📲 Kirim ke WA (input no. HP)</button>'
+        )+
+        '<button id="btnUnduhStruk" style="background:#0d9488;color:#fff;border:none;border-radius:14px;padding:13px;font-size:14px;font-weight:600;cursor:pointer">⬇️ Simpan Gambar</button>'+
+        '<button id="btnCetakStruk" style="background:#f1f5f9;color:#475569;border:none;border-radius:14px;padding:12px;font-size:13px;cursor:pointer">🖨 Cetak</button>'+
+        '<button id="btnTutupStruk" style="background:transparent;color:#94a3b8;border:none;padding:8px;font-size:13px;cursor:pointer">Tutup</button>'+
+        '</div></div>';
+
+      document.body.appendChild(overlay);
+
+      // Tutup
+      overlay.querySelector('#btnTutupStruk').onclick = function(){ document.body.removeChild(overlay); };
+      overlay.onclick = function(e){ if(e.target===overlay) document.body.removeChild(overlay); };
+
+      // Simpan gambar
+      overlay.querySelector('#btnUnduhStruk').onclick = function(){
+        var a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = 'Kuitansi_SPP_'+santri.nama.replace(/\s+/g,'_')+'_'+labelBulan.replace(/\s+/g,'')+'.png';
+        a.click();
+      };
+
+      // Cetak
+      overlay.querySelector('#btnCetakStruk').onclick = function(){
+        var win = window.open('','_blank');
+        win.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Kuitansi SPP</title>'+
+          '<style>body{margin:0;display:flex;justify-content:center;align-items:flex-start;padding:8px}img{max-width:300px;width:100%}@media print{@page{margin:4mm;size:80mm auto}body{margin:0}}</style></head><body>'+
+          '<img src="'+dataUrl+'"><script>setTimeout(function(){window.print();window.close();},600);<\\/script></body></html>');
+        win.document.close();
+      };
+
+      // Kirim WA -- share gambar tidak bisa langsung via browser
+      // Cara terbaik: download gambar + buka WA, user attach manual
+      // Atau: gunakan Web Share API kalau tersedia
+      overlay.querySelector('#btnKirimWA').onclick = function(){
+        var noWA = noWaOrtu;
+        if (!noWA) {
+          noWA = prompt('Masukkan no. WA orang tua (contoh: 081234567890):','');
+          if (!noWA) return;
+        }
+        var noBersih = noWA.replace(/\D/g,'');
+        if (noBersih.startsWith('0')) noBersih = '62'+noBersih.slice(1);
+
+        // Coba Web Share API (support di Android Chrome & iOS Safari)
+        if (navigator.share && navigator.canShare) {
+          fetch(dataUrl).then(function(r){return r.blob();}).then(function(blob){
+            var file = new File([blob],'Kuitansi_SPP_'+santri.nama+'.png',{type:'image/png'});
+            if (navigator.canShare({files:[file]})) {
+              navigator.share({
+                title: 'Kuitansi SPP '+santri.nama,
+                text: 'Bukti pembayaran SPP '+labelBulan+' - '+namaSekolah,
+                files: [file]
+              }).catch(function(){});
+              return;
+            }
+            kirimFallback(noBersih);
+          }).catch(function(){ kirimFallback(noBersih); });
+        } else {
+          kirimFallback(noBersih);
+        }
+
+        function kirimFallback(no){
+          // Download gambar dulu lalu buka WA dengan pesan teks
+          var a = document.createElement('a');
+          a.href = dataUrl;
+          a.download = 'Kuitansi_SPP_'+santri.nama.replace(/\s+/g,'_')+'.png';
+          a.click();
+          setTimeout(function(){
+            var pesan = '✅ *Bukti Pembayaran SPP*\n'+namaSekolah+'\n\nNama: *'+santri.nama+'*\nKeterangan: SPP '+labelBulan+'\nNominal: *'+nominal+'*\nStatus: *LUNAS*\n\n_Gambar struk terlampir_';
+            window.open('https://wa.me/'+no+'?text='+encodeURIComponent(pesan),'_blank');
+          }, 800);
+        }
+      };
+    });
   }
 
+  function _rowStruk(label, val){
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f8fafc">'+
+      '<span style="color:#64748b;font-size:12px">'+label+'</span>'+
+      '<span style="font-size:12px;text-align:right;max-width:60%">'+val+'</span></div>';
+  }
   function renderSppSantri(containerId){
     var c = document.getElementById(containerId);
     c.innerHTML = '<p>Memuat data SPP...</p>';
@@ -4810,37 +5119,42 @@
       document.getElementById('btnKosongkanKantin').onclick = function(){ kantinCart = []; renderCart(); };
       document.getElementById('btnBayarKantin').onclick = function(){
         if (!kantinCart.length) return;
+        var totalBelanja = kantinCart.reduce(function(s,it){return s+(it.harga*it.jumlah);},0);
         api('getSantriUntukTransaksiKantin', {}).then(function(resSantri){
           if(!resSantri.ok){ alert(resSantri.error); return; }
           var daftarSantri = resSantri.data;
-          var fieldsHtml = fieldAutocomplete('ktSantri','Nama Santri', daftarSantri.map(function(s){return s.nisn+' - '+s.nama;}), '', 'Ketik nama/NISN santri...') +
+          var fieldsHtml =
+            fieldAutocomplete('ktSantri','Nama Santri', daftarSantri.map(function(s){return s.nisn+' - '+s.nama;}), '', 'Ketik nama/NISN santri...') +
+            '<div id="infoSaldoKasir" style="background:#f0fdf4;border-radius:8px;padding:8px 12px;font-size:13px;margin-bottom:8px;display:none">'+
+            '&#128176; Saldo: <b id="txtSaldoKasir">-</b> &nbsp;|&nbsp; Belanja: <b>Rp'+totalBelanja.toLocaleString('id-ID')+'</b></div>'+
+            '<div id="warnSaldoKasir" style="display:none;background:#fee2e2;color:#991b1b;border-radius:8px;padding:8px;font-size:13px;margin-bottom:8px"></div>'+
             '<label>PIN Transaksi Santri</label><input type="password" id="ktPin" placeholder="PIN">';
-          openModal('Konfirmasi Pembayaran', fieldsHtml, function(m){
+          var modal = openModal('Konfirmasi Pembayaran', fieldsHtml, function(m){
             var raw = m.querySelector('#ktSantri').value.trim();
             var found = daftarSantri.find(function(s){ return (s.nisn+' - '+s.nama) === raw; });
             if (!found) { alert('Pilih santri dari saran yang muncul saat mengetik.'); return false; }
+            if (found.saldo < totalBelanja) { alert('Saldo tidak cukup!\nSaldo: Rp'+found.saldo.toLocaleString('id-ID')+'\nBelanja: Rp'+totalBelanja.toLocaleString('id-ID')); return false; }
             var pin = m.querySelector('#ktPin').value.trim();
             if (!pin) { alert('PIN Transaksi wajib diisi.'); return false; }
-            api('prosesTransaksiKantin', {nisn: found.nisn, pinTransaksi: pin, pemilik: STATE.user.nama, noWaPemilik: STATE.user.noWa, items: kantinCart}).then(function(res){
-              if(!res.ok){ alert(res.error); return; }
-              // Tawari cetak struk
-              var konfirm = confirm(
-                '✅ Pembayaran berhasil!\n\n' +
-                'Santri: ' + res.namaSantri + '\n' +
-                'Total: Rp' + res.total.toLocaleString('id-ID') + '\n' +
-                'Sisa saldo: Rp' + res.saldoSekarang.toLocaleString('id-ID') + '\n\n' +
-                'Cetak struk sekarang?'
-              );
-              if (konfirm) {
-                cetakStrukKasir({
-                  namaSantri: res.namaSantri, namaPemilik: STATE.user.nama,
-                  items: kantinCart, total: res.total, saldoSekarang: res.saldoSekarang,
-                  tanggal: todayStr()
-                });
-              }
+            return api('prosesTransaksiKantin', {nisn: found.nisn, pinTransaksi: pin, pemilik: STATE.user.nama, noWaPemilik: STATE.user.noWa, items: kantinCart}).then(function(res){
+              if(!res.ok){ alert(res.error); throw new Error(res.error); }
+              var konfirm = confirm('✅ Berhasil!\nSantri: '+res.namaSantri+'\nTotal: Rp'+res.total.toLocaleString('id-ID')+'\nSisa saldo: Rp'+res.saldoSekarang.toLocaleString('id-ID')+'\n\nCetak struk?');
+              if (konfirm) cetakStrukKasir({namaSantri:res.namaSantri,namaPemilik:STATE.user.nama,items:kantinCart,total:res.total,saldoSekarang:res.saldoSekarang,tanggal:todayStr()});
               pemilikKasir();
             });
           });
+          // Tampilkan saldo santri saat dipilih
+          if (modal) {
+            var inp = modal.querySelector('#ktSantri');
+            if (inp) inp.addEventListener('change', function(){
+              var s = daftarSantri.find(function(x){return (x.nisn+' - '+x.nama)===inp.value.trim();});
+              var el=modal.querySelector('#infoSaldoKasir'), we=modal.querySelector('#warnSaldoKasir');
+              if(!s||!el){if(el)el.style.display='none';return;}
+              modal.querySelector('#txtSaldoKasir').textContent='Rp'+s.saldo.toLocaleString('id-ID');
+              el.style.display='block';
+              if(we){if(s.saldo<totalBelanja){we.style.display='block';we.textContent='⚠️ Saldo kurang! Kekurangan Rp'+(totalBelanja-s.saldo).toLocaleString('id-ID');el.style.background='#fee2e2';}else{we.style.display='none';el.style.background='#f0fdf4';}}
+            });
+          }
         });
       };
       renderCart();
