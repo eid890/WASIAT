@@ -271,7 +271,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbx4fElfj52soVA41NK2gM48ot9dIGguRxm0xgeby0mNwbzSJ3iXwErkc6KSjAZfcWIS/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -3855,52 +3855,19 @@
     // Buat gambar struk via Canvas
     function buatGambarStruk(callback){
       var W = 600, pad = 36;
-      var baris = [
-        {t:'pesantren', v: namaSekolah},
-        {t:'judul', v: 'BUKTI PEMBAYARAN SPP'},
-        {t:'gap'},
-        {t:'nominal', v: nominal},
-        {t:'status', v: 'LUNAS'},
-        {t:'gap'},
-        {t:'row', l:'Tanggal', v: tgl+' '+jam},
-        {t:'row', l:'No. Referensi', v: noRef},
-        {t:'sep'},
-        {t:'row', l:'Nama Santri', v: santri.nama},
-        {t:'row', l:'NISN', v: santri.nisn},
-        {t:'row', l:'Keterangan', v: 'SPP '+labelBulan},
-        {t:'sep'},
-        {t:'row', l:'Status Pembayaran', v:'LUNAS ✓'},
-        {t:'gap'},
-        {t:'footer', v: 'Terima kasih telah membayar tepat waktu'},
-        {t:'footer2', v: noRef+' • WASIAT '+namaSekolah},
-      ];
-
-      // Hitung tinggi canvas dulu
       var canvas = document.createElement('canvas');
       canvas.width = W;
-      var ctx = canvas.getContext('2d');
-      var y = 0, lineH = 44;
-      baris.forEach(function(b){
-        if(b.t==='pesantren') y+=70;
-        else if(b.t==='judul') y+=36;
-        else if(b.t==='nominal') y+=80;
-        else if(b.t==='status') y+=44;
-        else if(b.t==='gap') y+=20;
-        else if(b.t==='sep') y+=24;
-        else if(b.t==='row') y+=lineH;
-        else if(b.t==='footer') y+=32;
-        else if(b.t==='footer2') y+=28;
-      });
-      var H = y + 60;
+      // Hitung tinggi
+      var H = 520;
       canvas.height = H;
-      ctx = canvas.getContext('2d');
+      var ctx = canvas.getContext('2d');
 
       // Background putih
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0,0,W,H);
 
       // Header gradient
-      var grad = ctx.createLinearGradient(0,0,W,90);
+      var grad = ctx.createLinearGradient(0,0,W,100);
       grad.addColorStop(0,'#0d9488');
       grad.addColorStop(1,'#0891b2');
       ctx.fillStyle = grad;
@@ -3908,17 +3875,17 @@
       ctx.moveTo(0,0); ctx.lineTo(W,0); ctx.lineTo(W,90); ctx.lineTo(0,90);
       ctx.fill();
 
-      // Garis bergelombang di bawah header (efek khas struk)
+      // Garis bergelombang
       ctx.beginPath();
       ctx.moveTo(0,90);
-      for(var x=0;x<W;x+=20){
-        ctx.quadraticCurveTo(x+10,80,x+20,90);
+      for(var xi=0;xi<=W;xi+=20){
+        ctx.quadraticCurveTo(xi+10,80,xi+20,90);
       }
       ctx.lineTo(W,H); ctx.lineTo(0,H); ctx.closePath();
       ctx.fillStyle='#ffffff';
       ctx.fill();
 
-      var cy = 30;
+      var cy = 20;
       function txt(str,x,sy,size,color,align,bold){
         ctx.font=(bold?'bold ':'')+size+'px Arial, sans-serif';
         ctx.fillStyle=color||'#1e293b';
@@ -3944,69 +3911,116 @@
         ctx.stroke();
       }
 
-      // Nama pesantren di header (putih)
-      txt(namaSekolah, W/2, cy+18, 17, '#ffffff', 'center', true); cy+=40;
-      txt('BUKTI PEMBAYARAN SPP', W/2, cy, 13, 'rgba(255,255,255,.85)', 'center', false); cy+=15;
+      function renderIsiStruk(){
+        cy = 108;
+        // Nominal besar
+        txt('NOMINAL PEMBAYARAN', W/2, cy+20, 11, '#94a3b8', 'center', false); cy+=28;
+        txt(nominal, W/2, cy+46, 46, '#0d9488', 'center', true); cy+=60;
 
-      // Garis bergelombang buffer
-      cy = 108;
+        // Badge LUNAS
+        var bw=120, bh=34, bx=(W-bw)/2;
+        ctx.fillStyle='#f0fdf4';
+        _roundRect(ctx,bx,cy,bw,bh,8);
+        ctx.fillStyle='#16a34a';
+        ctx.font='bold 14px Arial';
+        ctx.textAlign='center';
+        ctx.fillText('\u2713  LUNAS',W/2,cy+22);
+        ctx.textAlign='left';
+        cy+=50;
 
-      // Nominal besar
-      txt('NOMINAL PEMBAYARAN', W/2, cy+20, 11, '#94a3b8', 'center', false); cy+=28;
-      txt(nominal, W/2, cy+46, 46, '#0d9488', 'center', true); cy+=60;
+        dashedLine(cy); cy+=20;
 
-      // Badge LUNAS
-      var bw=120, bh=34, bx=(W-bw)/2;
-      ctx.fillStyle='#f0fdf4';
-      _roundRect(ctx,bx,cy,bw,bh,8);
-      ctx.fillStyle='#16a34a';
-      ctx.font='bold 14px Arial';
-      ctx.textAlign='center';
-      ctx.fillText('✓  LUNAS',W/2,cy+22);
-      ctx.textAlign='left';
-      cy+=50;
-
-      dashedLine(cy); cy+=20;
-
-      // Baris data
-      function rowData(label,val){
-        txt(label,pad,cy+20,12,'#64748b');
-        // Wrap val jika panjang
-        if(val.length>28){
-          txt(val.substring(0,28),W-pad,cy+12,12,'#1e293b','right',true);
-          txt(val.substring(28),W-pad,cy+26,12,'#1e293b','right',true);
-          cy+=44;
-        } else {
-          txt(val,W-pad,cy+20,13,'#1e293b','right',true);
-          cy+=lineH;
+        function rowData(label,val){
+          txt(label,pad,cy+20,12,'#64748b');
+          if(val.length>28){
+            txt(val.substring(0,28),W-pad,cy+12,12,'#1e293b','right',true);
+            txt(val.substring(28),W-pad,cy+26,12,'#1e293b','right',true);
+            cy+=44;
+          } else {
+            txt(val,W-pad,cy+20,13,'#1e293b','right',true);
+            cy+=44;
+          }
+          solidLine(cy-8);
         }
-        solidLine(cy-8);
+
+        rowData('Tanggal Bayar', tgl+' '+jam);
+        rowData('No. Referensi', noRef);
+        dashedLine(cy); cy+=16;
+        rowData('Nama Santri', santri.nama);
+        rowData('NISN', santri.nisn);
+        rowData('Keterangan', 'SPP '+labelBulan);
+        dashedLine(cy); cy+=16;
+        rowData('Status Pembayaran', 'LUNAS \u2713');
+
+        cy+=16;
+        txt('Terima kasih telah membayar tepat waktu', W/2, cy+16, 11, '#94a3b8', 'center');
+        cy+=28;
+        txt(noRef+' \u2022 WASIAT', W/2, cy, 10, '#cbd5e1', 'center');
+        ctx.font='bold 11px Arial';
+        ctx.fillStyle='#e2e8f0';
+        ctx.textAlign='right';
+        ctx.fillText('WASIAT \u00A9 '+namaSekolah, W-pad, H-12);
+        ctx.textAlign='left';
+
+        callback(canvas.toDataURL('image/png'));
       }
 
-      rowData('Tanggal Bayar', tgl+' '+jam);
-      rowData('No. Referensi', noRef);
-      dashedLine(cy); cy+=16;
-      rowData('Nama Santri', santri.nama);
-      rowData('NISN', santri.nisn);
-      rowData('Keterangan', 'SPP '+labelBulan);
-      dashedLine(cy); cy+=16;
-      rowData('Status Pembayaran', 'LUNAS ✓');
+      // Render header + logo
+      var logoUrl = STATE.pengaturan && STATE.pengaturan.LogoURL ? STATE.pengaturan.LogoURL : '';
 
-      cy+=16;
-      // Footer
-      txt('Terima kasih telah membayar tepat waktu', W/2, cy+16, 11, '#94a3b8', 'center');
-      cy+=28;
-      txt(noRef+' • WASIAT', W/2, cy, 10, '#cbd5e1', 'center');
+      function renderHeader(logoImg){
+        // Teks subtitle kecil
+        ctx.fillStyle='rgba(255,255,255,0.75)';
+        ctx.font='10px Arial';
+        ctx.textAlign='center';
+        ctx.fillText('BUKTI PEMBAYARAN SPP', W/2, 20);
 
-      // Logo/watermark pojok kanan bawah
-      ctx.font='bold 11px Arial';
-      ctx.fillStyle='#e2e8f0';
-      ctx.textAlign='right';
-      ctx.fillText('WASIAT © '+namaSekolah, W-pad, H-12);
-      ctx.textAlign='left';
+        if (logoImg) {
+          // Gambar logo bulat di tengah header
+          var lSize = 44;
+          var lx = (W - lSize) / 2, ly = 24;
+          // Lingkaran putih transparan di belakang logo
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(W/2, ly+lSize/2, lSize/2+4, 0, Math.PI*2);
+          ctx.fillStyle='rgba(255,255,255,0.2)';
+          ctx.fill();
+          // Clip lingkaran untuk logo
+          ctx.beginPath();
+          ctx.arc(W/2, ly+lSize/2, lSize/2, 0, Math.PI*2);
+          ctx.clip();
+          var ratio = logoImg.naturalWidth/logoImg.naturalHeight;
+          var lw = ratio>=1 ? lSize : lSize*ratio;
+          var lh = ratio>=1 ? lSize/ratio : lSize;
+          ctx.drawImage(logoImg, (W-lw)/2, ly+(lSize-lh)/2, lw, lh);
+          ctx.restore();
+          // Nama pesantren di bawah logo
+          ctx.fillStyle='#ffffff';
+          ctx.font='bold 13px Arial';
+          ctx.textAlign='center';
+          ctx.fillText(namaSekolah, W/2, ly+lSize+16);
+        } else {
+          // Tanpa logo -- nama pesantren lebih besar di tengah
+          ctx.fillStyle='#ffffff';
+          ctx.font='bold 16px Arial';
+          ctx.textAlign='center';
+          ctx.fillText(namaSekolah, W/2, 52);
+        }
+        ctx.textAlign='left';
+        renderIsiStruk();
+      }
 
-      callback(canvas.toDataURL('image/png'));
+      if (logoUrl) {
+        var img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = function(){ renderHeader(img); };
+        img.onerror = function(){ renderHeader(null); };
+        img.src = logoUrl;
+      } else {
+        renderHeader(null);
+      }
     }
+
 
     function _roundRect(ctx,x,y,w,h,r){
       ctx.beginPath();
@@ -4030,13 +4044,13 @@
         '</div>'+
         // Tombol aksi
         '<div style="padding:16px;display:flex;flex-direction:column;gap:10px">'+
-        (noWaOrtu?
-          '<button id="btnKirimWA" style="background:#25D366;color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px">'+
-          '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>'+
-          'Kirim ke WA Orang Tua</button>'
-          :
-          '<button id="btnKirimWA" style="background:#25D366;color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:700;cursor:pointer">📲 Kirim ke WA (input no. HP)</button>'
-        )+
+        // Tombol Bagikan -- seperti mobile banking
+        '<button id="btnBagikanStruk" style="background:#25D366;color:#fff;border:none;border-radius:14px;padding:14px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;width:100%">'+
+        '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>'+
+        '&nbsp;Bagikan Struk</button>'+
+        '<button id="btnKirimWA" style="background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:14px;padding:11px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;width:100%">'+
+        '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>'+
+        '&nbsp;Langsung ke WA'+(noWaOrtu?' ('+noWaOrtu+')':' (input no.)')+'</button>'+
         '<button id="btnUnduhStruk" style="background:#0d9488;color:#fff;border:none;border-radius:14px;padding:13px;font-size:14px;font-weight:600;cursor:pointer">⬇️ Simpan Gambar</button>'+
         '<button id="btnCetakStruk" style="background:#f1f5f9;color:#475569;border:none;border-radius:14px;padding:12px;font-size:13px;cursor:pointer">🖨 Cetak</button>'+
         '<button id="btnTutupStruk" style="background:transparent;color:#94a3b8;border:none;padding:8px;font-size:13px;cursor:pointer">Tutup</button>'+
@@ -4068,43 +4082,87 @@
       // Kirim WA -- share gambar tidak bisa langsung via browser
       // Cara terbaik: download gambar + buka WA, user attach manual
       // Atau: gunakan Web Share API kalau tersedia
+      // Tombol BAGIKAN -- Web Share API (seperti mobile banking)
+      overlay.querySelector('#btnBagikanStruk').onclick = function(){
+        if (!navigator.share) {
+          // Fallback: unduh gambar
+          alert('Browser ini tidak mendukung fitur Bagikan. Gunakan tombol Simpan Gambar lalu kirim manual.');
+          return;
+        }
+        fetch(dataUrl)
+          .then(function(r){ return r.blob(); })
+          .then(function(blob){
+            var namaFile = 'Struk_SPP_'+santri.nama.replace(/\s+/g,'_')+'_'+labelBulan.replace(/\s+/g,'')+'.png';
+            var file = new File([blob], namaFile, {type:'image/png'});
+            var canShareFile = navigator.canShare && navigator.canShare({files:[file]});
+            return navigator.share(
+              canShareFile
+                ? { title:'Struk SPP - '+santri.nama, files:[file] }
+                : { title:'Struk SPP - '+santri.nama,
+                    text:'✅ Bukti pembayaran SPP '+labelBulan+' sebesar '+nominal+' atas nama *'+santri.nama+'* telah diterima. Terima kasih 🙏' }
+            );
+          })
+          .catch(function(err){
+            if (err && err.name !== 'AbortError') {
+              // Gagal share file, coba teks saja
+              navigator.share({
+                title: 'Struk SPP - '+santri.nama,
+                text: '✅ Bukti pembayaran SPP '+labelBulan+' sebesar '+nominal+' atas nama *'+santri.nama+'* telah diterima. Terima kasih 🙏'
+              }).catch(function(){});
+            }
+          });
+      };
+
       overlay.querySelector('#btnKirimWA').onclick = function(){
         var noWA = noWaOrtu;
-        if (!noWA) {
-          noWA = prompt('Masukkan no. WA orang tua (contoh: 081234567890):','');
-          if (!noWA) return;
-        }
-        var noBersih = noWA.replace(/\D/g,'');
-        if (noBersih.startsWith('0')) noBersih = '62'+noBersih.slice(1);
 
-        // Coba Web Share API (support di Android Chrome & iOS Safari)
-        if (navigator.share && navigator.canShare) {
-          fetch(dataUrl).then(function(r){return r.blob();}).then(function(blob){
-            var file = new File([blob],'Kuitansi_SPP_'+santri.nama+'.png',{type:'image/png'});
-            if (navigator.canShare({files:[file]})) {
-              navigator.share({
-                title: 'Kuitansi SPP '+santri.nama,
-                text: 'Bukti pembayaran SPP '+labelBulan+' - '+namaSekolah,
+        // Web Share API -- share gambar langsung ke aplikasi manapun (WA, Telegram, dll)
+        // Seperti tombol "Bagikan" di mobile banking
+        if (navigator.share) {
+          fetch(dataUrl)
+            .then(function(r){ return r.blob(); })
+            .then(function(blob){
+              var file = new File([blob], 'Struk_SPP_'+santri.nama.replace(/\s+/g,'_')+'.png', {type:'image/png'});
+              var shareData = {
+                title: 'Bukti Pembayaran SPP - '+santri.nama,
+                text: '✅ Bukti pembayaran SPP '+labelBulan+' sebesar '+nominal+' telah diterima. Terima kasih 🙏',
                 files: [file]
-              }).catch(function(){});
-              return;
-            }
-            kirimFallback(noBersih);
-          }).catch(function(){ kirimFallback(noBersih); });
+              };
+              // Cek apakah file bisa di-share
+              if (navigator.canShare && navigator.canShare(shareData)) {
+                return navigator.share(shareData);
+              }
+              // Kalau file tidak bisa, share teks saja
+              return navigator.share({
+                title: 'Bukti Pembayaran SPP - '+santri.nama,
+                text: '✅ Bukti pembayaran SPP '+labelBulan+' sebesar '+nominal+' telah diterima. Terima kasih 🙏',
+                url: 'https://wa.me/'+(noWA?noWA.replace(/\D/g,'').replace(/^0/,'62'):'')
+              });
+            })
+            .catch(function(err){
+              // User cancel atau browser tidak support -- fallback ke wa.me
+              if (err && err.name !== 'AbortError') bukaWALink(noWA);
+            });
         } else {
-          kirimFallback(noBersih);
+          // Browser tidak support Web Share API -- buka wa.me langsung
+          bukaWALink(noWA);
         }
 
-        function kirimFallback(no){
-          // Download gambar dulu lalu buka WA dengan pesan teks
-          var a = document.createElement('a');
-          a.href = dataUrl;
-          a.download = 'Kuitansi_SPP_'+santri.nama.replace(/\s+/g,'_')+'.png';
-          a.click();
-          setTimeout(function(){
-            var pesan = '✅ *Bukti Pembayaran SPP*\n'+namaSekolah+'\n\nNama: *'+santri.nama+'*\nKeterangan: SPP '+labelBulan+'\nNominal: *'+nominal+'*\nStatus: *LUNAS*\n\n_Gambar struk terlampir_';
-            window.open('https://wa.me/'+no+'?text='+encodeURIComponent(pesan),'_blank');
-          }, 800);
+        function bukaWALink(no){
+          if (!no) {
+            no = prompt('Masukkan no. WA orang tua (contoh: 081234567890):','');
+            if (!no) return;
+          }
+          var noBersih = no.replace(/\D/g,'');
+          if (noBersih.startsWith('0')) noBersih = '62'+noBersih.slice(1);
+          var pesan = '✅ *Bukti Pembayaran SPP*\n'+namaSekolah+
+            '\n\n👤 *'+santri.nama+'*'+
+            '\n📚 SPP '+labelBulan+
+            '\n💰 *'+nominal+'*'+
+            '\n✔️ Status: *LUNAS*'+
+            '\n📅 '+tgl+' · 🔖 '+noRef+
+            '\n\n_Terima kasih atas kepercayaan Anda_ 🙏';
+          window.open('https://wa.me/'+noBersih+'?text='+encodeURIComponent(pesan),'_blank');
         }
       };
     });
