@@ -271,7 +271,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbywXKk2gSXksimMF3_SoP5JkY8PTlBrscsrOGecby8xALgft86IeQNeBCnHo53kYIlO/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -1051,8 +1051,9 @@
       // Bendahara
       dasbor:bendDasbor, transaksi:bendTransaksi, tarikkasir:bendTarikSaldoSantri,
       bku:bendBKU, laporan:bendLaporan, pendapatan:bendPendapatanPondok,
-      anggaran:bendAnggaran, spp:function(){renderSppSantri('main-content');},
-      persetujuan:function(){renderPersetujuanSaldo('main-content');},
+      anggaran:bendAnggaran,
+      spp:function(){ renderSppSantri(STATE._contentId||'db-content'); },
+      persetujuan:function(){ renderPersetujuanSaldo(STATE._contentId||'db-content'); },
       pengaturan:bendPengaturanKantin, tarif:bendTarif, kategori:bendKategori,
       // Pemilik Barang
       kasir:pemilikKasir, riwayat:pemilikRiwayat, omzet:pemilikOmzet,
@@ -3776,7 +3777,8 @@
 
   // ---------------- PERSETUJUAN SALDO (dipakai Bendahara & Admin/Mudir) ----------------
   function renderPersetujuanSaldo(containerId){
-    var c = document.getElementById(containerId);
+    var c = document.getElementById(containerId || STATE._contentId || 'db-content');
+    if (!c) { console.error('renderPersetujuanSaldo: container tidak ditemukan:', containerId); return; }
     c.innerHTML = '<p>Memuat...</p>';
     Promise.all([api('getSemuaPengajuanTarik', {hanyaPending:true}), api('getSemuaPengajuanTopUp', {hanyaPending:true})]).then(function(hasil){
       var resTarik = hasil[0], resTopUp = hasil[1];
@@ -4114,7 +4116,8 @@
       '<span style="font-size:12px;text-align:right;max-width:60%">'+val+'</span></div>';
   }
   function renderSppSantri(containerId){
-    var c = document.getElementById(containerId);
+    var c = document.getElementById(containerId || STATE._contentId || 'db-content');
+    if (!c) { console.error('renderSppSantri: container tidak ditemukan:', containerId); return; }
     c.innerHTML = '<p>Memuat data SPP...</p>';
     // Cek apakah ini dashboard Bendahara (tampilkan tab tambahan)
     var userRoles = STATE.user.roles || [STATE.user.level];
@@ -4138,7 +4141,34 @@
       });
       var pct = totalDue>0 ? Math.round((totalPaid/totalDue)*100) : 0;
 
-      var html = '<div class="card"><h3>SPP Santri</h3>' +
+      // Tab navigasi SPP
+      var sppTabAktif = 'ringkasan';
+      function renderSppTab(tab){
+        sppTabAktif = tab;
+        var tabs = ['ringkasan','tunggakan','tabel','import','biaya'];
+        tabs.forEach(function(t){
+          var el = document.getElementById('sppTab_'+t);
+          if(el) el.style.cssText = t===tab ?
+            'background:#0d9488;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap' :
+            'background:#f1f5f9;color:#475569;border:none;border-radius:8px;padding:8px 14px;font-size:12px;cursor:pointer;white-space:nowrap';
+        });
+        var seksi = ['ringkasan','tunggakan','tabel','import','biaya'];
+        seksi.forEach(function(s){
+          var el = document.getElementById('sppSeksi_'+s);
+          if(el) el.style.display = s===tab ? '' : 'none';
+        });
+      }
+
+      var html = '<div class="card" style="padding:12px">' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">' +
+        '<button id="sppTab_ringkasan" onclick="arguments[0].stopPropagation()">&#128200; Ringkasan</button>' +
+        (isBendahara ? '<button id="sppTab_tunggakan" onclick="arguments[0].stopPropagation()">&#9888;&#65039; Tunggakan</button>' : '') +
+        '<button id="sppTab_tabel" onclick="arguments[0].stopPropagation()">&#128204; Tabel 36 Bulan</button>' +
+        (isBendahara ? '<button id="sppTab_import" onclick="arguments[0].stopPropagation()">&#128196; Import Data</button>' : '') +
+        (isBendahara ? '<button id="sppTab_biaya" onclick="arguments[0].stopPropagation()">&#9881;&#65039; Atur Biaya</button>' : '') +
+        '</div></div>' +
+
+        '<div id="sppSeksi_ringkasan"><div class="card"><h3>SPP Santri</h3>' +
         warnBox('Klik sel bulan pada tabel untuk menandai LUNAS / batalkan. WA konfirmasi otomatis terkirim ke wali santri.') +
         '<div class="ringkasan-grid" style="margin-top:10px">' +
         '<div class="ringkasan-tile warna-hijau"><div class="ico">&#128101;</div><div class="nilai">'+totalSantri+'</div><div class="label">Terdaftar SPP</div></div>' +
@@ -4148,8 +4178,9 @@
         '</div></div>';
 
       // Panel tunggakan dengan kirim WA (khusus Bendahara/Admin/Mudir)
+      html += '</div>'; // tutup sppSeksi_ringkasan
       if (isBendahara && tunggakan.length) {
-        html += '<div class="card"><h3>&#9888;&#65039; Daftar Santri Menunggak</h3>' +
+        html += '<div id="sppSeksi_tunggakan" style="display:none"><div class="card"><h3>&#9888;&#65039; Daftar Santri Menunggak</h3>' +
           '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">' +
           '<input id="cariTunggakan" placeholder="Cari nama..." style="flex:1;padding:8px;border:1px solid #cbd5e1;border-radius:8px">' +
           '<button class="secondary small" id="btnKirimWASemuaTunggak">&#128242; Kirim WA ke Semua Menunggak</button>' +
@@ -4166,17 +4197,21 @@
           }).join('')+'</table></div></div>';
       }
 
-      // Form Atur Biaya + Import + Tabel 36 bulan (sudah ada sebelumnya, tetap ada)
-      html += '<div class="card"><h3>Import Data SPP Massal (dari Excel/Sistem Lama)</h3>' +
-        warnBox('Santri dicocokkan berdasarkan NAMA. Format: ID, NAMA, NoHP, BiayaSPP, TahunMasuk, 36 kolom bulan — atau format ringkas: NAMA, BiayaSPP, 36 kolom bulan.') +
+      // Form Import + Biaya + Tabel 36 bulan dalam seksi masing-masing
+      html += '</div>'; // tutup sppSeksi_tunggakan (kalau ada)
+      html += '<div id="sppSeksi_import" style="display:none"><div class="card"><h3>Import Data SPP Massal (dari Excel/Sistem Lama)</h3>' +
+        warnBox('Format: NAMA, Biaya SPP, 36 kolom bulan (kosong = belum bayar, "L" = Lunas). Nama santri harus sama persis dengan data di sistem.') +
+        '<button id="btnUnduhTemplateSpp" class="secondary small" style="margin-bottom:8px">&#128196; Unduh Template Excel SPP</button><br>' +
         '<textarea id="sppImportTextarea" rows="4" placeholder="Tempel data di sini (hasil copy dari Excel, dipisah TAB)..." style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-family:monospace;font-size:11.5px;resize:vertical"></textarea>' +
         '<button id="btnImportSpp" style="margin-top:8px">Import / Perbarui Data</button><div id="pesanImportSpp"></div></div>' +
+        '</div>'; // tutup sppSeksi_import
 
-        '<div class="card"><h3>Atur Biaya SPP Santri</h3>' +
+      html += '<div id="sppSeksi_biaya" style="display:none"><div class="card"><h3>Atur Biaya SPP Santri</h3>' +
         '<div class="grid2">' + fieldAutocomplete('sppNisnBiaya','Nama Santri', daftarSantri.map(function(s){return s.nisn+' - '+s.nama;}), '', 'Ketik nama santri...') + fieldText('sppBiayaInput','Biaya SPP per Bulan (Rp)', '') + '</div>' +
         '<button id="btnSimpanBiayaSpp">Simpan Biaya SPP</button><div id="pesanBiayaSpp"></div></div>' +
+        '</div>'; // tutup sppSeksi_biaya
 
-        '<div class="card"><h3>Tabel Pembayaran (36 Bulan)</h3>'+
+      html += '<div id="sppSeksi_tabel"><div class="card"><h3>Tabel Pembayaran (36 Bulan)</h3>'+
         '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'+
         '<input id="cariSppTabel" placeholder="&#128269; Cari nama santri..." style="flex:1;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px">'+
         '<select id="filterSppStatus" style="padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px">'+
@@ -4186,8 +4221,17 @@
         '</select>'+
         '<button id="btnExportSppExcel" class="secondary">&#128196; Export Excel</button>'+
         '</div>'+
-        '<div id="sppTableWrap" style="overflow-x:auto"></div></div>';
+        '<div id="sppTableWrap" style="overflow-x:auto"></div></div>' +
+        '</div>'; // tutup sppSeksi_tabel
+
       c.innerHTML = html;
+
+      // Binding tab navigasi SPP
+      ['ringkasan','tunggakan','tabel','import','biaya'].forEach(function(tab){
+        var el = document.getElementById('sppTab_'+tab);
+        if (el) el.onclick = function(){ renderSppTab(tab); };
+      });
+      renderSppTab('ringkasan'); // aktifkan tab pertama
 
       // Binding tunggakan
       if (isBendahara && tunggakan.length) {
@@ -4220,20 +4264,107 @@
       }
 
       // Import massal
+      // Unduh template Excel SPP
+      var btnTplSpp = document.getElementById('btnUnduhTemplateSpp');
+      if (btnTplSpp) btnTplSpp.onclick = function(){
+        var header = ['Nama Santri','Biaya SPP'];
+        for (var mi=1;mi<=36;mi++) header.push('Bulan '+mi);
+        var contoh = ['Contoh Nama Santri', 250000];
+        for (var mi=1;mi<=36;mi++) contoh.push('');
+        var ws = XLSX.utils.aoa_to_sheet([header, contoh]);
+        var wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Template SPP');
+        XLSX.writeFile(wb, 'Template_Import_SPP.xlsx');
+      };
+
       document.getElementById('btnImportSpp').onclick = function(){
         var tsv = document.getElementById('sppImportTextarea').value;
         var toast = document.getElementById('pesanImportSpp');
         if (!tsv.trim()) { toast.innerHTML = errBox('Tempel data terlebih dahulu.'); return; }
-        var btn = document.getElementById('btnImportSpp'); btn.disabled = true; btn.textContent = 'Mengimpor...';
-        toast.innerHTML = '<p class="muted">Memproses...</p>';
-        api('importSpp', {tsv: tsv}).then(function(r){
+        var btn = document.getElementById('btnImportSpp');
+        btn.disabled = true; btn.textContent = 'Mencocokkan data...';
+        toast.innerHTML = '<p class="muted">Mencocokkan dengan database santri...</p>';
+
+        // LANGKAH 1: Minta preview dulu (belum simpan)
+        api('importSpp', {tsv: tsv, konfirmasi: false}).then(function(r){
           btn.disabled = false; btn.textContent = 'Import / Perbarui Data';
           if(!r.ok){ toast.innerHTML = errBox(r.error); return; }
-          var pesan = 'Berhasil: <b>'+r.ditambah+'</b> ditambahkan, <b>'+r.diperbarui+'</b> diperbarui.';
-          if (r.dilewati > 0) pesan += '<br><b>'+r.dilewati+'</b> dilewati: '+r.alasanDilewati.map(esc).join('; ');
-          toast.innerHTML = '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;font-size:13px">'+pesan+'</div>';
-          document.getElementById('sppImportTextarea').value = '';
-          renderSppSantri(containerId);
+
+          var prev = r.preview || [];
+          var tidakCocok = r.tidakCocok || [];
+          var duplikat = r.duplikatNama || [];
+
+          // Tampilkan preview -- user lihat sebelum simpan
+          var html = '<div style="margin-top:10px">';
+
+          // Tabel santri yang berhasil dicocokkan
+          if (prev.length) {
+            html += '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;margin-bottom:8px">'+
+              '<b>✅ '+prev.length+' santri berhasil dicocokkan dengan database:</b>'+
+              '<div style="overflow-x:auto;margin-top:8px"><table style="font-size:12px;width:100%">'+
+              '<tr style="background:#dcfce7"><th>Nama (Database)</th><th>NISN</th><th>Biaya</th><th>Lunas</th><th>Cocok via</th><th>Status SPP</th></tr>'+
+              prev.map(function(s){
+                var via = s.statusCocok==='nisn'?'NISN':s.statusCocok==='nama'?'Nama':s.statusCocok==='nama_fuzzy'?'⚠️ Nama Mirip':'?';
+                var stat = s.sudahAdaSpp ? '🔄 Update' : '➕ Baru';
+                return '<tr><td>'+esc(s.nama)+'</td><td style="font-size:11px">'+esc(s.nisn)+'</td>'+
+                  '<td>Rp'+Number(s.biaya).toLocaleString('id-ID')+'</td>'+
+                  '<td style="text-align:center">'+s.jumlahLunas+'/36</td>'+
+                  '<td>'+via+'</td><td>'+stat+'</td></tr>';
+              }).join('')+
+              '</table></div></div>';
+          }
+
+          // Santri tidak ditemukan di database
+          if (tidakCocok.length) {
+            html += '<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px;margin-bottom:8px">'+
+              '<b>⚠️ '+tidakCocok.length+' baris tidak ditemukan di database santri (tidak akan diimpor):</b><ul style="margin:4px 0 0;font-size:12px">'+
+              tidakCocok.map(function(t){ return '<li>Baris '+t.baris+': <b>'+esc(t.nama)+'</b> (NISN: '+esc(t.nisn)+')</li>'; }).join('')+
+              '</ul><p style="font-size:11px;color:#92400e;margin:4px 0 0">Pastikan nama/NISN sama persis dengan data di sheet Santri, atau tambahkan santri dulu via menu Admin → Data Santri.</p></div>';
+          }
+
+          // Nama duplikat
+          if (duplikat.length) {
+            html += '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px;margin-bottom:8px">'+
+              '<b>❌ '+duplikat.length+' baris nama duplikat (ada >1 santri dengan nama sama, tidak diimpor):</b><ul style="font-size:12px">'+
+              duplikat.map(function(d){ return '<li>Baris '+d.baris+': <b>'+esc(d.nama)+'</b> — atur manual di tabel SPP.</li>'; }).join('')+
+              '</ul></div>';
+          }
+
+          if (!prev.length) {
+            html += errBox('Tidak ada data yang bisa dicocokkan. Periksa format data Anda.');
+            toast.innerHTML = html + '</div>';
+            return;
+          }
+
+          // Tombol konfirmasi simpan
+          html += '<div style="display:flex;gap:8px;margin-top:4px">'+
+            '<button id="btnKonfirmasiImportSpp" style="background:#0d9488;color:#fff;border:none;border-radius:10px;padding:10px 20px;font-size:14px;font-weight:600;cursor:pointer">'+
+            '✅ Simpan '+prev.length+' Data ke Database</button>'+
+            '<button id="btnBatalImportSpp" style="background:#f1f5f9;color:#475569;border:none;border-radius:10px;padding:10px 16px;font-size:13px;cursor:pointer">Batal</button>'+
+            '</div>';
+          html += '</div>';
+          toast.innerHTML = html;
+
+          // Batal
+          document.getElementById('btnBatalImportSpp').onclick = function(){
+            toast.innerHTML = '';
+          };
+
+          // Konfirmasi simpan
+          document.getElementById('btnKonfirmasiImportSpp').onclick = function(){
+            var btnK = document.getElementById('btnKonfirmasiImportSpp');
+            btnK.disabled = true; btnK.textContent = 'Menyimpan...';
+            api('importSpp', {tsv: tsv, konfirmasi: true}).then(function(r2){
+              if(!r2.ok){ toast.innerHTML = errBox(r2.error); return; }
+              toast.innerHTML = '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px">'+
+                '<b>✅ Import selesai!</b><br>'+
+                'Ditambahkan: <b>'+r2.ditambah+'</b> &nbsp;|&nbsp; Diperbarui: <b>'+r2.diperbarui+'</b>'+
+                (r2.dilewati > 0 ? ' &nbsp;|&nbsp; Dilewati: <b>'+r2.dilewati+'</b>' : '')+
+                '</div>';
+              document.getElementById('sppImportTextarea').value = '';
+              renderSppSantri(containerId);
+            });
+          };
         });
       };
 
