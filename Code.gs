@@ -86,7 +86,7 @@ const SHEET_FITUR_BERANDA   = 'FiturBeranda'; // hanya di Master -- Program Ungg
 const PELANGGARAN_AKTIF_KEY = 'PELANGGARAN_SS_AKTIF_ID';
 
 const HARI_LIST = ['Minggu','Senin','Selasa','Rabu','Kamis',"Jum'at",'Sabtu'];
-const STATUS_LIST = ['Hadir','Sakit','Izin','Alpa'];
+const STATUS_LIST = ['Hadir','Sakit','Izin','Izin Pulang','Alpa'];
 const JENIS_HAFALAN_SETOR = ['Sabaq','Sabqi','Manzil','Murojaah','Tahsin'];
 const JENIS_HAFALAN_NONSETOR = ['Tidak Setor','Izin','Sakit','Ghaib'];
 // Untuk rekap kehadiran halaqoh: jenis-jenis ini dianggap HADIR (termasuk "Tidak Setor",
@@ -339,7 +339,19 @@ function route(action, p) {
     case 'deleteKelompokMapel': return apiDeleteKelompokMapel(p);
     case 'getRaporSantriLengkap': return {ok:true, data: getRaporSantriLengkap(p.nisn, p.kelas)};
     case 'cekSesiAktif': return apiCekSesiAktif(p);
-    case 'getDaftarKelas': return {ok:true, data: getDaftarKelasAktif()};
+    case 'getDaftarSpreadsheet': return apiGetDaftarSpreadsheet();
+    case 'getSantriHarian': return apiGetSantriHarian(p);
+    case 'submitAbsensiHarian': return apiSubmitAbsensiHarian(p);
+    case 'getRekapAbsensiHarian': return apiGetRekapAbsensiHarian(p);
+    case 'getStatusPondok': return apiGetStatusPondok(p);
+    // Perizinan santri
+    case 'ajukanIzin':          return apiAjukanIzin(p);
+    case 'getDaftarIzin':       return apiGetDaftarIzin(p);
+    case 'approveIzin':         return apiApproveIzin(p);
+    case 'tolakIzin':           return apiTolakIzin(p);
+    case 'konfirmasiKembali':   return apiKonfirmasiKembali(p);
+    case 'getIzinSantriSaya':   return apiGetIzinSantriSaya(p);
+    case 'catatPelanggaranPembina': return apiCatatPelanggaranPembina(p);
     case 'getRaporSantri': return {ok:true, data: getRaporSantri(p.nisn, p.tahunAjaranId)};
     case 'refreshRekapNilai': return apiRefreshRekapNilai();
 
@@ -2856,7 +2868,9 @@ function apiToggleSppBulan(p){
   for (var i=1;i<rows.length;i++){ if (norm(rows[i][0]) === nisn) { rowIdx = i+1; biayaBaris = Number(rows[i][1])||0; break; } }
   if (rowIdx === -1) return {ok:false, error:'Santri ini belum punya data SPP. Atur biaya SPP dulu di menu "Atur Biaya SPP".'};
 
-  const col = 3 + bulan; // A=NISN, B=Biaya, C=Bulan1, ...
+  // Struktur sheet SPP: kolom 1=NISN, kolom 2=Biaya, kolom 3=Bulan1, kolom 4=Bulan2, ...
+  // Jadi Bulan ke-N ada di kolom (2 + N)
+  const col = 2 + bulan;
   const nilaiSekarang = sh.getRange(rowIdx, col).getValue();
   var nilaiBaru, jadiLunas = false;
   if (norm(nilaiSekarang)) {
@@ -2916,20 +2930,35 @@ function apiImportSpp(p) {
   if (!shSantri) return {ok:false, error:'Sheet Santri tidak ditemukan. Jalankan Migrasi Skema dulu.'};
   const santriRows = shSantri.getDataRange().getValues();
 
-  // Buat index: NISN → data santri, dan nama → [NISN]
-  const nisnIndex = {};   // nisn → {nisn, nama}
-  const namaIndex = {};   // nama_lower → [nisn]
-  for (var i=1;i<santriRows.length;i++) {
-    var nisn = norm(santriRows[i][0]);
-    var nama = norm(santriRows[i][1]);
-    if (!nisn) continue;
-    nisnIndex[nisn] = {nisn:nisn, nama:nama};
-    var namaL = nama.toLowerCase();
-    if (!namaIndex[namaL]) namaIndex[namaL] = [];
-    namaIndex[namaL].push(nisn);
+  // Normalisasi nama untuk pencocokan yang sangat toleran
+  function normImport(s) {
+    return norm(s).toLowerCase()
+      .replace(/['\u2018\u2019\u201B\u2032`]/g,'')  // apostrof
+      .replace(/\./g,' ')                             // titik → spasi (Moh. → Moh)
+      .replace(/\s*-\s*/g,' ')                        // tanda hubung → spasi
+      .replace(/\s+/g,' ').trim();
   }
 
-  // Ambil data SPP yang sudah ada (untuk update vs insert)
+  // Buat index database santri dengan berbagai varian normalisasi
+  const nisnIndex = {};
+  const namaIndexDB = {}; // nama_ternorm → [nisn]
+
+  for (var i=1;i<santriRows.length;i++) {
+    var nisnDB = norm(santriRows[i][0]);
+    var namaDB = norm(santriRows[i][1]);
+    if (!nisnDB) continue;
+    nisnIndex[nisnDB] = {nisn:nisnDB, nama:namaDB};
+
+    // Simpan dengan normalisasi standar dan toleran
+    var namaL1 = namaDB.toLowerCase();           // standar
+    var namaL2 = normImport(namaDB);             // toleran
+    [namaL1, namaL2].forEach(function(key){
+      if (!namaIndexDB[key]) namaIndexDB[key] = [];
+      if (namaIndexDB[key].indexOf(nisnDB) === -1) namaIndexDB[key].push(nisnDB);
+    });
+  }
+
+  // Ambil data SPP yang sudah ada
   const shSpp = getAktifSppSS().getSheetByName(SHEET_SPP);
   const sppExisting = {};
   if (shSpp) {
@@ -2937,6 +2966,57 @@ function apiImportSpp(p) {
     for (var j=1;j<sppRows.length;j++) {
       if (sppRows[j][0]) sppExisting[norm(sppRows[j][0])] = j+1;
     }
+  }
+
+  // Fungsi cari santri dengan multi-strategi matching
+  function cariSantri(nisnImport, namaImport) {
+    // Strategi 1: cocok NISN persis
+    if (nisnImport && nisnIndex[nisnImport]) {
+      return {cocok: nisnIndex[nisnImport], cara: 'nisn'};
+    }
+
+    if (!namaImport) return null;
+
+    var namaImportNorm1 = namaImport.toLowerCase();    // standar
+    var namaImportNorm2 = normImport(namaImport);      // toleran
+
+    // Strategi 2: cocok nama persis (standar)
+    if (namaIndexDB[namaImportNorm1] && namaIndexDB[namaImportNorm1].length === 1) {
+      return {cocok: nisnIndex[namaIndexDB[namaImportNorm1][0]], cara: 'nama_persis'};
+    }
+
+    // Strategi 3: cocok nama toleran (hapus titik/apostrof/tanda hubung)
+    if (namaIndexDB[namaImportNorm2] && namaIndexDB[namaImportNorm2].length === 1) {
+      return {cocok: nisnIndex[namaIndexDB[namaImportNorm2][0]], cara: 'nama_toleran'};
+    }
+
+    // Strategi 4: fuzzy — semua kata kunci ada di nama DB
+    var kataCari = namaImportNorm2.split(' ').filter(function(k){ return k.length > 2; });
+    var matches = Object.keys(nisnIndex).filter(function(nisn){
+      var namaDB = normImport(nisnIndex[nisn].nama);
+      return kataCari.every(function(kata){ return namaDB.indexOf(kata) !== -1; });
+    });
+    if (matches.length === 1) {
+      return {cocok: nisnIndex[matches[0]], cara: 'nama_fuzzy'};
+    }
+    if (matches.length > 1) {
+      return {duplikat: matches.map(function(n){ return nisnIndex[n].nama; })};
+    }
+
+    // Strategi 5: cocok nama pertama + nama terakhir saja
+    var kata = namaImportNorm2.split(' ').filter(function(k){ return k.length > 2; });
+    if (kata.length >= 2) {
+      var depan = kata[0], belakang = kata[kata.length-1];
+      var matches2 = Object.keys(nisnIndex).filter(function(nisn){
+        var namaDB = normImport(nisnIndex[nisn].nama);
+        return namaDB.indexOf(depan) !== -1 && namaDB.indexOf(belakang) !== -1;
+      });
+      if (matches2.length === 1) {
+        return {cocok: nisnIndex[matches2[0]], cara: 'nama_depan_belakang'};
+      }
+    }
+
+    return null;
   }
 
   // Parse setiap baris data import
@@ -2982,46 +3062,20 @@ function apiImportSpp(p) {
     });
     var jumlahLunas = bulanBersih.filter(function(x){return x==='Lunas';}).length;
 
-    // Cari santri di DATABASE (sumber kebenaran)
+    // Cari santri di DATABASE menggunakan multi-strategi
+    var hasil = cariSantri(nisnImport, namaImport);
     var cocok = null, statusCocok = '';
-    if (nisnImport && nisnIndex[nisnImport]) {
-      // Cocok NISN — paling akurat
-      cocok = nisnIndex[nisnImport];
-      statusCocok = 'nisn';
-    } else if (namaImport) {
-      // Coba cocok nama
-      var kandidat = namaIndex[namaImport.toLowerCase()];
-      if (!kandidat || kandidat.length === 0) {
-        // Coba fuzzy: nama yang mengandung kata kunci
-        var kataCari = namaImport.toLowerCase().split(' ').filter(function(k){return k.length>2;});
-        var matches = Object.keys(namaIndex).filter(function(namaDB){
-          return kataCari.every(function(kata){ return namaDB.indexOf(kata) !== -1; });
-        });
-        if (matches.length === 1) {
-          kandidat = namaIndex[matches[0]];
-          statusCocok = 'nama_fuzzy';
-        } else if (matches.length > 1) {
-          duplikatNama.push({baris:idx+1, nama:namaImport, pilihan:matches.map(function(n){return namaIndex[n][0];})});
-          return;
-        } else {
-          tidakCocok.push({baris:idx+1, nisn:nisnImport||'-', nama:namaImport||'-'});
-          return;
-        }
-      }
-      if (kandidat && kandidat.length > 1) {
-        duplikatNama.push({baris:idx+1, nama:namaImport, pilihan:kandidat});
-        return;
-      }
-      if (kandidat && kandidat.length === 1) {
-        cocok = nisnIndex[kandidat[0]];
-        statusCocok = statusCocok || 'nama';
-      }
-    }
 
-    if (!cocok) {
+    if (!hasil) {
       tidakCocok.push({baris:idx+1, nisn:nisnImport||'-', nama:namaImport||'-'});
       return;
     }
+    if (hasil.duplikat) {
+      duplikatNama.push({baris:idx+1, nama:namaImport, pilihan:hasil.duplikat});
+      return;
+    }
+    cocok = hasil.cocok;
+    statusCocok = hasil.cara;
 
     preview.push({
       nisn: cocok.nisn,
@@ -3072,7 +3126,168 @@ function apiImportSpp(p) {
   };
 }
 
-// ============ KANTIN: SISI WALI SANTRI (lihat saldo, riwayat, ajukan tambah saldo) ============
+// ============================================================
+// TRIGGER PENGINGAT SPP TERJADWAL
+// Cara pakai: buka Apps Script → Run → setupTriggerPengingatSPP
+// Trigger akan otomatis kirim WA ke semua yang menunggak
+// setiap tanggal 7 dan 20 setiap bulan pukul 08.00
+// ============================================================
+
+/**
+ * Jalankan fungsi ini SEKALI dari menu Run di Apps Script Editor
+ * untuk memasang trigger otomatis pengingat SPP.
+ * Setelah terpasang, tidak perlu dijalankan lagi.
+ */
+function setupTriggerPengingatSPP() {
+  // Hapus trigger lama kalau ada (hindari duplikat)
+  hapusTriggerPengingatSPP();
+
+  // Trigger tanggal 7 setiap bulan pukul 08.00-09.00
+  ScriptApp.newTrigger('jalankanPengingatSPP')
+    .timeBased()
+    .onMonthDay(7)
+    .atHour(8)
+    .create();
+
+  // Trigger tanggal 20 setiap bulan pukul 08.00-09.00
+  ScriptApp.newTrigger('jalankanPengingatSPP')
+    .timeBased()
+    .onMonthDay(20)
+    .atHour(8)
+    .create();
+
+  Logger.log('✅ Trigger pengingat SPP berhasil dipasang.');
+  Logger.log('   → Akan berjalan setiap tanggal 7 dan 20 pukul 08.00.');
+  Logger.log('   → Cek menu Triggers di Apps Script Editor untuk konfirmasi.');
+
+  // Kirim notif ke Admin/Mudir bahwa trigger sudah terpasang
+  try {
+    const sh = getAktifSS().getSheetByName(SHEET_ROLE);
+    if (sh) {
+      const rows = sh.getDataRange().getValues(); rows.shift();
+      rows.forEach(function(r) {
+        const roles = norm(r[3]).split(',').map(function(s){ return s.trim(); });
+        if ((roles.indexOf('Admin') !== -1 || roles.indexOf('Mudir') !== -1) && norm(r[1])) {
+          kirimWAFonnteUmum(norm(r[1]),
+            '✅ *WASIAT: Trigger Pengingat SPP Terpasang*\n\n' +
+            'Pengingat SPP otomatis sudah aktif.\n' +
+            'Sistem akan kirim WA ke wali santri yang menunggak setiap:\n' +
+            '• Tanggal 7 setiap bulan pukul 08.00\n' +
+            '• Tanggal 20 setiap bulan pukul 08.00\n\n' +
+            'Untuk menonaktifkan, jalankan fungsi *hapusTriggerPengingatSPP* di Apps Script.'
+          );
+        }
+      });
+    }
+  } catch(e) { Logger.log('Notif admin gagal: ' + e.message); }
+}
+
+/**
+ * Jalankan fungsi ini untuk menghapus/menonaktifkan trigger pengingat SPP.
+ */
+function hapusTriggerPengingatSPP() {
+  const triggers = ScriptApp.getProjectTriggers();
+  let hapus = 0;
+  triggers.forEach(function(t) {
+    if (t.getHandlerFunction() === 'jalankanPengingatSPP') {
+      ScriptApp.deleteTrigger(t);
+      hapus++;
+    }
+  });
+  Logger.log(hapus > 0
+    ? '✅ ' + hapus + ' trigger pengingat SPP berhasil dihapus.'
+    : 'ℹ️ Tidak ada trigger pengingat SPP yang aktif.');
+}
+
+/**
+ * Fungsi ini DIJALANKAN OTOMATIS oleh trigger setiap tanggal 7 dan 20.
+ * Tidak perlu dijalankan manual.
+ */
+function jalankanPengingatSPP() {
+  const tz = Session.getScriptTimeZone();
+  const hari = Utilities.formatDate(new Date(), tz, 'dd MMMM yyyy');
+  const jam  = Utilities.formatDate(new Date(), tz, 'HH:mm');
+
+  Logger.log('=== Pengingat SPP Otomatis ===');
+  Logger.log('Dijalankan: ' + hari + ' ' + jam);
+
+  // Ambil data tunggakan
+  const tunggakan = getTunggakanSantri();
+
+  if (!tunggakan.length) {
+    Logger.log('ℹ️ Tidak ada santri yang menunggak. Tidak ada WA yang dikirim.');
+    return;
+  }
+
+  Logger.log('Jumlah santri menunggak: ' + tunggakan.length);
+
+  let terkirim = 0, gagal = 0, tanpaWA = 0;
+
+  tunggakan.forEach(function(s) {
+    if (!s.noWa) {
+      Logger.log('⚠️ ' + s.nama + ': No WA tidak terdaftar, dilewati.');
+      tanpaWA++;
+      return;
+    }
+
+    try {
+      const pesan = buildPesanTagihanSPP(s.nama, s.bulanTunggak, s.tunggakanSPP);
+      kirimWAFonnteUmum(s.noWa, pesan);
+      Logger.log('✅ Terkirim ke ' + s.nama + ' (' + s.noWa + ')');
+      terkirim++;
+      // Jeda 1 detik antar pengiriman agar tidak dibatasi Fonnte
+      Utilities.sleep(1000);
+    } catch(e) {
+      Logger.log('❌ Gagal kirim ke ' + s.nama + ': ' + e.message);
+      gagal++;
+    }
+  });
+
+  // Buat laporan dan kirim ke Admin/Mudir
+  const laporan =
+    '📊 *Laporan Pengingat SPP Otomatis*\n' +
+    'Tanggal: ' + hari + ' ' + jam + '\n\n' +
+    '✅ Terkirim : ' + terkirim + ' santri\n' +
+    '❌ Gagal    : ' + gagal + ' santri\n' +
+    '⚠️ Tanpa WA : ' + tanpaWA + ' santri\n' +
+    '📋 Total    : ' + tunggakan.length + ' santri menunggak\n\n' +
+    (gagal > 0 ? '_Ada pengiriman yang gagal. Cek log di Apps Script Editor._' : '_Semua pengiriman berhasil._');
+
+  try {
+    const sh = getAktifSS().getSheetByName(SHEET_ROLE);
+    if (sh) {
+      const rows = sh.getDataRange().getValues(); rows.shift();
+      rows.forEach(function(r) {
+        const roles = norm(r[3]).split(',').map(function(s){ return s.trim(); });
+        if ((roles.indexOf('Admin') !== -1 || roles.indexOf('Mudir') !== -1 ||
+             roles.indexOf('Bendahara') !== -1) && norm(r[1])) {
+          kirimWAFonnteUmum(norm(r[1]), laporan);
+        }
+      });
+    }
+  } catch(e) { Logger.log('Laporan ke admin gagal: ' + e.message); }
+
+  Logger.log('=== Selesai. Terkirim: ' + terkirim + ', Gagal: ' + gagal + ', Tanpa WA: ' + tanpaWA + ' ===');
+}
+
+/**
+ * (Opsional) Fungsi untuk TEST kirim pengingat manual tanpa menunggu trigger.
+ * Jalankan dari Apps Script Editor untuk uji coba.
+ */
+function testKirimPengingatSPP() {
+  Logger.log('--- TEST MODE: Simulasi pengingat SPP ---');
+  const tunggakan = getTunggakanSantri();
+  Logger.log('Santri menunggak: ' + tunggakan.length);
+  tunggakan.slice(0, 3).forEach(function(s) {
+    const pesan = buildPesanTagihanSPP(s.nama, s.bulanTunggak, s.tunggakanSPP);
+    Logger.log('--- Pesan untuk ' + s.nama + ' (' + (s.noWa || 'TANPA WA') + ') ---');
+    Logger.log(pesan);
+    Logger.log('---');
+  });
+  Logger.log('Test selesai. Jalankan setupTriggerPengingatSPP() untuk mengaktifkan.');
+}
+
+
 function getNoWABendahara() {
   const sh = getAktifSS().getSheetByName(SHEET_ROLE);
   const rows = sh.getDataRange().getValues(); rows.shift();
@@ -4648,10 +4863,12 @@ function getRekapJamMengajarGuru(pengampu, bulan, tahun, tahunAjaranId) {
     if (!sesiUnik[key]) sesiUnik[key] = { tanggal: tglStr, jenis:'Mata Pelajaran', keterangan: mapel+' - '+kelas, pengampu: guru, jam: jamMapel[mapel] || 0 };
   });
   const hafalanRows = ss.getSheetByName(SHEET_HAFALAN).getDataRange().getValues(); hafalanRows.shift();
+if (!hafalanRowsHafalan) return {ok:false, data:[]};
   // Ambil data gender halaqoh untuk koreksi jam Duha Jumat
   const halaqohGenderMap = {};
   try {
     const shH = ss.getSheetByName(SHEET_HALAQOH);
+if (!shH) return {ok:true, data:[]};
     if (shH) {
       shH.getDataRange().getValues().slice(1).forEach(r => {
         if (r[0]) halaqohGenderMap[norm(r[0])] = norm(r[3]); // namaHalaqoh → gender
@@ -5551,6 +5768,7 @@ function getMapelUntukKelas(kelas) {
 function getRekapAbsensiKelas(kelas, mapel, tglMulai, tglAkhir) {
   kelas = norm(kelas); mapel = norm(mapel);
   const sh = getAktifSS().getSheetByName(SHEET_ABSENSI);
+if (!sh) return [];
   const rows = sh.getDataRange().getValues(); rows.shift();
   const tz = Session.getScriptTimeZone();
   const filtered = rows.filter(r => {
@@ -5663,6 +5881,62 @@ function apiCekSesiAktif(p) {
     }
   } catch(e) {}
   return {ok:true, user:{nama:norm(found[0]), noWa:norm(found[1]), roles:roles, level:roles[0], nisnAnak:norm(found[4]), waliKelas:waliKelas}};
+}
+
+// Kumpulkan semua spreadsheet yang dipakai sistem untuk ditampilkan ke Admin/Mudir
+function apiGetDaftarSpreadsheet() {
+  const hasil = [];
+
+  function tambah(label, kategori, id, keterangan) {
+    if (!id) return;
+    try {
+      const ss = SpreadsheetApp.openById(id);
+      hasil.push({
+        label: label,
+        kategori: kategori,
+        id: id,
+        url: ss.getUrl(),
+        nama: ss.getName(),
+        keterangan: keterangan,
+        sheets: ss.getSheets().map(function(sh){ return sh.getName(); }),
+      });
+    } catch(e) {
+      hasil.push({label:label, kategori:kategori, id:id, url:'', nama:'(tidak dapat dibuka)', keterangan:keterangan, sheets:[]});
+    }
+  }
+
+  // 1. Master SS (pengaturan, daftar tahun ajaran, SOP, modul ajar, RPP, dll)
+  try {
+    const masterId = PROP.getProperty(MASTER_KEY);
+    tambah('Master SS', 'Sistem', masterId, 'Pengaturan, SOP, Modul Ajar, RPP, Daftar Tahun Ajaran');
+  } catch(e) {}
+
+  // 2. SS per Tahun Ajaran (Absensi, Hafalan, Nilai, Jurnal, dll)
+  try {
+    const taList = getTahunAjaranList();
+    taList.forEach(function(ta) {
+      var aktifLabel = ta.aktif ? ' ⭐ (Aktif)' : '';
+      tambah('Absensi ' + ta.nama + aktifLabel, 'Tahun Ajaran', ta.id,
+        'Absensi, Hafalan, Nilai, Jurnal — Tahun Ajaran ' + ta.nama);
+      if (ta.idSpp)
+        tambah('SPP ' + ta.nama + aktifLabel, 'SPP', ta.idSpp,
+          'Data pembayaran SPP — Tahun Ajaran ' + ta.nama);
+      if (ta.idKantin)
+        tambah('Kantin ' + ta.nama + aktifLabel, 'Kantin', ta.idKantin,
+          'Transaksi kantin, saldo, topup — Tahun Ajaran ' + ta.nama);
+      if (ta.idPelanggaran)
+        tambah('Pelanggaran ' + ta.nama + aktifLabel, 'Pelanggaran', ta.idPelanggaran,
+          'Catatan pelanggaran & prestasi — Tahun Ajaran ' + ta.nama);
+    });
+  } catch(e) {}
+
+  // 3. SS Keuangan
+  try {
+    const keuId = PROP.getProperty(KEUANGAN_AKTIF_KEY);
+    tambah('Keuangan (Aktif)', 'Keuangan', keuId, 'BKU, anggaran, laporan keuangan');
+  } catch(e) {}
+
+  return {ok: true, data: hasil};
 }
 
 // Ambil daftar kelas yang aktif (ada santri di dalamnya)
@@ -5872,6 +6146,7 @@ function getRekapNilaiRapor(mapel, kelas, pengampu) {
 
   // Ambil data absensi untuk kehadiran
   const shAbsen = ss.getSheetByName(SHEET_ABSENSI);
+if (!shAbsen) return {ok:false, data:[]};
   const absenRows = shAbsen ? shAbsen.getDataRange().getValues() : [];
   if (absenRows.length) absenRows.shift();
 
@@ -6276,4 +6551,516 @@ function apiGeneratePDF(p) {
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ============================================================
+// SISTEM PERIZINAN SANTRI
+// Sheet Perizinan: ID | NISN | Nama | Kelas | JenisIzin | Keperluan |
+//   TglKeluar | JamKeluar | TglKembaliRencana | JamKembaliRencana |
+//   Status | DiajukanOleh | WaktuAjuan |
+//   DisetujuiOleh | WaktuSetuju | TglKembaliAktual | WaktuKonfirmasi |
+//   Catatan | NoWaOrtu
+// Status: Menunggu | Disetujui | Ditolak | Sudah Kembali
+// JenisIzin: Tidak Bermalam | Bermalam
+// ============================================================
+
+function getSheetPerizinan() {
+  const ss = getAktifSS();
+  let sh = ss.getSheetByName(SHEET_PERIZINAN);
+  if (!sh) {
+    sh = ss.insertSheet(SHEET_PERIZINAN);
+    sh.appendRow([
+      'ID','NISN','Nama Santri','Kelas','Jenis Izin','Keperluan',
+      'Tgl Keluar','Jam Keluar','Tgl Kembali (Rencana)','Jam Kembali (Rencana)',
+      'Status','Diajukan Oleh','Waktu Ajuan',
+      'Disetujui/Ditolak Oleh','Waktu Setuju/Tolak',
+      'Tgl Kembali (Aktual)','Waktu Konfirmasi Kembali',
+      'Catatan','No WA Ortu'
+    ]);
+    sh.setFrozenRows(1);
+    sh.setColumnWidth(1,80); sh.setColumnWidth(5,120);
+  }
+  return sh;
+}
+
+function buatIdIzin() {
+  return 'IZN-'+Utilities.formatDate(new Date(),Session.getScriptTimeZone(),'yyyyMMddHHmmss')+
+    '-'+Math.floor(Math.random()*900+100);
+}
+
+// Ajukan izin baru (oleh Pembina atau Wali)
+function apiAjukanIzin(p) {
+  const nisn = norm(p.nisn);
+  if (!nisn) return {ok:false, error:'NISN santri wajib diisi'};
+
+  // Ambil data santri
+  const shSantri = getAktifSS().getSheetByName(SHEET_SANTRI);
+  if (!shSantri) return {ok:false, error:'Sheet Santri tidak ditemukan'};
+  const rows = shSantri.getDataRange().getValues();
+  const header = rows[0];
+  const iNoWa = header.indexOf('No WA Ortu');
+  const found = rows.slice(1).find(r => norm(r[0]) === nisn);
+  if (!found) return {ok:false, error:'Santri tidak ditemukan di database'};
+
+  const namaSantri = norm(found[1]);
+  const noWaOrtu   = norm(iNoWa>-1 ? found[iNoWa] : found[4]);
+
+  // Ambil kelas dari Rombel
+  let kelas = '-';
+  try {
+    const shRombel = getAktifSS().getSheetByName(SHEET_ROMBEL);
+    if (shRombel) {
+      const rRow = shRombel.getDataRange().getValues().slice(1).find(r=>norm(r[0])===nisn);
+      if (rRow) kelas = norm(rRow[2]);
+    }
+  } catch(e) {}
+
+  const id = buatIdIzin();
+  const tz = Session.getScriptTimeZone();
+  const now = new Date();
+  const jenis = p.jenisIzin || 'Tidak Bermalam'; // 'Tidak Bermalam' | 'Bermalam'
+
+  const sh = getSheetPerizinan();
+  sh.appendRow([
+    id, nisn, namaSantri, kelas, jenis,
+    norm(p.keperluan||''), norm(p.tglKeluar||''), norm(p.jamKeluar||''),
+    norm(p.tglKembaliRencana||''), norm(p.jamKembaliRencana||''),
+    'Menunggu', norm(p.diajukanOleh||''), now,
+    '','','','','', noWaOrtu
+  ]);
+
+  // Kirim WA ke wali santri
+  const namaLengkap = namaSantri;
+  const pesanWali = '📋 *Pengajuan Izin Santri*\n\n' +
+    'Assalamu\'alaikum Wr. Wb.\n\n' +
+    'Putra/putri Anda:\n*' + namaLengkap + '* ('+kelas+')\n\n' +
+    'Mengajukan izin *' + jenis + '*\n' +
+    '📅 Keluar: ' + norm(p.tglKeluar||'-') + ' ' + norm(p.jamKeluar||'') + '\n' +
+    '📅 Kembali: ' + norm(p.tglKembaliRencana||'-') + ' ' + norm(p.jamKembaliRencana||'') + '\n' +
+    '📝 Keperluan: ' + norm(p.keperluan||'-') + '\n\n' +
+    '⏳ Status: *Menunggu persetujuan Pembina*\n\n' +
+    'No. Referensi: ' + id + '\n_Wassalamu\'alaikum Wr. Wb._';
+
+  if (noWaOrtu) {
+    try { kirimWAFonnteUmum(noWaOrtu, pesanWali); } catch(e) {}
+  }
+
+  return {ok:true, id:id, namaSantri:namaSantri, status:'Menunggu'};
+}
+
+// Ambil daftar izin (dengan filter)
+function apiGetDaftarIzin(p) {
+  const sh = getSheetPerizinan();
+  if (sh.getLastRow() <= 1) return {ok:true, data:[]};
+  const tz = Session.getScriptTimeZone();
+  const rows = sh.getDataRange().getValues(); rows.shift();
+
+  let data = rows.map(r => ({
+    id:norm(r[0]), nisn:norm(r[1]), nama:norm(r[2]), kelas:norm(r[3]),
+    jenisIzin:norm(r[4]), keperluan:norm(r[5]),
+    tglKeluar:norm(r[6]), jamKeluar:norm(r[7]),
+    tglKembaliRencana:norm(r[8]), jamKembaliRencana:norm(r[9]),
+    status:norm(r[10]), diajukanOleh:norm(r[11]),
+    waktuAjuan: r[12] instanceof Date ? Utilities.formatDate(r[12],tz,'dd/MM/yyyy HH:mm') : norm(r[12]),
+    disetujuiOleh:norm(r[13]),
+    tglKembaliAktual:norm(r[15]),
+    catatan:norm(r[17]), noWaOrtu:norm(r[18]),
+  }));
+
+  // Filter
+  if (p.status)     data = data.filter(d => d.status === p.status);
+  if (p.nisn)       data = data.filter(d => d.nisn === norm(p.nisn));
+  if (p.tglMulai)   data = data.filter(d => d.tglKeluar >= p.tglMulai);
+  if (p.tglAkhir)   data = data.filter(d => d.tglKeluar <= p.tglAkhir);
+  if (p.jenisIzin)  data = data.filter(d => d.jenisIzin === p.jenisIzin);
+
+  // Hanya izin yang aktif (belum kembali) untuk status pondok
+  if (p.aktif) data = data.filter(d =>
+    (d.status === 'Disetujui' || d.status === 'Menunggu') && !d.tglKembaliAktual
+  );
+
+  // Urutkan: terbaru dulu
+  data.sort((a,b) => b.waktuAjuan.localeCompare(a.waktuAjuan));
+
+  return {ok:true, data:data};
+}
+
+// Setujui izin
+function apiApproveIzin(p) {
+  const sh = getSheetPerizinan();
+  const rows = sh.getDataRange().getValues();
+  for (var i=1;i<rows.length;i++) {
+    if (norm(rows[i][0]) === norm(p.id)) {
+      sh.getRange(i+1,11,1,4).setValues([['Disetujui',norm(p.oleh),new Date(),'']]);
+      // WA ke wali
+      const noWa = norm(rows[i][18]);
+      const nama  = norm(rows[i][2]);
+      const jenis = norm(rows[i][4]);
+      const tglK  = norm(rows[i][6])+' '+norm(rows[i][7]);
+      const tglPulang = norm(rows[i][8])+' '+norm(rows[i][9]);
+      if (noWa) {
+        try {
+          kirimWAFonnteUmum(noWa,
+            '✅ *Izin Santri DISETUJUI*\n\n' +
+            'Putra/putri Anda: *'+nama+'*\n' +
+            'Jenis: *'+jenis+'*\n' +
+            '📅 Keluar: '+tglK+'\n' +
+            '📅 Kembali: '+tglPulang+'\n\n' +
+            'Izin telah disetujui oleh: '+norm(p.oleh)+'\n' +
+            'No. Ref: '+norm(p.id)+'\n\n' +
+            '_Mohon pastikan santri kembali tepat waktu._'
+          );
+        } catch(e) {}
+      }
+      return {ok:true};
+    }
+  }
+  return {ok:false, error:'Izin tidak ditemukan'};
+}
+
+// Tolak izin
+function apiTolakIzin(p) {
+  const sh = getSheetPerizinan();
+  const rows = sh.getDataRange().getValues();
+  for (var i=1;i<rows.length;i++) {
+    if (norm(rows[i][0]) === norm(p.id)) {
+      sh.getRange(i+1,11,1,5).setValues([['Ditolak',norm(p.oleh),new Date(),'',norm(p.alasan||'')]]);
+      const noWa = norm(rows[i][18]);
+      const nama  = norm(rows[i][2]);
+      if (noWa) {
+        try {
+          kirimWAFonnteUmum(noWa,
+            '❌ *Izin Santri TIDAK Disetujui*\n\n' +
+            'Putra/putri Anda: *'+nama+'*\n' +
+            'Alasan: '+(p.alasan||'Tidak disebutkan')+'\n\n' +
+            'No. Ref: '+norm(p.id)+'\n\n' +
+            '_Silakan hubungi pihak pondok untuk informasi lebih lanjut._'
+          );
+        } catch(e) {}
+      }
+      return {ok:true};
+    }
+  }
+  return {ok:false, error:'Izin tidak ditemukan'};
+}
+
+// Konfirmasi santri sudah kembali
+function apiKonfirmasiKembali(p) {
+  const sh = getSheetPerizinan();
+  const tz = Session.getScriptTimeZone();
+  const rows = sh.getDataRange().getValues();
+  for (var i=1;i<rows.length;i++) {
+    if (norm(rows[i][0]) === norm(p.id)) {
+      const now = new Date();
+      const tglAktual = Utilities.formatDate(now,tz,'yyyy-MM-dd');
+      sh.getRange(i+1,11).setValue('Sudah Kembali');
+      sh.getRange(i+1,16).setValue(tglAktual);
+      sh.getRange(i+1,17).setValue(now);
+      if (p.catatan) sh.getRange(i+1,18).setValue(norm(p.catatan));
+      const noWa = norm(rows[i][18]);
+      const nama  = norm(rows[i][2]);
+      if (noWa) {
+        try {
+          kirimWAFonnteUmum(noWa,
+            '🏠 *Santri Sudah Kembali ke Pondok*\n\n' +
+            'Putra/putri Anda: *'+nama+'*\n' +
+            'Telah kembali: '+Utilities.formatDate(now,tz,'dd/MM/yyyy HH:mm')+'\n' +
+            'Dikonfirmasi oleh: '+norm(p.oleh||'Pembina')+'\n\n' +
+            'No. Ref: '+norm(p.id)+'\n\n' +
+            '_Alhamdulillah, santri sudah kembali dengan selamat._'
+          );
+        } catch(e) {}
+      }
+      return {ok:true};
+    }
+  }
+  return {ok:false, error:'Izin tidak ditemukan'};
+}
+
+// Wali santri lihat izin anaknya
+function apiGetIzinSantriSaya(p) {
+  const nisn = norm(p.nisn);
+  if (!nisn) return {ok:false, error:'NISN tidak valid'};
+  return apiGetDaftarIzin({nisn:nisn});
+}
+
+// ============================================================ (Pembina Putra / Pembina Putri)
+// Sheet: ABSENSI_HARIAN di spreadsheet aktif semester
+// Kolom: Tanggal | Sesi | NISN | Nama | Kelas | Status | Keterangan | Dicatat Oleh | Waktu
+// ============================================================
+
+const SHEET_ABSENSI_HARIAN = 'AbsensiHarian';
+const SHEET_PERIZINAN      = 'Perizinan'; // sistem perizinan santri
+
+// Ambil semua santri sesuai gender pembina
+function apiGetSantriHarian(p) {
+  const gender = norm(p.gender || ''); // 'Putra' atau 'Putri'
+  const ss = getAktifSS();
+  const shSantri = ss.getSheetByName(SHEET_SANTRI);
+  if (!shSantri) return {ok:false, error:'Sheet Santri tidak ditemukan.'};
+  const rows = shSantri.getDataRange().getValues();
+  const header = rows[0];
+  const iJK = header.indexOf('Jenis Kelamin'); // kolom 3
+  rows.shift();
+
+  const jenisFilter = gender === 'Putra' ? 'laki-laki' : gender === 'Putri' ? 'perempuan' : '';
+
+  // Ambil kelas dari Rombel
+  const shRombel = ss.getSheetByName(SHEET_ROMBEL);
+  const mapKelas = {};
+  if (shRombel) {
+    shRombel.getDataRange().getValues().slice(1).forEach(r => {
+      if (r[0]) mapKelas[norm(r[0])] = norm(r[2]);
+    });
+  }
+
+  const santri = rows.filter(r => {
+    if (!norm(r[0])) return false;
+    if (jenisFilter) {
+      const jk = norm(iJK > -1 ? r[iJK] : r[3]).toLowerCase();
+      return jk === jenisFilter;
+    }
+    return true;
+  }).map(r => ({
+    nisn: norm(r[0]),
+    nama: norm(r[1]),
+    kelas: mapKelas[norm(r[0])] || '-',
+    jk: norm(iJK > -1 ? r[iJK] : r[3]),
+    noWa: norm(r[4] || ''),
+  })).sort((a,b) => a.nama.localeCompare(b.nama));
+
+  // Cek sudah ada absensi hari ini?
+  const tz = Session.getScriptTimeZone();
+  const tanggalHariIni = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  const sesi = norm(p.sesi || 'Harian');
+  const shHarian = ss.getSheetByName(SHEET_ABSENSI_HARIAN);
+  const sudahAbsen = {};
+  if (shHarian && shHarian.getLastRow() > 1) {
+    shHarian.getDataRange().getValues().slice(1).forEach(r => {
+      const tgl = r[0] instanceof Date
+        ? Utilities.formatDate(r[0], tz, 'yyyy-MM-dd')
+        : norm(r[0]);
+      if (tgl === tanggalHariIni && normNama(norm(r[2])) === normNama(p.gender||'') || tgl === tanggalHariIni) {
+        if (norm(r[1]) === sesi) sudahAbsen[norm(r[2])] = {status:norm(r[5]), ket:norm(r[6])};
+      }
+    });
+  }
+
+  return {ok:true, data:santri, sudahAbsen:sudahAbsen, tanggal:tanggalHariIni};
+}
+
+// Submit absensi harian
+function apiSubmitAbsensiHarian(p) {
+  if (!p.items || !p.items.length) return {ok:false, error:'Tidak ada data absensi.'};
+  const ss = getAktifSS();
+  let sh = ss.getSheetByName(SHEET_ABSENSI_HARIAN);
+  if (!sh) {
+    sh = ss.insertSheet(SHEET_ABSENSI_HARIAN);
+    sh.appendRow(['Tanggal','Sesi','NISN','Nama','Kelas','Status','Keterangan','Dicatat Oleh','Waktu']);
+    sh.setFrozenRows(1);
+  }
+  const tz = Session.getScriptTimeZone();
+  const tanggal = p.tanggal || Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  const sesi = p.sesi || 'Harian';
+  const waktu = new Date();
+
+  // Hapus absensi hari yang sama dulu kalau ada (update)
+  const existing = sh.getDataRange().getValues();
+  const toDelete = [];
+  for (let i=existing.length-1;i>=1;i--) {
+    const tgl = existing[i][0] instanceof Date
+      ? Utilities.formatDate(existing[i][0], tz, 'yyyy-MM-dd')
+      : norm(existing[i][0]);
+    if (tgl === tanggal && norm(existing[i][1]) === sesi) toDelete.push(i+1);
+  }
+  toDelete.forEach(row => sh.deleteRow(row));
+
+  // Insert baris baru
+  const rows = p.items.map(item => [
+    tanggal, sesi, item.nisn, item.nama, item.kelas||'-',
+    item.status, item.keterangan||'', p.dicatatOleh||'', waktu
+  ]);
+  if (rows.length) sh.getRange(sh.getLastRow()+1, 1, rows.length, 9).setValues(rows);
+
+  // Kirim WA ke ortu santri yang tidak hadir (tanpa izin)
+  const tidakHadir = p.items.filter(i => i.status === 'Alpa' && i.noWa);
+  tidakHadir.forEach(s => {
+    try {
+      kirimWAFonnteUmum(s.noWa,
+        '⚠️ *Informasi Kehadiran Santri*\n\n' +
+        'Assalamu\'alaikum Wr. Wb.\n\n' +
+        'Kami informasikan bahwa putra/putri Anda:\n' +
+        '*Nama: ' + s.nama + '*\n\n' +
+        'Tidak hadir pada absensi harian ' + sesi + ' tanggal ' + tanggal + '.\n\n' +
+        'Mohon konfirmasi kepada pihak pesantren.\n\n' +
+        '_Wassalamu\'alaikum Wr. Wb._'
+      );
+    } catch(e) {}
+  });
+
+  return {ok:true, total:rows.length, tidakHadir:tidakHadir.length};
+}
+
+// Rekap kehadiran harian per santri
+function apiGetRekapAbsensiHarian(p) {
+  const ss = getAktifSS();
+  const sh = ss.getSheetByName(SHEET_ABSENSI_HARIAN);
+  if (!sh || sh.getLastRow() <= 1) return {ok:true, data:[], totalHari:0};
+
+  const tz = Session.getScriptTimeZone();
+  const rows = sh.getDataRange().getValues(); rows.shift();
+
+  const tglMulai = p.tglMulai || '';
+  const tglAkhir = p.tglAkhir || '';
+  const gender   = norm(p.gender || '');
+
+  // Filter berdasarkan tanggal
+  const filtered = rows.filter(r => {
+    const tgl = r[0] instanceof Date
+      ? Utilities.formatDate(r[0], tz, 'yyyy-MM-dd')
+      : norm(r[0]);
+    if (tglMulai && tgl < tglMulai) return false;
+    if (tglAkhir && tgl > tglAkhir) return false;
+    return true;
+  });
+
+  // Kelompokkan per santri
+  const perSantri = {};
+  const hariUnik = new Set();
+  filtered.forEach(r => {
+    const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
+    hariUnik.add(tgl);
+    const nisn = norm(r[2]);
+    if (!perSantri[nisn]) perSantri[nisn] = {nisn, nama:norm(r[3]), kelas:norm(r[4]), hadir:0, sakit:0, izin:0, alpa:0, total:0};
+    const s = norm(r[5]);
+    perSantri[nisn].total++;
+    if (s==='Hadir') perSantri[nisn].hadir++;
+    else if (s==='Sakit') perSantri[nisn].sakit++;
+    else if (s==='Izin') perSantri[nisn].izin++;
+    else perSantri[nisn].alpa++;
+  });
+
+  // Filter gender kalau diminta
+  const shSantri = ss.getSheetByName(SHEET_SANTRI);
+  const jkMap = {};
+  if (shSantri) {
+    const santriRows = shSantri.getDataRange().getValues();
+    const iJK = santriRows[0].indexOf('Jenis Kelamin');
+    santriRows.slice(1).forEach(r => { if (r[0]) jkMap[norm(r[0])] = norm(iJK>-1?r[iJK]:r[3]); });
+  }
+
+  let data = Object.values(perSantri);
+  if (gender === 'Putra') data = data.filter(s => (jkMap[s.nisn]||'').toLowerCase() === 'laki-laki');
+  if (gender === 'Putri') data = data.filter(s => (jkMap[s.nisn]||'').toLowerCase() === 'perempuan');
+
+  data = data.map(s => ({
+    ...s,
+    persen: s.total > 0 ? Math.round((s.hadir/s.total)*100) : 0
+  })).sort((a,b) => a.nama.localeCompare(b.nama));
+
+  return {ok:true, data, totalHari: hariUnik.size};
+}
+
+// Info real-time keberadaan santri di pondok
+// Berdasarkan absensi harian terakhir yang diisi
+function apiGetStatusPondok(p) {
+  const ss = getAktifSS();
+  const tz = Session.getScriptTimeZone();
+  const tanggalHariIni = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+
+  // Hitung total santri dari sheet Santri
+  const shSantri = ss.getSheetByName(SHEET_SANTRI);
+  if (!shSantri) return {ok:false, error:'Sheet Santri tidak ditemukan.'};
+  const santriRows = shSantri.getDataRange().getValues();
+  const header = santriRows[0];
+  const iJK = header.indexOf('Jenis Kelamin');
+  santriRows.shift();
+
+  let totalPutra = 0, totalPutri = 0;
+  santriRows.forEach(r => {
+    if (!norm(r[0])) return;
+    const jk = norm(iJK>-1 ? r[iJK] : r[3]).toLowerCase();
+    if (jk === 'laki-laki') totalPutra++;
+    else if (jk === 'perempuan') totalPutri++;
+  });
+  const totalSantri = totalPutra + totalPutri;
+
+  // Ambil absensi harian terakhir
+  const sh = ss.getSheetByName(SHEET_ABSENSI_HARIAN);
+  if (!sh || sh.getLastRow() <= 1) {
+    return {ok:true, tanggal:tanggalHariIni, sudahAbsen:false,
+      total:totalSantri, diPondok:totalSantri, izinPulang:0,
+      putra:{total:totalPutra, diPondok:totalPutra, izinPulang:0},
+      putri:{total:totalPutri, diPondok:totalPutri, izinPulang:0},
+      detail:[]};
+  }
+
+  const rows = sh.getDataRange().getValues(); rows.shift();
+  // Ambil tanggal absensi terakhir yang tersedia
+  const tglAbsen = rows.reduce((latest, r) => {
+    const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
+    return tgl > latest ? tgl : latest;
+  }, '');
+
+  // Filter absensi terakhir
+  const absenTerakhir = rows.filter(r => {
+    const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
+    return tgl === tglAbsen;
+  });
+
+  // Hitung per status
+  const statusCount = {Hadir:0, Sakit:0, Izin:0, 'Izin Pulang':0, Alpa:0};
+  const putraCount  = {diPondok:0, izinPulang:0};
+  const putriCount  = {diPondok:0, izinPulang:0};
+  const izinPulangList = [];
+
+  // Map NISN → JK dari sheet Santri
+  const jkMap = {};
+  santriRows.forEach(r => {
+    if (r[0]) jkMap[norm(r[0])] = norm(iJK>-1?r[iJK]:r[3]).toLowerCase();
+  });
+
+  absenTerakhir.forEach(r => {
+    const status = norm(r[5]);
+    statusCount[status] = (statusCount[status]||0) + 1;
+    const nisn = norm(r[2]);
+    const jk = jkMap[nisn] || '';
+    const isPulang = status === 'Izin Pulang';
+    if (isPulang) {
+      izinPulangList.push({nisn, nama:norm(r[3]), kelas:norm(r[4]),
+        keterangan:norm(r[6]), jk: jk==='laki-laki'?'Putra':'Putri'});
+    }
+    if (jk === 'laki-laki') {
+      if (!isPulang) putraCount.diPondok++;
+      else putraCount.izinPulang++;
+    } else if (jk === 'perempuan') {
+      if (!isPulang) putriCount.diPondok++;
+      else putriCount.izinPulang++;
+    }
+  });
+
+  const diPondok = (statusCount['Hadir']||0) + (statusCount['Sakit']||0) +
+                   (statusCount['Izin']||0) + (statusCount['Alpa']||0);
+
+  return {
+    ok: true,
+    tanggal: tglAbsen,
+    hariIni: tglAbsen === tanggalHariIni,
+    sudahAbsen: absenTerakhir.length > 0,
+    total: totalSantri,
+    diPondok: diPondok,
+    izinPulang: statusCount['Izin Pulang']||0,
+    hadir: statusCount['Hadir']||0,
+    sakit: statusCount['Sakit']||0,
+    izin: statusCount['Izin']||0,
+    alpa: statusCount['Alpa']||0,
+    putra: {total:totalPutra, diPondok:putraCount.diPondok, izinPulang:putraCount.izinPulang},
+    putri: {total:totalPutri, diPondok:putriCount.diPondok, izinPulang:putriCount.izinPulang},
+    izinPulangList: izinPulangList,
+  };
+}
+
+// Catat pelanggaran (dipakai oleh Pembina)
+function apiCatatPelanggaranPembina(p) {
+  return apiCatatPelanggaran(p); // pakai fungsi yang sudah ada
 }

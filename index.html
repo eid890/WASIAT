@@ -271,7 +271,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxq7gTf7wuFKramvI-jBHFmK6BBi69gnieAOCpwrKxNqGl1YP1kfil-W4AXEZiQfRhI/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -6846,17 +6846,18 @@
 
   function adminRingkasan(){
     var c = getContentEl();
-    c.innerHTML = '<div id="adminStatusPondok"></div><p>Memuat...</p>';
-    widgetStatusPondok('adminStatusPondok', ''); // tanpa filter gender = semua santri
+    // Buat dua div terpisah: widget status (async cepat) dan ringkasan utama (async lambat)
+    c.innerHTML = '<div id="adminStatusPondok"></div><div id="adminRingkasanUtama"><p class="muted">Memuat ringkasan...</p></div>';
+    widgetStatusPondok('adminStatusPondok', ''); // load paralel, tidak saling timpa
     Promise.all([api('getDashboardAdmin', {}), api('getStatusJurnalHariIni', {})]).then(function(hasil){
       var res = hasil[0], resJurnal = hasil[1];
-      if(!res.ok){ c.innerHTML = errBox(res.error); return; }
+      if(!res.ok){ document.getElementById('adminRingkasanUtama').innerHTML = errBox(res.error); return; }
       var d = res.data;
       var statusJurnal = resJurnal.ok ? resJurnal.data : [];
       var belumIsi = statusJurnal.filter(function(s){ return !s.sudahIsiJurnal; });
       var sudahIsi = statusJurnal.filter(function(s){ return s.sudahIsiJurnal; });
 
-      c.innerHTML = '<div class="card"><h3>Ringkasan Tahun Ajaran Aktif: '+esc(d.ssName)+'</h3>' +
+      document.getElementById('adminRingkasanUtama').innerHTML = '<div class="card"><h3>Ringkasan Tahun Ajaran Aktif: '+esc(d.ssName)+'</h3>' +
         '<div class="ringkasan-grid">' +
         '<div class="ringkasan-tile"><div class="ico">&#128101;</div><div class="nilai">'+d.jmlSantri+'</div><div class="label">Santri</div></div>' +
         '<div class="ringkasan-tile"><div class="ico">&#128104;&#8205;&#127979;</div><div class="nilai">'+d.jmlGuru+'</div><div class="label">Guru</div></div>' +
@@ -7515,11 +7516,22 @@
                   if (!pengampuValid) { gagal = 'Nama guru pada Pengampu tidak dikenali. Pilih salah satu saran yang muncul saat mengetik.'; return; }
                   values[h] = pengampuValid;
                 } else if (sheet==='RoleAkses' && h==='NISN Anak') {
-                  if (!raw) { values[h] = ''; }
-                  else {
+                  // NISN Anak hanya wajib valid kalau role WaliSantri
+                  var rolesYangDipilih = Array.prototype.map.call(modal.querySelectorAll('.roleChk:checked'), function(el){return el.value;});
+                  var isWali = rolesYangDipilih.indexOf('WaliSantri') !== -1;
+                  if (!raw) {
+                    values[h] = '';
+                  } else if (isWali) {
+                    // Wali Santri: NISN harus valid
                     var nisnValid = resolveSantriNisn(raw, daftarSantri);
-                    if (!nisnValid) { gagal = 'Santri pada NISN Anak tidak ditemukan. Pilih salah satu saran yang muncul saat mengetik, atau kosongkan.'; return; }
-                    values[h] = nisnValid;
+                    if (!nisnValid && daftarSantri.length > 0) {
+                      gagal = 'Santri pada NISN Anak tidak ditemukan. Pilih dari saran atau kosongkan.';
+                      return;
+                    }
+                    values[h] = nisnValid || raw;
+                  } else {
+                    // Bukan WaliSantri: simpan apa adanya, tidak perlu validasi
+                    values[h] = raw;
                   }
                 } else { values[h] = raw; }
               });
