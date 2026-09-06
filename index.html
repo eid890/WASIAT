@@ -271,7 +271,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxVTlnkyFEaXLNlVXWr8V6BjWcaSYt2syn5iW5q8GBGQWME5U3cMTN7owaUH4x2_WK3/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -640,8 +640,14 @@
       var btnBatal = wrap.querySelector('#modalBatal');
       var statusEl = wrap.querySelector('#modalStatus');
 
-      // Jalankan onSubmit -- kalau return false, ada validasi yang gagal, jangan lanjut
-      var result = onSubmit(wrap);
+      var result;
+      try {
+        result = onSubmit(wrap);
+      } catch(e) {
+        statusEl.innerHTML = '<p style="color:#dc2626;margin:6px 0">⚠️ Error: '+esc(String(e.message||e))+'</p>';
+        console.error('openModal onSubmit error:', e);
+        return;
+      }
       if (result === false) return;
 
       // Kalau onSubmit return Promise (async), tunggu selesai dulu
@@ -7510,7 +7516,9 @@
                   values[h] = checked.join(',');
                   return;
                 }
-                var raw = modal.querySelector('#f_'+h).value;
+                // NULL-SAFE: kalau field tidak ada di modal, lewati
+                var el = modal.querySelector('#f_'+h);
+                var raw = el ? el.value : '';
                 if (sheet==='MataPelajaran' && h==='Pengampu') {
                   var pengampuValid = resolveGuruExact(raw, daftarNamaGuru);
                   if (!pengampuValid) { gagal = 'Nama guru pada Pengampu tidak dikenali. Pilih salah satu saran yang muncul saat mengetik.'; return; }
