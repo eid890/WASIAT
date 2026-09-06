@@ -271,7 +271,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxuYEkELgNTQoC0nfAYjESHg7pQTog-NMF6wrOMDFO2mmfX67_KQa-GXz9EOoXaDgiD/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -1013,10 +1013,26 @@
       {key:'saldo',           label:'Saldo & Tarik',       icon:'&#128176;'},
       {key:'riwsaldo',        label:'Riwayat Saldo',       icon:'&#128337;'}
     ],
+    'PembinaPutra': [
+      {key:'absen_harian',     label:'Absen Harian Putra',   icon:'&#128104;'},
+      {key:'rekap_harian',     label:'Rekap Kehadiran',      icon:'&#128202;'},
+      {key:'perizinan',        label:'Perizinan Santri',     icon:'&#128196;'},
+      {key:'catatpelanggaran', label:'Catat Pelanggaran',    icon:'&#128221;'},
+      {key:'profilsaya',       label:'Profil Saya',          icon:'&#128100;'},
+    ],
+    'PembinaPutri': [
+      {key:'absen_harian',     label:'Absen Harian Putri',   icon:'&#128105;'},
+      {key:'rekap_harian',     label:'Rekap Kehadiran',      icon:'&#128202;'},
+      {key:'perizinan',        label:'Perizinan Santri',     icon:'&#128196;'},
+      {key:'catatpelanggaran', label:'Catat Pelanggaran',    icon:'&#128221;'},
+      {key:'profilsaya',       label:'Profil Saya',          icon:'&#128100;'},
+    ],
     'Pembina': [
-      {key:'absen',           label:'Absen Maghrib',       icon:'&#127774;'},
-      {key:'rekap',           label:'Rekap Kehadiran',     icon:'&#128202;'},
-      {key:'profilsaya',      label:'Profil Saya',         icon:'&#128100;'}
+      {key:'absen_harian',     label:'Absen Harian',         icon:'&#128203;'},
+      {key:'rekap_harian',     label:'Rekap Kehadiran',      icon:'&#128202;'},
+      {key:'perizinan',        label:'Perizinan Santri',     icon:'&#128196;'},
+      {key:'catatpelanggaran', label:'Catat Pelanggaran',    icon:'&#128221;'},
+      {key:'profilsaya',       label:'Profil Saya',          icon:'&#128100;'},
     ],
     'Admin': [
       {key:'adminpenuh',      label:'Dashboard Admin',     icon:'&#9881;&#65039;'},
@@ -1056,8 +1072,24 @@
       // Pemilik Barang
       kasir:pemilikKasir, riwayat:pemilikRiwayat, omzet:pemilikOmzet,
       saldo:pemilikSaldo, riwsaldo:pemilikRiwayatSaldo,
-      // Pembina
+      // Pembina (lama) + Pembina Putra + Pembina Putri
       absen:pembinaAbsen, rekap:pembinaRekap, profilsaya:guruProfilSaya,
+      absen_harian:function(){
+        var roles = STATE.user.roles||[STATE.user.level];
+        var gender = roles.indexOf('PembinaPutra')!==-1?'Putra':roles.indexOf('PembinaPutri')!==-1?'Putri':'';
+        pembinaAbsenHarian(gender);
+      },
+      rekap_harian:function(){
+        var roles = STATE.user.roles||[STATE.user.level];
+        var gender = roles.indexOf('PembinaPutra')!==-1?'Putra':roles.indexOf('PembinaPutri')!==-1?'Putri':'';
+        pembinaRekapHarian(gender);
+      },
+      perizinan:function(){
+        var roles = STATE.user.roles||[STATE.user.level];
+        var gender = roles.indexOf('PembinaPutra')!==-1?'Putra':roles.indexOf('PembinaPutri')!==-1?'Putri':'';
+        pembinaPerizinan(gender);
+      },
+      catatpelanggaran:function(){ renderFormCatatPelanggaran(STATE._contentId||'da-content'); },
       // Admin/Mudir (kalau multi-role)
       adminpenuh:function(){ dashboardAdmin(); },
       raporkelas:adminRaporKelas, kelompokpapel:adminKelompokMapel,
@@ -1074,8 +1106,7 @@
     // Admin/Mudir dengan SATU role saja → dashboard Admin penuh
     var isAdminOnly = (roles.length === 1 && (roles[0] === 'Admin' || roles[0] === 'Mudir'));
     if (isAdminOnly) return dashboardAdmin();
-    // Admin/Mudir yang JUGA punya role lain (misal Guru) → multi-tab
-    // Tab Admin tetap membuka dashboardAdmin di dalam tab sendiri
+    // PembinaPutra/Putri → multi-tab seperti role lain
     dashboardMultiRole(roles);
   }
 
@@ -2377,7 +2408,7 @@
       resSantri.data.forEach(function(s){
         htmlAbsen += '<div class="santriRowAbsen" data-nisn="'+esc(s.nisn)+'" data-nama="'+esc(s.nama)+'">'+
           '<b>'+esc(s.nama)+'</b> <span class="muted">('+esc(s.nisn)+')</span><br>'+
-          '<select class="statusSelect">'+['Hadir','Sakit','Izin','Alpa'].map(function(st){return '<option value="'+st+'">'+st+'</option>';}).join('')+'</select>'+
+          '<select class="statusSelect">'+['Hadir','Sakit','Izin','Izin Pulang','Alpa'].map(function(st){return '<option value="'+st+'">'+st+'</option>';}).join('')+'</select>'+
           '<input placeholder="Keterangan (opsional)" class="ketInput">'+
           '<div class="grid4">'+['Kedisiplinan','Kesopanan','Keaktifan','Tanggung Jawab'].map(function(lbl,i){
             return '<div><span class="muted" style="font-size:10px">'+lbl+'</span><select class="sikapSelect">'+[1,2,3,4].map(function(v){return '<option value="'+v+'" '+(v===4?'selected':'')+'>'+v+'</option>';}).join('')+'</select></div>';
@@ -2579,7 +2610,7 @@
             btn.onclick = function(){
               var row = lastData.find(function(r){return r.rowIndex===Number(btn.dataset.row);});
               openModal('Edit Absensi',
-                fieldSelect('editStatus','Status',['Hadir','Sakit','Izin','Alpa'], row.status) +
+                fieldSelect('editStatus','Status',['Hadir','Sakit','Izin','Izin Pulang','Alpa'], row.status) +
                 fieldText('editKet','Keterangan', row.keterangan) +
                 fieldSelect('editS1','Kedisiplinan',['1','2','3','4'], String(row.sikap1||4)) +
                 fieldSelect('editS2','Kesopanan',['1','2','3','4'], String(row.sikap2||4)) +
@@ -5743,6 +5774,423 @@
   // ============================================================
   // DASHBOARD PEMBINA HALAQOH
   // ============================================================
+  // ============================================================
+  // CETAK PDF PERIZINAN -- bergaya dokumen resmi pesantren
+  // ============================================================
+  function cetakPDFPerizinan(data, opts){
+    var namaPS   = opts.namaPesantren || 'Pondok Pesantren';
+    var judul    = opts.judul || 'Rekap Perizinan Santri';
+    var subJudul = opts.subJudul || '';
+    var dicetak  = opts.dicetak || '';
+    var tglCetak = new Date().toLocaleDateString('id-ID',{day:'2-digit',month:'long',year:'numeric'});
+
+    // Kelompokkan per status untuk ringkasan
+    var menunggu   = data.filter(function(d){ return d.status==='Menunggu'; }).length;
+    var disetujui  = data.filter(function(d){ return d.status==='Disetujui'; }).length;
+    var kembali    = data.filter(function(d){ return d.status==='Sudah Kembali'; }).length;
+    var ditolak    = data.filter(function(d){ return d.status==='Ditolak'; }).length;
+    var bermalam   = data.filter(function(d){ return d.jenisIzin==='Bermalam'; }).length;
+    var tdk_malam  = data.filter(function(d){ return d.jenisIzin==='Tidak Bermalam'; }).length;
+
+    // Baris tabel per santri
+    var tbody = data.map(function(iz, i){
+      var statusColor = iz.status==='Disetujui'?'#16a34a':iz.status==='Ditolak'?'#dc2626':iz.status==='Sudah Kembali'?'#2563eb':'#d97706';
+      return '<tr style="'+(i%2===0?'':'background:#f8fafc')+'">' +
+        '<td style="text-align:center;color:#94a3b8">'+(i+1)+'</td>' +
+        '<td><b>'+esc(iz.nama)+'</b></td>' +
+        '<td style="text-align:center">'+esc(iz.kelas)+'</td>' +
+        '<td><span style="background:'+(iz.jenisIzin==='Bermalam'?'#ede9fe':'#e0f2fe')+';color:'+(iz.jenisIzin==='Bermalam'?'#7c3aed':'#0369a1')+';padding:2px 8px;border-radius:20px;font-size:10px;font-weight:600">'+esc(iz.jenisIzin)+'</span></td>' +
+        '<td>'+esc(iz.keperluan)+'</td>' +
+        '<td style="text-align:center">'+esc(iz.tglKeluar)+'<br><span style="color:#64748b;font-size:10px">'+esc(iz.jamKeluar)+'</span></td>' +
+        '<td style="text-align:center">'+esc(iz.tglKembaliRencana)+'<br><span style="color:#64748b;font-size:10px">'+esc(iz.jamKembaliRencana)+'</span></td>' +
+        '<td style="text-align:center">'+(iz.tglKembaliAktual?('<b>'+esc(iz.tglKembaliAktual)+'</b>'):'-')+'</td>' +
+        '<td style="text-align:center"><span style="color:'+statusColor+';font-weight:700;font-size:11px">'+esc(iz.status)+'</span></td>' +
+        '<td style="color:#64748b;font-size:10px">'+esc(iz.diajukanOleh)+'</td>' +
+        '</tr>';
+    }).join('');
+
+    var html = '<!DOCTYPE html><html lang="id"><head><meta charset="utf-8">'+
+      '<title>'+esc(judul)+' - '+esc(namaPS)+'</title>' +
+      '<style>' +
+      '*{box-sizing:border-box;margin:0;padding:0}' +
+      'body{font-family:Arial,sans-serif;font-size:11px;color:#111;padding:16px}' +
+      '.header{text-align:center;border-bottom:3px double #0d9488;padding-bottom:12px;margin-bottom:14px}' +
+      '.header h1{font-size:14px;font-weight:700;color:#0d9488;text-transform:uppercase;letter-spacing:.5px}' +
+      '.header h2{font-size:11px;font-weight:400;color:#475569;margin-top:2px}' +
+      '.meta{display:flex;justify-content:space-between;font-size:10px;color:#64748b;margin-bottom:12px}' +
+      '.ringkasan{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}' +
+      '.tile{flex:1;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;min-width:80px;text-align:center}' +
+      '.tile .angka{font-size:20px;font-weight:700}' +
+      '.tile .label{font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:.3px}' +
+      'table{width:100%;border-collapse:collapse;font-size:10px}' +
+      'th{background:#0d9488;color:#fff;padding:7px 6px;text-align:left;font-size:10px;font-weight:600}' +
+      'td{padding:6px;border-bottom:1px solid #f1f5f9;vertical-align:middle}' +
+      'tr:hover td{background:#f0fdf4}' +
+      '.footer{margin-top:24px;display:flex;justify-content:flex-end}' +
+      '.ttd{text-align:center;width:180px}' +
+      '.ttd .kota{font-size:10px;margin-bottom:40px}' +
+      '.ttd .nama{border-top:1px solid #111;padding-top:4px;font-weight:700;font-size:11px}' +
+      '@media print{body{padding:8px}@page{margin:10mm;size:A4 landscape}}' +
+      '</style></head><body>' +
+
+      // Header kop surat
+      '<div class="header">' +
+      '<h1>'+esc(namaPS)+'</h1>' +
+      '<h2>'+esc(judul)+'</h2>' +
+      (subJudul?'<div style="font-size:10px;color:#64748b;margin-top:3px">'+esc(subJudul)+'</div>':'') +
+      '</div>' +
+
+      '<div class="meta">' +
+      '<span>Tanggal Cetak: '+tglCetak+'</span>' +
+      '<span>Dicetak oleh: '+esc(dicetak)+'</span>' +
+      '<span>Total Data: '+data.length+' izin</span>' +
+      '</div>' +
+
+      // Ringkasan
+      '<div class="ringkasan">' +
+      '<div class="tile"><div class="angka" style="color:#0d9488">'+data.length+'</div><div class="label">Total Izin</div></div>' +
+      '<div class="tile"><div class="angka" style="color:#d97706">'+menunggu+'</div><div class="label">Menunggu</div></div>' +
+      '<div class="tile"><div class="angka" style="color:#16a34a">'+disetujui+'</div><div class="label">Disetujui</div></div>' +
+      '<div class="tile"><div class="angka" style="color:#2563eb">'+kembali+'</div><div class="label">Sudah Kembali</div></div>' +
+      '<div class="tile"><div class="angka" style="color:#dc2626">'+ditolak+'</div><div class="label">Ditolak</div></div>' +
+      '<div class="tile"><div class="angka" style="color:#7c3aed">'+bermalam+'</div><div class="label">Bermalam</div></div>' +
+      '<div class="tile"><div class="angka" style="color:#0369a1">'+tdk_malam+'</div><div class="label">Tdk Bermalam</div></div>' +
+      '</div>' +
+
+      // Tabel
+      '<table>' +
+      '<thead><tr>' +
+      '<th style="width:30px">No</th>' +
+      '<th style="width:140px">Nama Santri</th>' +
+      '<th style="width:50px;text-align:center">Kelas</th>' +
+      '<th style="width:90px">Jenis Izin</th>' +
+      '<th>Keperluan</th>' +
+      '<th style="width:75px;text-align:center">Tgl Keluar</th>' +
+      '<th style="width:75px;text-align:center">Rencana Kembali</th>' +
+      '<th style="width:75px;text-align:center">Kembali Aktual</th>' +
+      '<th style="width:80px;text-align:center">Status</th>' +
+      '<th style="width:80px">Diajukan Oleh</th>' +
+      '</tr></thead>' +
+      '<tbody>'+tbody+'</tbody>' +
+      '</table>' +
+
+      // Tanda tangan
+      '<div class="footer">' +
+      '<div class="ttd">' +
+      '<div class="kota">Poso, '+tglCetak+'</div>' +
+      '<div class="nama">'+esc(dicetak||'Pembina')+'</div>' +
+      '<div style="font-size:9px;color:#64748b">Pembina Pondok Pesantren</div>' +
+      '</div></div>' +
+
+      '<script>window.onload=function(){window.print();}<\/script>' +
+      '</body></html>';
+
+    var win = window.open('','_blank');
+    win.document.write(html);
+    win.document.close();
+  }
+
+  // ============================================================
+  // PERIZINAN SANTRI
+  // ============================================================
+  function pembinaPerizinan(gender){
+    var c = getContentEl();
+    var labelG = gender==='Putra'?'👦 Putra':gender==='Putri'?'👧 Putri':'Semua';
+    c.innerHTML = '<div id="izinStatusPondok"></div>';
+    widgetStatusPondok('izinStatusPondok', gender);
+
+    // Tab: Daftar Izin | Ajukan Baru
+    var tabAktif = 'daftar';
+    function renderTabIzin(tab){
+      tabAktif = tab;
+      ['daftar','baru'].forEach(function(t){
+        var el = document.getElementById('izTab_'+t);
+        if(el) el.style.cssText = t===tab
+          ? 'background:#0d9488;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer'
+          : 'background:#f1f5f9;color:#475569;border:none;border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer';
+        var sec = document.getElementById('izSec_'+t);
+        if(sec) sec.style.display = t===tab?'':'none';
+      });
+    }
+
+    c.innerHTML += '<div class="card"><h3>📋 Perizinan Santri — '+labelG+'</h3>' +
+      '<div style="display:flex;gap:8px;margin-bottom:16px">' +
+      '<button id="izTab_daftar">📋 Daftar Izin</button>' +
+      '<button id="izTab_baru">➕ Ajukan Izin Baru</button>' +
+      '</div>' +
+
+      // Seksi Daftar Izin
+      '<div id="izSec_daftar">' +
+      '<div class="grid2" style="margin-bottom:10px">' +
+      '<div><label>Filter Status</label>' +
+      '<select id="izFilterStatus" style="width:100%">' +
+      '<option value="">Semua Status</option>' +
+      '<option value="Menunggu">⏳ Menunggu</option>' +
+      '<option value="Disetujui">✅ Disetujui</option>' +
+      '<option value="Ditolak">❌ Ditolak</option>' +
+      '<option value="Sudah Kembali">🏠 Sudah Kembali</option>' +
+      '</select></div>' +
+      '<div><label>Filter Jenis</label>' +
+      '<select id="izFilterJenis" style="width:100%">' +
+      '<option value="">Semua Jenis</option>' +
+      '<option value="Tidak Bermalam">Tidak Bermalam</option>' +
+      '<option value="Bermalam">Bermalam</option>' +
+      '</select></div>' +
+      '</div>' +
+      '<button id="btnIzMuat" class="secondary">🔄 Muat / Refresh</button>' +
+      '<button id="btnIzCetakPDF" class="secondary" style="margin-left:6px">🖨 Cetak PDF</button>' +
+      '<button id="btnIzExcel" class="secondary" style="margin-left:6px">📄 Export Excel</button>' +
+      '<div id="izDaftarWrap" style="margin-top:12px"></div>' +
+      '</div>' +
+
+      // Seksi Ajukan Baru
+      '<div id="izSec_baru" style="display:none">' +
+      '<div class="grid2">' +
+      '<div><label>Nama Santri *</label><input id="izNama" placeholder="Ketik nama santri..." autocomplete="off"></div>' +
+      '<div><label>Jenis Izin *</label>' +
+      '<select id="izJenis" style="width:100%">' +
+      '<option value="Tidak Bermalam">Tidak Bermalam (hari yang sama)</option>' +
+      '<option value="Bermalam">Bermalam (lebih dari 1 malam)</option>' +
+      '</select></div>' +
+      '</div>' +
+      '<label>Keperluan / Alasan *</label>' +
+      '<textarea id="izKeperluan" rows="2" placeholder="Contoh: Ke dokter, acara pernikahan kakak, dll." style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:8px"></textarea>' +
+      '<div class="grid2">' +
+      '<div><label>Tanggal Keluar *</label><input type="date" id="izTglKeluar" value="'+todayStr()+'"></div>' +
+      '<div><label>Jam Keluar</label><input type="time" id="izJamKeluar" value="07:00"></div>' +
+      '</div>' +
+      '<div class="grid2">' +
+      '<div><label>Tanggal Kembali (Rencana) *</label><input type="date" id="izTglKembali" value="'+todayStr()+'"></div>' +
+      '<div><label>Jam Kembali</label><input type="time" id="izJamKembali" value="17:00"></div>' +
+      '</div>' +
+      '<button id="btnIzAjukan">📤 Ajukan Izin</button>' +
+      '<div id="izPesanBaru" style="margin-top:8px"></div>' +
+      '</div></div>';
+
+    // Init tab
+    document.getElementById('izTab_daftar').onclick = function(){ renderTabIzin('daftar'); };
+    document.getElementById('izTab_baru').onclick = function(){ renderTabIzin('baru'); };
+    renderTabIzin('daftar');
+
+    // Autocomplete nama santri untuk form baru
+    api('getSantriHarian', {gender:gender}).then(function(res){
+      if (!res.ok) return;
+      var inp = document.getElementById('izNama');
+      if (!inp) return;
+      var dl = document.createElement('datalist');
+      dl.id = 'izNamaDL';
+      res.data.forEach(function(s){ var o=document.createElement('option'); o.value=s.nisn+' - '+s.nama; dl.appendChild(o); });
+      inp.parentNode.appendChild(dl);
+      inp.setAttribute('list','izNamaDL');
+      inp._daftar = res.data;
+    });
+
+    // Muat daftar
+    function muatDaftar(){
+      var wrap = document.getElementById('izDaftarWrap');
+      if (!wrap) return;
+      wrap.innerHTML = '<p class="muted">Memuat...</p>';
+      var status = document.getElementById('izFilterStatus').value;
+      var jenis  = document.getElementById('izFilterJenis').value;
+      api('getDaftarIzin', {status:status, jenisIzin:jenis}).then(function(res){
+        if (!res.ok){ wrap.innerHTML = errBox(res.error); return; }
+        if (!res.data.length){ wrap.innerHTML = '<p class="muted" style="padding:16px 0">Belum ada data perizinan.</p>'; return; }
+
+        var html = '';
+        res.data.forEach(function(iz){
+          var badgeColor = iz.status==='Menunggu'?'#d97706':iz.status==='Disetujui'?'#16a34a':iz.status==='Ditolak'?'#dc2626':'#64748b';
+          var badgeBg = iz.status==='Menunggu'?'#fef9c3':iz.status==='Disetujui'?'#f0fdf4':iz.status==='Ditolak'?'#fee2e2':'#f1f5f9';
+          html += '<div style="border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:10px">' +
+            '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px">' +
+            '<div>' +
+            '<div style="font-weight:700;font-size:14px">'+esc(iz.nama)+' <span style="font-weight:400;color:#64748b;font-size:12px">'+esc(iz.kelas)+'</span></div>' +
+            '<div style="font-size:12px;color:#64748b;margin-top:2px">'+esc(iz.jenisIzin)+' · '+esc(iz.keperluan)+'</div>' +
+            '<div style="font-size:11px;color:#94a3b8;margin-top:2px">'+
+            '📅 '+esc(iz.tglKeluar)+' '+esc(iz.jamKeluar)+' → '+esc(iz.tglKembaliRencana)+' '+esc(iz.jamKembaliRencana)+
+            (iz.tglKembaliAktual?' · ✅ Kembali: '+esc(iz.tglKembaliAktual):'')+
+            '</div>' +
+            '</div>' +
+            '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">' +
+            '<span style="background:'+badgeBg+';color:'+badgeColor+';padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600">'+esc(iz.status)+'</span>' +
+            '</div></div>' +
+            // Tombol aksi
+            '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">' +
+            (iz.status==='Menunggu' ?
+              '<button class="small btnIzSetujui" data-id="'+esc(iz.id)+'" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:5px 12px;cursor:pointer">✅ Setujui</button>'+
+              '<button class="small btnIzTolak" data-id="'+esc(iz.id)+'" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:5px 12px;cursor:pointer">❌ Tolak</button>' : '')+
+            (iz.status==='Disetujui' && !iz.tglKembaliAktual ?
+              '<button class="small btnIzKembali" data-id="'+esc(iz.id)+'" data-nama="'+esc(iz.nama)+'" style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:5px 12px;cursor:pointer">🏠 Konfirmasi Kembali</button>' : '')+
+            '<span style="font-size:11px;color:#94a3b8;padding:5px 0">Ref: '+esc(iz.id)+'</span>' +
+            '</div></div>';
+        });
+        wrap.innerHTML = html;
+
+        // Binding tombol
+        wrap.querySelectorAll('.btnIzSetujui').forEach(function(btn){
+          btn.onclick = function(){
+            if (!confirm('Setujui izin ini?')) return;
+            loadingBtn(btn,'...');
+            api('approveIzin',{id:btn.dataset.id, oleh:STATE.user.nama}).then(function(r){
+              resetBtn(btn,'✅ Setujui');
+              if(r.ok) muatDaftar(); else alert(r.error);
+            });
+          };
+        });
+        wrap.querySelectorAll('.btnIzTolak').forEach(function(btn){
+          btn.onclick = function(){
+            var alasan = prompt('Alasan penolakan (opsional):','');
+            if (alasan === null) return;
+            loadingBtn(btn,'...');
+            api('tolakIzin',{id:btn.dataset.id, oleh:STATE.user.nama, alasan:alasan}).then(function(r){
+              resetBtn(btn,'❌ Tolak');
+              if(r.ok) muatDaftar(); else alert(r.error);
+            });
+          };
+        });
+        wrap.querySelectorAll('.btnIzKembali').forEach(function(btn){
+          btn.onclick = function(){
+            var catatan = prompt('Catatan kembali (opsional, contoh: kondisi baik):', '');
+            if (catatan === null) return;
+            loadingBtn(btn,'...');
+            api('konfirmasiKembali',{id:btn.dataset.id, oleh:STATE.user.nama, catatan:catatan}).then(function(r){
+              resetBtn(btn,'🏠 Kembali');
+              if(r.ok){ widgetStatusPondok('izinStatusPondok', gender); muatDaftar(); }
+              else alert(r.error);
+            });
+          };
+        });
+      });
+    }
+
+    document.getElementById('btnIzMuat').onclick = muatDaftar;
+
+    // Cetak PDF rekap perizinan
+    document.getElementById('btnIzCetakPDF').onclick = function(){
+      var status = document.getElementById('izFilterStatus').value;
+      var jenis  = document.getElementById('izFilterJenis').value;
+      var btn = this;
+      loadingBtn(btn, 'Memuat...');
+      api('getDaftarIzin', {status:status, jenisIzin:jenis}).then(function(res){
+        resetBtn(btn, '🖨 Cetak PDF');
+        if (!res.ok || !res.data.length){ alert('Tidak ada data untuk dicetak.'); return; }
+        cetakPDFPerizinan(res.data, {
+          judul: 'Rekap Perizinan Santri',
+          subJudul: (labelG!=='Semua'?'Gender: '+labelG+' · ':'')+(status?'Status: '+status+' · ':'')+(jenis?'Jenis: '+jenis:''),
+          namaPesantren: STATE.pengaturan.NamaPesantren||'Pondok Pesantren',
+          dicetak: STATE.user.nama,
+        });
+      });
+    };
+
+    // Export Excel (CSV)
+    document.getElementById('btnIzExcel').onclick = function(){
+      var status = document.getElementById('izFilterStatus').value;
+      var jenis  = document.getElementById('izFilterJenis').value;
+      var btn = this;
+      loadingBtn(btn, 'Memuat...');
+      api('getDaftarIzin', {status:status, jenisIzin:jenis}).then(function(res){
+        resetBtn(btn, '📄 Export Excel');
+        if (!res.ok || !res.data.length){ alert('Tidak ada data untuk diekspor.'); return; }
+        var bom = '\uFEFF';
+        var header = ['No','Nama Santri','Kelas','Jenis Izin','Keperluan','Tgl Keluar','Jam Keluar','Tgl Kembali (Rencana)','Jam Kembali','Status','Diajukan Oleh','Tgl Kembali (Aktual)'];
+        var rows = res.data.map(function(iz,i){
+          return [i+1, iz.nama, iz.kelas, iz.jenisIzin, iz.keperluan,
+            iz.tglKeluar, iz.jamKeluar, iz.tglKembaliRencana, iz.jamKembaliRencana,
+            iz.status, iz.diajukanOleh, iz.tglKembaliAktual||'-'];
+        });
+        var csv = bom + [header].concat(rows).map(function(r){
+          return r.map(function(v){ var s=String(v||''); return s.includes(',')?'"'+s+'"':s; }).join(',');
+        }).join('\n');
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+        a.download = 'Rekap_Perizinan_'+todayStr()+'.csv';
+        a.click();
+      });
+    };
+    muatDaftar();
+
+    // Ajukan izin baru
+    document.getElementById('btnIzAjukan').onclick = function(){
+      var btn = this;
+      var rawNama = document.getElementById('izNama').value.trim();
+      var inp = document.getElementById('izNama');
+      // Cari NISN dari daftar santri
+      var nisn = '', namaSantri = rawNama;
+      if (inp._daftar) {
+        var found = inp._daftar.find(function(s){ return (s.nisn+' - '+s.nama)===rawNama || s.nama===rawNama || s.nisn===rawNama; });
+        if (found){ nisn=found.nisn; namaSantri=found.nama; }
+      }
+      if (!nisn && !rawNama){ document.getElementById('izPesanBaru').innerHTML=errBox('Pilih nama santri.'); return; }
+      var keperluan = document.getElementById('izKeperluan').value.trim();
+      if (!keperluan){ document.getElementById('izPesanBaru').innerHTML=errBox('Keperluan wajib diisi.'); return; }
+      var tglKeluar = document.getElementById('izTglKeluar').value;
+      var tglKembali = document.getElementById('izTglKembali').value;
+      if (!tglKeluar || !tglKembali){ document.getElementById('izPesanBaru').innerHTML=errBox('Tanggal keluar dan kembali wajib diisi.'); return; }
+
+      loadingBtn(btn,'Mengajukan...');
+      api('ajukanIzin',{
+        nisn: nisn || rawNama, // kalau tidak ada NISN, kirim nama saja (backend cari)
+        jenisIzin: document.getElementById('izJenis').value,
+        keperluan: keperluan,
+        tglKeluar: tglKeluar,
+        jamKeluar: document.getElementById('izJamKeluar').value,
+        tglKembaliRencana: tglKembali,
+        jamKembaliRencana: document.getElementById('izJamKembali').value,
+        diajukanOleh: STATE.user.nama,
+      }).then(function(r){
+        resetBtn(btn,'📤 Ajukan Izin');
+        if(!r.ok){ document.getElementById('izPesanBaru').innerHTML=errBox(r.error); return; }
+        document.getElementById('izPesanBaru').innerHTML =
+          '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;color:#16a34a">'+
+          '✅ Izin berhasil diajukan untuk <b>'+esc(r.namaSantri)+'</b>.<br>'+
+          'Status: <b>Menunggu</b> · Ref: '+esc(r.id)+'<br>'+
+          '<small>WA notifikasi telah dikirim ke wali santri.</small></div>';
+        document.getElementById('izKeperluan').value = '';
+        renderTabIzin('daftar');
+        muatDaftar();
+      }).catch(function(){ resetBtn(btn,'📤 Ajukan Izin'); });
+    };
+  }
+
+  // Widget izin di dashboard Wali Santri -- rekap izin anak
+  function renderIzinWaliSantri(nisn, containerId){
+    var c = document.getElementById(containerId);
+    if (!c) return;
+    api('getIzinSantriSaya', {nisn:nisn}).then(function(res){
+      if (!res.ok || !res.data.length){
+        c.innerHTML = '<div class="card"><h4>📋 Riwayat Izin</h4><p class="muted">Belum ada riwayat perizinan.</p></div>';
+        return;
+      }
+      var aktif = res.data.filter(function(iz){ return iz.status==='Disetujui'&&!iz.tglKembaliAktual; });
+      var riwayat = res.data.slice(0,5);
+      var html = '<div class="card"><h4>📋 Perizinan Santri</h4>';
+      if (aktif.length) {
+        html += '<div style="background:#fef9c3;border:1px solid #fde68a;border-radius:10px;padding:12px;margin-bottom:10px">'+
+          '<b>⚠️ Sedang Izin Keluar</b><br>';
+        aktif.forEach(function(iz){
+          html += '<div style="font-size:13px;margin-top:4px">'+esc(iz.jenisIzin)+' · Kembali rencana: '+esc(iz.tglKembaliRencana)+' '+esc(iz.jamKembaliRencana)+'</div>';
+        });
+        html += '</div>';
+      }
+      html += '<div style="font-size:12px">';
+      riwayat.forEach(function(iz){
+        var color = iz.status==='Sudah Kembali'?'#16a34a':iz.status==='Disetujui'?'#2563eb':iz.status==='Ditolak'?'#dc2626':'#d97706';
+        html += '<div style="border-left:3px solid '+color+';padding:6px 10px;margin-bottom:6px;background:#f8fafc;border-radius:0 8px 8px 0">'+
+          '<div style="font-weight:600">'+esc(iz.jenisIzin)+' — '+esc(iz.keperluan)+'</div>'+
+          '<div style="color:#64748b;font-size:11px">'+esc(iz.tglKeluar)+' → '+esc(iz.tglKembaliRencana)+
+          (iz.tglKembaliAktual?' · Kembali: '+esc(iz.tglKembaliAktual):'')+
+          ' · <span style="color:'+color+'">'+esc(iz.status)+'</span></div>'+
+          '</div>';
+      });
+      html += '</div></div>';
+      c.innerHTML = html;
+    }).catch(function(){});
+  }
+
+  // Fungsi lama (tetap ada agar tidak crash kalau ada referensi)
+  function pembinaAbsen(){ pembinaAbsenHarian(''); }
+  function pembinaRekap(){ pembinaRekapHarian(''); }
+
   function dashboardPembina(activeKey){
     STATE._contentId = 'dpb-content';
     var navItems = [
@@ -5757,7 +6205,297 @@
   }
 
   // ---- Absen Maghrib ----
-  function pembinaAbsen(){
+  // ============================================================
+  // ABSENSI HARIAN PEMBINA
+  // ============================================================
+  function pembinaAbsenHarian(gender){
+    var c = getContentEl();
+    var labelGender = gender === 'Putra' ? '👦 Santri Putra' : gender === 'Putri' ? '👧 Santri Putri' : 'Semua Santri';
+    c.innerHTML = '<div id="pbStatusPondok"></div>' +
+      '<div class="card"><h3>📋 Absen Harian — '+labelGender+'</h3>' +
+      '<div class="grid2" style="margin-bottom:12px">' +
+      '<div><label>Tanggal</label><input type="date" id="pbTanggal" value="'+todayStr()+'"></div>' +
+      '<div><label>Sesi</label><select id="pbSesi"><option>Harian</option><option>Pagi</option><option>Siang</option><option>Malam</option></select></div>' +
+      '</div>' +
+      '<button id="btnPbTampilkan">Tampilkan Santri</button>' +
+      '<div id="pbFormAbsen" style="margin-top:14px"></div></div>';
+
+    // Tampilkan status pondok segera
+    widgetStatusPondok('pbStatusPondok', gender);
+
+    document.getElementById('btnPbTampilkan').onclick = function(){
+      widgetStatusPondok('pbStatusPondok', gender); // refresh status
+      var btn = this;
+      var tanggal = document.getElementById('pbTanggal').value;
+      var sesi = document.getElementById('pbSesi').value;
+      if (!tanggal) { alert('Pilih tanggal terlebih dahulu.'); return; }
+      loadingBtn(btn, 'Memuat...');
+      api('getSantriHarian', {gender: gender, sesi: sesi}).then(function(res){
+        resetBtn(btn, 'Tampilkan Santri');
+        if (!res.ok) { document.getElementById('pbFormAbsen').innerHTML = errBox(res.error); return; }
+        if (!res.data.length) {
+          document.getElementById('pbFormAbsen').innerHTML = warnBox('Tidak ada santri '+labelGender+' ditemukan.');
+          return;
+        }
+
+        var sudah = res.sudahAbsen || {};
+        var html = '<div class="card">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">' +
+          '<b>'+res.data.length+' Santri '+labelGender+'</b>' +
+          '<div style="display:flex;gap:6px">' +
+          '<button id="btnPbHadirSemua" class="secondary small">✅ Hadir Semua</button>' +
+          '</div></div>' +
+          '<div style="overflow-x:auto"><table style="width:100%;font-size:13px;border-collapse:collapse">' +
+          '<thead><tr style="background:#f1f5f9">' +
+          '<th style="padding:8px;text-align:left">No</th>' +
+          '<th style="padding:8px;text-align:left">Nama Santri</th>' +
+          '<th style="padding:8px;text-align:left">Kelas</th>' +
+          '<th style="padding:8px;text-align:center">Status</th>' +
+          '<th style="padding:8px;text-align:left">Keterangan</th>' +
+          '</tr></thead><tbody>';
+
+        res.data.forEach(function(s, i){
+          var statusAwal = (sudah[s.nisn] && sudah[s.nisn].status) || 'Hadir';
+          var ketAwal = (sudah[s.nisn] && sudah[s.nisn].ket) || '';
+          var rowBg = i%2===0 ? '#fff' : '#f8fafc';
+          html += '<tr style="background:'+rowBg+'" data-nisn="'+esc(s.nisn)+'" data-nama="'+esc(s.nama)+'" data-kelas="'+esc(s.kelas)+'" data-nowa="'+esc(s.noWa)+'">' +
+            '<td style="padding:7px 8px;color:#94a3b8">'+(i+1)+'</td>' +
+            '<td style="padding:7px 8px;font-weight:600">'+esc(s.nama)+'</td>' +
+            '<td style="padding:7px 8px;color:#64748b">'+esc(s.kelas)+'</td>' +
+            '<td style="padding:7px 8px;text-align:center">' +
+            '<select class="pbStatus" style="padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;width:90px">' +
+            ['Hadir','Sakit','Izin','Izin Pulang','Alpa'].map(function(st){
+              return '<option value="'+st+'"'+(st===statusAwal?' selected':'')+'>'+st+'</option>';
+            }).join('') +
+            '</select></td>' +
+            '<td style="padding:7px 8px">' +
+            '<input class="pbKet" value="'+esc(ketAwal)+'" placeholder="Ket. (opsional)" style="width:100%;padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px"></td>' +
+            '</tr>';
+        });
+
+        html += '</tbody></table></div>' +
+          '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">' +
+          '<button id="btnPbSimpan">💾 Simpan Absensi</button>' +
+          '<button class="secondary" id="btnPbBatal">Batal</button>' +
+          '</div><div id="pbPesan" style="margin-top:8px"></div></div>';
+
+        document.getElementById('pbFormAbsen').innerHTML = html;
+
+        // Hadir semua
+        document.getElementById('btnPbHadirSemua').onclick = function(){
+          document.querySelectorAll('.pbStatus').forEach(function(s){ s.value = 'Hadir'; });
+        };
+
+        document.getElementById('btnPbBatal').onclick = function(){
+          document.getElementById('pbFormAbsen').innerHTML = '';
+        };
+
+        // Simpan absensi
+        document.getElementById('btnPbSimpan').onclick = function(){
+          var btn = this;
+          var items = [];
+          document.querySelectorAll('#pbFormAbsen tbody tr').forEach(function(row){
+            items.push({
+              nisn: row.dataset.nisn,
+              nama: row.dataset.nama,
+              kelas: row.dataset.kelas,
+              noWa: row.dataset.nowa,
+              status: row.querySelector('.pbStatus').value,
+              keterangan: row.querySelector('.pbKet').value,
+            });
+          });
+          loadingBtn(btn, 'Menyimpan...');
+          document.getElementById('pbPesan').innerHTML = '';
+          api('submitAbsensiHarian', {
+            items: items,
+            tanggal: tanggal,
+            sesi: sesi,
+            gender: gender,
+            dicatatOleh: STATE.user.nama,
+          }).then(function(r){
+            resetBtn(btn, '💾 Simpan Absensi');
+            if (!r.ok) { document.getElementById('pbPesan').innerHTML = errBox(r.error); return; }
+            document.getElementById('pbPesan').innerHTML =
+              '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;color:#16a34a;font-weight:600">' +
+              '✅ Absensi tersimpan! Total: '+r.total+' santri' +
+              (r.tidakHadir > 0 ? ', WA terkirim ke '+r.tidakHadir+' ortu (Alpa).' : '.') +
+              '</div>';
+          }).catch(function(){ resetBtn(btn, '💾 Simpan Absensi'); });
+        };
+      });
+    };
+  }
+
+  // Rekap kehadiran harian
+  function pembinaRekapHarian(gender){
+    var c = getContentEl();
+    var labelGender = gender === 'Putra' ? '👦 Putra' : gender === 'Putri' ? '👧 Putri' : 'Semua';
+    c.innerHTML = '<div class="card"><h3>📊 Rekap Kehadiran Harian — '+labelGender+'</h3>' +
+      '<div class="grid2" style="margin-bottom:12px">' +
+      '<div><label>Dari Tanggal</label><input type="date" id="pbRDari"></div>' +
+      '<div><label>Sampai Tanggal</label><input type="date" id="pbRSampai" value="'+todayStr()+'"></div>' +
+      '</div>' +
+      '<button id="btnPbRMuat">Tampilkan Rekap</button>' +
+      '<div id="pbRekapWrap" style="margin-top:14px"></div></div>';
+
+    document.getElementById('btnPbRMuat').onclick = function(){
+      var btn = this;
+      var dari = document.getElementById('pbRDari').value;
+      var sampai = document.getElementById('pbRSampai').value;
+      loadingBtn(btn, 'Memuat...');
+      api('getRekapAbsensiHarian', {gender:gender, tglMulai:dari, tglAkhir:sampai}).then(function(res){
+        resetBtn(btn, 'Tampilkan Rekap');
+        if (!res.ok) { document.getElementById('pbRekapWrap').innerHTML = errBox(res.error); return; }
+        if (!res.data.length) {
+          document.getElementById('pbRekapWrap').innerHTML = warnBox('Belum ada data absensi harian untuk periode ini.');
+          return;
+        }
+
+        var html = '<div class="card">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">' +
+          '<b>'+res.data.length+' Santri | Total '+res.totalHari+' Hari</b>' +
+          '<button id="btnPbExcelRekap" class="secondary small">📄 Export Excel</button>' +
+          '</div>' +
+          '<div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse">' +
+          '<thead><tr style="background:#1e40af;color:#fff">' +
+          '<th style="padding:8px">No</th><th style="padding:8px;text-align:left">Nama</th>' +
+          '<th style="padding:8px">Kelas</th><th style="padding:8px">Hadir</th>' +
+          '<th style="padding:8px">Sakit</th><th style="padding:8px">Izin</th>' +
+          '<th style="padding:8px">Alpa</th><th style="padding:8px">%Hadir</th>' +
+          '</tr></thead><tbody>';
+
+        res.data.forEach(function(s, i){
+          var warna = s.persen >= 80 ? '#f0fdf4' : s.persen >= 60 ? '#fefce8' : '#fef2f2';
+          var warnaP = s.persen >= 80 ? '#16a34a' : s.persen >= 60 ? '#ca8a04' : '#dc2626';
+          html += '<tr style="background:'+(i%2===0?'#fff':'#f8fafc')+'">' +
+            '<td style="padding:6px 8px;text-align:center;color:#94a3b8">'+(i+1)+'</td>' +
+            '<td style="padding:6px 8px;font-weight:600">'+esc(s.nama)+'</td>' +
+            '<td style="padding:6px 8px;text-align:center;color:#64748b">'+esc(s.kelas)+'</td>' +
+            '<td style="padding:6px 8px;text-align:center;color:#16a34a;font-weight:700">'+s.hadir+'</td>' +
+            '<td style="padding:6px 8px;text-align:center;color:#d97706">'+s.sakit+'</td>' +
+            '<td style="padding:6px 8px;text-align:center;color:#2563eb">'+s.izin+'</td>' +
+            '<td style="padding:6px 8px;text-align:center;color:#dc2626;font-weight:700">'+s.alpa+'</td>' +
+            '<td style="padding:6px 8px;text-align:center;font-weight:700;color:'+warnaP+';background:'+warna+'">'+s.persen+'%</td>' +
+            '</tr>';
+        });
+
+        html += '</tbody></table></div></div>';
+        document.getElementById('pbRekapWrap').innerHTML = html;
+
+        // Export Excel
+        document.getElementById('btnPbExcelRekap').onclick = function(){
+          var bom = '\uFEFF';
+          var header = ['No','Nama Santri','Kelas','Hadir','Sakit','Izin','Izin Pulang','Alpa','% Hadir'];
+          var rows = res.data.map(function(s,i){
+            return [i+1, s.nama, s.kelas, s.hadir, s.sakit, s.izin, s.alpa, s.persen+'%'];
+          });
+          var csv = bom + [header].concat(rows).map(function(r){
+            return r.map(function(v){ var s=String(v||''); return s.includes(',')?'"'+s+'"':s; }).join(',');
+          }).join('\n');
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+          a.download = 'Rekap_Kehadiran_'+labelGender.replace(/[^a-zA-Z]/g,'_')+'.csv';
+          a.click();
+        };
+      });
+    };
+  }
+
+  // Widget status pondok -- tampil di dashboard Pembina, Admin, Mudir
+  function widgetStatusPondok(containerId, gender){
+    var c = document.getElementById(containerId);
+    if (!c) return;
+    c.innerHTML = '<div style="background:#f8fafc;border-radius:12px;padding:14px;margin-bottom:12px">' +
+      '<div style="display:flex;align-items:center;gap:6px;color:#64748b;font-size:12px;margin-bottom:8px">' +
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1.5s linear infinite"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>' +
+      'Memuat status pondok...</div></div>';
+
+    api('getStatusPondok', {gender: gender||''}).then(function(res){
+      if (!res.ok) { c.innerHTML = ''; return; }
+
+      var tglLabel = res.hariIni ? 'Hari ini' : res.tanggal;
+      var diPondok = gender==='Putra' ? res.putra.diPondok : gender==='Putri' ? res.putri.diPondok : res.diPondok;
+      var izinPulang = gender==='Putra' ? res.putra.izinPulang : gender==='Putri' ? res.putri.izinPulang : res.izinPulang;
+      var total = gender==='Putra' ? res.putra.total : gender==='Putri' ? res.putri.total : res.total;
+      var labelG = gender==='Putra'?'Putra':gender==='Putri'?'Putri':'Santri';
+
+      var html = '<div style="background:linear-gradient(135deg,#0f172a,#1e3a5f);border-radius:14px;padding:16px;margin-bottom:12px;color:#fff">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">' +
+        '<div>' +
+        '<div style="font-size:11px;opacity:.7;text-transform:uppercase;letter-spacing:.5px">🏡 Status Pondok · '+labelG+'</div>' +
+        '<div style="font-size:11px;opacity:.55;margin-top:2px">'+tglLabel+(res.hariIni?'':' (terakhir)')+'</div>' +
+        '</div>' +
+        (res.sudahAbsen
+          ? '<div style="background:rgba(34,197,94,.2);color:#4ade80;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600">● Absen tercatat</div>'
+          : '<div style="background:rgba(239,68,68,.2);color:#f87171;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600">● Belum absen hari ini</div>') +
+        '</div>' +
+
+        // Angka utama
+        '<div style="display:flex;gap:6px;margin-top:14px;flex-wrap:wrap">' +
+        _kartuStatus('🏠 Di Pondok', diPondok, total, '#22c55e', 'rgba(34,197,94,.15)') +
+        _kartuStatus('🚪 Izin Pulang', izinPulang, total, '#fb923c', 'rgba(251,146,60,.15)') +
+        '</div>' +
+
+        // Detail per status (hanya kalau semua gender atau tidak difilter)
+        (!gender && res.sudahAbsen ? (
+          '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">' +
+          _pil('✅ Hadir', res.hadir, '#4ade80') +
+          _pil('🤒 Sakit', res.sakit, '#fb923c') +
+          _pil('📝 Izin', res.izin, '#60a5fa') +
+          _pil('❌ Alpa', res.alpa, '#f87171') +
+          '</div>'
+        ) : '') +
+
+        // Breakdown putra/putri (untuk admin/mudir)
+        (!gender ? (
+          '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">' +
+          '<div style="flex:1;background:rgba(255,255,255,.07);border-radius:8px;padding:8px 10px;min-width:100px">' +
+          '<div style="font-size:10px;opacity:.6">👦 Putra</div>' +
+          '<div style="font-size:18px;font-weight:700;color:#4ade80">'+res.putra.diPondok+'</div>' +
+          '<div style="font-size:10px;opacity:.5">dari '+res.putra.total+' · izin: '+res.putra.izinPulang+'</div>' +
+          '</div>' +
+          '<div style="flex:1;background:rgba(255,255,255,.07);border-radius:8px;padding:8px 10px;min-width:100px">' +
+          '<div style="font-size:10px;opacity:.6">👧 Putri</div>' +
+          '<div style="font-size:18px;font-weight:700;color:#f472b6">'+res.putri.diPondok+'</div>' +
+          '<div style="font-size:10px;opacity:.5">dari '+res.putri.total+' · izin: '+res.putri.izinPulang+'</div>' +
+          '</div></div>'
+        ) : '') +
+
+        // Daftar santri yang izin pulang
+        (izinPulang > 0 ? (
+          '<div style="margin-top:10px;border-top:1px solid rgba(255,255,255,.1);padding-top:8px">' +
+          '<div style="font-size:11px;opacity:.7;margin-bottom:6px">🚪 Sedang Izin Pulang:</div>' +
+          res.izinPulangList.filter(function(s){
+            return !gender || s.jk===gender;
+          }).map(function(s){
+            return '<div style="font-size:12px;background:rgba(255,255,255,.07);border-radius:6px;padding:4px 8px;margin-bottom:4px">'+
+              '<b>'+s.nama+'</b> <span style="opacity:.6;font-size:11px">'+s.kelas+'</span>'+
+              (s.keterangan?' <span style="opacity:.5;font-size:10px">· '+s.keterangan+'</span>':'')+
+              '</div>';
+          }).join('') +
+          '</div>'
+        ) : '') +
+
+        '</div>';
+
+      c.innerHTML = html;
+    }).catch(function(){ c.innerHTML = ''; });
+  }
+
+  function _kartuStatus(label, angka, total, warna, bg){
+    var persen = total>0 ? Math.round((angka/total)*100) : 0;
+    return '<div style="flex:1;background:'+bg+';border-radius:10px;padding:10px 12px;min-width:90px">' +
+      '<div style="font-size:11px;opacity:.7">'+label+'</div>' +
+      '<div style="font-size:26px;font-weight:700;color:'+warna+'">'+angka+'</div>' +
+      '<div style="font-size:10px;opacity:.55">dari '+total+' ('+persen+'%)</div>' +
+      '</div>';
+  }
+  function _pil(label, angka, warna){
+    return '<div style="background:rgba(255,255,255,.07);border-radius:6px;padding:4px 10px;font-size:12px;color:'+warna+'">'+label+' <b>'+angka+'</b></div>';
+  }
+
+  // Tampilkan widget status pondok di dashboard Pembina
+  function pembinaAbsenHarian(gender){
     var c = getContentEl();
     c.innerHTML = '<p>Memuat halaqoh...</p>';
     // Ambil semua halaqoh yang diampu pembina ini
@@ -5795,7 +6533,7 @@
             html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9">'+
               '<b>'+esc(s.nama)+'</b>'+
               '<select class="pbStatus" data-nisn="'+esc(s.nisn)+'" data-nama="'+esc(s.nama)+'" style="width:130px">'+
-              ['Hadir','Sakit','Izin','Alpa'].map(function(st){return '<option value="'+st+'">'+st+'</option>';}).join('')+
+              ['Hadir','Sakit','Izin','Izin Pulang','Alpa'].map(function(st){return '<option value="'+st+'">'+st+'</option>';}).join('')+
               '</select></div>';
           });
           html += '<div id="pbPesan" style="margin-top:10px"></div>'+
@@ -5964,7 +6702,7 @@
   // ---- Unduh Excel Rekap (CSV yang bisa dibuka Excel) ----
   function unduhExcelRekap(d){
     var bom = '\uFEFF'; // BOM untuk Excel mengenali UTF-8
-    var baris = [['No','Nama Santri','Hadir','Sakit','Izin','Alpa','% Hadir','Keterangan']];
+    var baris = [['No','Nama Santri','Hadir','Sakit','Izin','Izin Pulang','Alpa','% Hadir','Keterangan']];
     d.santri.forEach(function(s,i){
       var ket = s.persenHadir<75?'Perlu perhatian':s.persenHadir>=90?'Sangat baik':'Baik';
       baris.push([i+1, s.nama, s.hadir, s.sakit, s.izin, s.alpa, s.persenHadir+'%', ket]);
@@ -5995,7 +6733,7 @@
   // ============================================================
 
   function dashboardWali(){
-    render('<div id="dw-top"></div><div id="slideBarWrap"></div><div id="dw-ringkasan"></div><div id="dw-notif" class="card">Memuat notifikasi...</div><div id="dw-jadwal"></div><div id="dw-rekap"></div><div id="dw-rapor"></div><div id="dw-pelanggaran"></div><div id="dw-kantin"></div><div id="dw-kontak"></div>');
+    render('<div id="dw-top"></div><div id="slideBarWrap"></div><div id="dw-ringkasan"></div><div id="dw-notif" class="card">Memuat notifikasi...</div><div id="dw-jadwal"></div><div id="dw-rekap"></div><div id="dw-rapor"></div><div id="dw-izin"></div><div id="dw-pelanggaran"></div><div id="dw-kantin"></div><div id="dw-kontak"></div>');
     document.getElementById('dw-top').innerHTML = topbar('Dashboard Wali Santri'); bindLogout();
     renderSlideBar('slideBarWrap');
     var nisn = STATE.user.nisnAnak;
@@ -6003,6 +6741,7 @@
     muatRingkasanWali(nisn);
     muatRiwayatPelanggaranWali(nisn);
     muatKantinWali(nisn);
+    renderIzinWaliSantri(nisn, 'dw-izin'); // tampilkan riwayat izin anak
 
     api('getNotifikasiMingguan', {nisn:nisn}).then(function(res){
       if(!res.ok){ document.getElementById('dw-notif').innerHTML = errBox(res.error); return; }
@@ -6105,7 +6844,8 @@
 
   function adminRingkasan(){
     var c = getContentEl();
-    c.innerHTML = '<p>Memuat...</p>';
+    c.innerHTML = '<div id="adminStatusPondok"></div><p>Memuat...</p>';
+    widgetStatusPondok('adminStatusPondok', ''); // tanpa filter gender = semua santri
     Promise.all([api('getDashboardAdmin', {}), api('getStatusJurnalHariIni', {})]).then(function(hasil){
       var res = hasil[0], resJurnal = hasil[1];
       if(!res.ok){ c.innerHTML = errBox(res.error); return; }
@@ -6882,7 +7622,7 @@
         if(!lastNisn) return alert('Cari data santri dulu.');
         api('getRekapSantri', {nisn:lastNisn}).then(function(res){
           if(!res.ok) return alert(res.error);
-          api('generatePDF', {judul:'Rekap Absensi Santri - '+lastNama, kolom:['Mapel','Hadir','Sakit','Izin','Alpa','%','Nilai Sikap'],
+          api('generatePDF', {judul:'Rekap Absensi Santri - '+lastNama, kolom:['Mapel','Hadir','Sakit','Izin','Izin Pulang','Alpa','%','Nilai Sikap'],
             baris: res.data.perMapel.map(function(m){return [m.mapel,m.hadir,m.sakit,m.izin,m.alpa,m.persen+'%', m.rataSikap!=null?m.rataSikap:'-'];})
           }).then(unduhPdf);
         });
