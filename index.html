@@ -271,7 +271,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxUUb_8pKr6UKdzhuD8r0zAk1n5z6pmT66bBL_YoY6ZG7M-9US7DH1TkW6Obo55mdxh/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -644,15 +644,13 @@
 
       // Kalau onSubmit return Promise (async), tunggu selesai dulu
       if (result && typeof result.then === 'function') {
-        btnSimpan.disabled = true;
-        btnSimpan.textContent = 'Menyimpan...';
+        loadingBtn(btnSimpan, 'Menyimpan...');
         btnBatal.disabled = true;
-        statusEl.innerHTML = '<p class="muted" style="margin:6px 0;font-size:13px">&#128337; Menyimpan data...</p>';
+        statusEl.innerHTML = '';
         result.then(function(){
           if (wrap.parentNode) root.removeChild(wrap);
         }).catch(function(e){
-          btnSimpan.disabled = false;
-          btnSimpan.textContent = 'Simpan';
+          resetBtn(btnSimpan, 'Simpan');
           btnBatal.disabled = false;
           statusEl.innerHTML = '<p style="color:#dc2626;margin:6px 0">&#9888;&#65039; Gagal: '+esc(String(e))+'</p>';
         });
@@ -1198,7 +1196,75 @@
     setTimeout(muatNotifBadge, 800);
   }
 
-  // Helper: patch fungsi-fungsi yang pakai hardcode contentId
+  // ============================================================
+  // SISTEM LOADING TERPUSAT
+  // showLoading(pesan) -- tampilkan overlay spinner
+  // hideLoading()      -- sembunyikan overlay
+  // loadingBtn(btn, pesan) -- disable tombol + spinner
+  // resetBtn(btn, tesOriAsal) -- kembalikan tombol
+  // ============================================================
+  function showLoading(pesan){
+    var el = document.getElementById('__globalLoading');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = '__globalLoading';
+      el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px';
+      document.body.appendChild(el);
+    }
+    el.innerHTML =
+      '<div style="background:#fff;border-radius:16px;padding:24px 32px;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.3);min-width:180px">' +
+      '<div style="width:40px;height:40px;border:4px solid #e2e8f0;border-top-color:#0d9488;border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 14px"></div>' +
+      '<div style="font-size:14px;font-weight:600;color:#1e293b">'+(pesan||'Memproses...')+'</div>' +
+      '</div>';
+    el.style.display = 'flex';
+  }
+  function hideLoading(){
+    var el = document.getElementById('__globalLoading');
+    if (el) el.style.display = 'none';
+  }
+  // Untuk tombol: disable + tampilkan spinner kecil
+  function loadingBtn(btn, pesan){
+    if (!btn) return;
+    btn._tesAsal = btn._tesAsal || btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span style="display:inline-flex;align-items:center;gap:6px">' +
+      '<span style="width:14px;height:14px;border:2px solid rgba(255,255,255,.5);border-top-color:#fff;border-radius:50%;display:inline-block;animation:spin 0.7s linear infinite"></span>' +
+      (pesan||'Memproses...') + '</span>';
+  }
+  function resetBtn(btn, tesAsal){
+    if (!btn) return;
+    btn.disabled = false;
+    btn.innerHTML = tesAsal || btn._tesAsal || 'Simpan';
+    delete btn._tesAsal;
+  }
+
+  // Overlay loading khusus untuk sel tabel (tanpa overlay global)
+  function loadingCell(td){
+    td._bgAsal = td.style.background;
+    td._colorAsal = td.style.color;
+    td._htmlAsal = td.innerHTML;
+    td.style.background = '#f0fdf4';
+    td.style.color = '#0d9488';
+    td.innerHTML = '<span style="display:inline-flex;align-items:center;justify-content:center">' +
+      '<svg width="14" height="14" viewBox="0 0 24 24" style="animation:spin 0.7s linear infinite"><circle cx="12" cy="12" r="10" stroke="#0d9488" stroke-width="3" fill="none" stroke-dasharray="31.4" stroke-dashoffset="10"/></svg>' +
+      '</span>';
+    td.style.pointerEvents = 'none'; // cegah klik ganda
+  }
+  function resetCell(td, paid){
+    td.style.pointerEvents = '';
+    if (paid === undefined) {
+      // Restore ke kondisi asal
+      td.style.background = td._bgAsal || '';
+      td.style.color = td._colorAsal || '';
+      td.innerHTML = td._htmlAsal || '';
+    } else {
+      td.style.color = paid ? '#16a34a' : '#d97706';
+      td.style.background = paid ? '#eafaf0' : '#fff7ed';
+      td.innerHTML = paid ? 'L' : '&middot;';
+    }
+  }
+
+
   // Semua fungsi guru/bendahara/pemilik yang memakai 'dg-content','db-content','dp-content'
   // perlu dibaca dari STATE._contentId
   function getContentEl(){
@@ -4438,16 +4504,20 @@
 
       // Atur biaya SPP
       document.getElementById('btnSimpanBiayaSpp').onclick = function(){
+        var btn = this;
         var raw = document.getElementById('sppNisnBiaya').value.trim();
         var nisnDipilih = resolveSantriNisn(raw, daftarSantri);
         if (!nisnDipilih) { document.getElementById('pesanBiayaSpp').innerHTML = errBox('Pilih santri dari saran yang muncul.'); return; }
         var biaya = document.getElementById('sppBiayaInput').value.trim();
         if (!biaya || Number(biaya) <= 0) { document.getElementById('pesanBiayaSpp').innerHTML = errBox('Isi biaya SPP yang valid.'); return; }
+        loadingBtn(btn, 'Menyimpan...');
+        document.getElementById('pesanBiayaSpp').innerHTML = '';
         api('setBiayaSpp', {nisn: nisnDipilih, biaya: biaya}).then(function(r){
+          resetBtn(btn, 'Simpan Biaya SPP');
           if(!r.ok){ document.getElementById('pesanBiayaSpp').innerHTML = errBox(r.error); return; }
-          document.getElementById('pesanBiayaSpp').innerHTML = '<p class="muted">Tersimpan.</p>';
+          document.getElementById('pesanBiayaSpp').innerHTML = '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px;color:#16a34a;font-size:13px">✅ Biaya SPP berhasil disimpan.</div>';
           renderSppSantri(containerId);
-        });
+        }).catch(function(){ resetBtn(btn, 'Simpan Biaya SPP'); });
       };
 
       // Tabel 36 bulan
@@ -4479,22 +4549,19 @@
 
       document.querySelectorAll('.sppCell').forEach(function(td){
         td.onclick = function(){
-          td.style.opacity = '.4';
+          if (td.style.pointerEvents === 'none') return; // sedang proses
+          loadingCell(td); // tampilkan spinner di sel
           api('toggleSppBulan', {nisn: td.dataset.nisn, bulan: td.dataset.bulan}).then(function(r){
-            td.style.opacity = '1';
-            if(!r.ok){ alert(r.error); return; }
+            if(!r.ok){ resetCell(td); alert(r.error); return; }
             var paid = !!r.nilaiBaru;
-            td.style.color = paid ? '#16a34a' : '#d97706';
-            td.style.background = paid ? '#eafaf0' : '#fff7ed';
-            td.innerHTML = paid ? 'L' : '&middot;';
-            // Tawarkan cetak kuitansi saat baru ditandai LUNAS
+            resetCell(td, paid); // update tampilan sel
             if (paid) {
               var santri = data.find(function(s){return s.nisn===td.dataset.nisn;});
               if (santri && confirm('Cetak kuitansi pembayaran SPP '+esc(santri.nama)+'?')) {
                 cetakKuitansiSPP(santri, Number(td.dataset.bulan), r.nilaiBaru);
               }
             }
-          });
+          }).catch(function(){ resetCell(td); });
         };
       });
 
@@ -6015,6 +6082,7 @@
       {key:'sop', label:'SOP Guru', icon:'&#128203;'},
       {key:'defaultjurnal', label:'Default Jurnal Mengajar', icon:'&#128221;'},
       {key:'website', label:'Info Website', icon:'&#127760;'},
+      {key:'spreadsheet', label:'File Spreadsheet', icon:'&#128196;'},
       {key:'tampilan', label:'Tampilan / Logo', icon:'&#127912;'}
     ];
     var map = {ringkasan:adminRingkasan, tahun:adminTahunAjaran, rombel:adminRombel, halaqoh:adminHalaqoh, santri:adminDataSantri,
@@ -6024,7 +6092,7 @@
       persetujuansaldo:function(){ renderPersetujuanSaldo('da-content'); }, spp:function(){ renderSppSantri('da-content'); },
       modulajar:adminModulAjar, rekapjurnal:adminRekapJurnal, rekaphalaqoh:adminRekapHalaqoh,
       raporkelas:adminRaporKelas, kelompokpapel:adminKelompokMapel, sop:adminSOP, defaultjurnal:adminDefaultJurnal,
-      website:adminInfoWebsite, tampilan:adminTampilan};
+      website:adminInfoWebsite, spreadsheet:adminSpreadsheet, tampilan:adminTampilan};
     activeKey = activeKey && map[activeKey] ? activeKey : 'ringkasan';
     renderSidebarShell({title:'Dashboard '+STATE.user.level, navItems:navItems, activeKey:activeKey, contentId:'da-content',
       extraTop: adaRoleLain ?
@@ -7999,6 +8067,68 @@
         });
       }
       muatDaftar();
+    });
+  }
+
+  function adminSpreadsheet(){
+    var c = getContentEl();
+    c.innerHTML = '<div class="card"><h3>&#128196; File Spreadsheet</h3>' +
+      '<p class="muted">Semua file Google Spreadsheet yang dipakai sistem WASIAT. Klik untuk membuka langsung.</p>' +
+      '<div style="display:flex;align-items:center;gap:8px;padding:10px 0"><div style="width:16px;height:16px;border:2px solid #0d9488;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite"></div><span>Memuat daftar spreadsheet...</span></div></div>';
+
+    api('getDaftarSpreadsheet', {}).then(function(res){
+      if(!res.ok){ c.innerHTML = '<div class="card">'+errBox(res.error)+'</div>'; return; }
+
+      var data = res.data;
+      var kategoriOrder = ['Sistem','Tahun Ajaran','SPP','Kantin','Pelanggaran','Keuangan'];
+      var grouped = {};
+      data.forEach(function(ss){
+        if(!grouped[ss.kategori]) grouped[ss.kategori] = [];
+        grouped[ss.kategori].push(ss);
+      });
+
+      var html = '<div class="card"><h3>&#128196; File Spreadsheet</h3>' +
+        '<p class="muted">Klik nama file untuk membuka langsung di Google Sheets. Total: '+data.length+' file.</p></div>';
+
+      var warna = {
+        'Sistem':'#0d9488', 'Tahun Ajaran':'#2563eb', 'SPP':'#d97706',
+        'Kantin':'#16a34a', 'Pelanggaran':'#dc2626', 'Keuangan':'#7c3aed'
+      };
+
+      kategoriOrder.forEach(function(kat){
+        var items = grouped[kat];
+        if(!items || !items.length) return;
+        var w = warna[kat] || '#475569';
+        html += '<div class="card">' +
+          '<h4 style="color:'+w+';margin:0 0 10px;display:flex;align-items:center;gap:6px">' +
+          '<span style="width:10px;height:10px;background:'+w+';border-radius:50%;display:inline-block"></span>' +
+          esc(kat)+'</h4>';
+
+        items.forEach(function(ss){
+          html += '<div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px;margin-bottom:8px;' +
+            (ss.label.indexOf('⭐')>-1 ? 'border-color:'+w+';background:'+w+'10;' : '') + '">' +
+            '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">' +
+            '<div>' +
+            '<div style="font-weight:600;font-size:14px">'+esc(ss.label)+'</div>' +
+            '<div style="font-size:11px;color:#64748b;margin-top:2px">'+esc(ss.keterangan)+'</div>' +
+            (ss.sheets.length ? '<div style="font-size:10px;color:#94a3b8;margin-top:4px">Sheet: '+ss.sheets.map(esc).join(', ')+'</div>' : '') +
+            '</div>' +
+            (ss.url ?
+              '<a href="'+esc(ss.url)+'" target="_blank" style="background:'+w+';color:#fff;padding:8px 14px;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;display:flex;align-items:center;gap:5px">'+
+              '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 19H5V5h7V3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>'+
+              'Buka</a>'
+              : '<span style="background:#f1f5f9;color:#94a3b8;padding:8px 14px;border-radius:8px;font-size:12px">Tidak tersedia</span>'
+            ) +
+            '</div></div>';
+        });
+        html += '</div>';
+      });
+
+      if(!data.length){
+        html += '<div class="card">'+warnBox('Belum ada spreadsheet yang ditemukan. Jalankan Migrasi Skema terlebih dahulu.')+'</div>';
+      }
+
+      c.innerHTML = html;
     });
   }
 
