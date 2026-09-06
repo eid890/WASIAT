@@ -271,7 +271,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyiIXAv8u7PxxBwjm9LWzAsyGvc0V-2cciukJmIbP6-ghrlBzkzb_SlgkAI-5VPpPUq/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -670,17 +670,17 @@
     };
     return wrap;
   }
-  function fieldText(id, label, value){ return '<label>'+esc(label)+'</label><input id="'+id+'" value="'+esc(value||'')+'">'; }
+  function fieldText(id, label, value){ var sid=id.replace(/ /g,'_'); return '<label>'+esc(label)+'</label><input id="'+sid+'" value="'+esc(value||'')+'">' }
   function fieldSelect(id, label, options, value){
-    return '<label>'+esc(label)+'</label><select id="'+id+'">' +
+    return '<label>'+esc(label)+'</label><select id="'+id.replace(/ /g,'_')+'">' +
       options.map(function(o){ return '<option value="'+esc(o)+'" '+(o===value?'selected':'')+'>'+esc(o)+'</option>'; }).join('') + '</select>';
   }
   // Input search-autocomplete (datalist) generik, dipakai untuk semua pemilihan nama
   // Santri/Guru/Mapel supaya konsisten dan datanya selalu diambil dari database aktif.
   function fieldAutocomplete(id, label, options, value, placeholder){
-    var listId = id + '_dl';
+    var sid = id.replace(/ /g,'_'); var listId = sid + '_dl';
     var dl = '<datalist id="'+listId+'">' + options.map(function(o){ return '<option value="'+esc(o)+'">'; }).join('') + '</datalist>';
-    return '<label>'+esc(label)+'</label><input id="'+id+'" list="'+listId+'" autocomplete="off" placeholder="'+esc(placeholder||'Ketik untuk mencari...')+'" value="'+esc(value||'')+'">' + dl;
+    return '<label>'+esc(label)+'</label><input id="'+sid+'" list="'+listId+'" autocomplete="off" placeholder="'+esc(placeholder||'Ketik untuk mencari...')+'" value="'+esc(value||'')+'">' + dl;
   }
   // Cocokkan input santri (format tampilan "NISN - Nama") kembali ke NISN yang valid.
   // Menerima juga jika user hanya mengetik NISN saja atau nama persis.
@@ -7516,8 +7516,11 @@
                   values[h] = checked.join(',');
                   return;
                 }
-                // NULL-SAFE: kalau field tidak ada di modal, lewati
-                var el = modal.querySelector('#f_'+h);
+                // PENTING: id HTML tidak boleh ada spasi -- ganti spasi dengan underscore
+                var safeId = 'f_' + h.replace(/\s+/g, '_');
+                var el = modal.querySelector('#' + safeId);
+                // Fallback: coba dengan id asli (spasi)
+                if (!el) el = modal.querySelector('[id="f_' + h + '"]');
                 var raw = el ? el.value : '';
                 if (sheet==='MataPelajaran' && h==='Pengampu') {
                   var pengampuValid = resolveGuruExact(raw, daftarNamaGuru);
