@@ -271,21 +271,23 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwZsaL6jADsmhBa9lBMIvruJXcCL0ldC98lX_0EntoVY4uSoMizr4ntwVQoxT2Muwhu/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
   // Satu akun RoleAkses boleh punya lebih dari satu role (dipisah koma di kolom Level).
   // "value" = yang disimpan di sheet & dipakai internal, "label" = yang ditampilkan ke user.
   var DAFTAR_ROLE = [
-    {value:'Admin', label:'Admin'},
-    {value:'Mudir', label:'Mudir'},
-    {value:'Guru', label:'Guru'},
-    {value:'WaliKelas', label:'Wali Kelas'},
-    {value:'Bendahara', label:'Bendahara'},
-    {value:'PemilikBarang', label:'Pemilik Barang'},
-    {value:'Pembina', label:'Pembina Halaqoh'},
-    {value:'WaliSantri', label:'Orang Tua Santri'}
+    {value:'Admin',        label:'Admin'},
+    {value:'Mudir',        label:'Mudir'},
+    {value:'Guru',         label:'Guru'},
+    {value:'WaliKelas',    label:'Wali Kelas'},
+    {value:'Bendahara',    label:'Bendahara'},
+    {value:'PemilikBarang',label:'Pemilik Barang'},
+    {value:'PembinaPutra', label:'Pembina Putra'},
+    {value:'PembinaPutri', label:'Pembina Putri'},
+    {value:'Pembina',      label:'Pembina (Umum)'},
+    {value:'WaliSantri',   label:'Orang Tua Santri'},
   ];
   function labelRole(value){ var r = DAFTAR_ROLE.find(function(x){return x.value===value;}); return r ? r.label : value; }
   var HARI_LIST = ['Minggu','Senin','Selasa','Rabu','Kamis',"Jum'at",'Sabtu'];
