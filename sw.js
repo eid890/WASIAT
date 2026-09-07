@@ -10,7 +10,7 @@
 //
 // CACHE_VERSION diisi otomatis saat build — ubah ini kalau mau paksa re-cache semua.
 
-const CACHE_VERSION = 'wasiat-cd4f43dc'; // diupdate otomatis tiap build
+const CACHE_VERSION = 'wasiat-c489f8d9'; // diupdate otomatis tiap build
 const CACHE_NAME = CACHE_VERSION;
 const APP_SHELL = [
   '/',

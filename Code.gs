@@ -344,6 +344,8 @@ function route(action, p) {
     case 'submitAbsensiHarian': return apiSubmitAbsensiHarian(p);
     case 'getRekapAbsensiHarian': return apiGetRekapAbsensiHarian(p);
     case 'getStatusPondok': return apiGetStatusPondok(p);
+    case 'getProgressHafalan':      return apiGetProgressHafalan(p);
+    case 'getProgressHafalanMassal': return apiGetProgressHafalanMassal(p);
     // Perizinan santri
     case 'ajukanIzin':          return apiAjukanIzin(p);
     case 'getDaftarIzin':       return apiGetDaftarIzin(p);
@@ -2795,19 +2797,37 @@ function headerSPP(){
 }
 
 /** Label "Agustus 2026" dari nomor bulan (1-36) relatif ke TahunMasuk santri */
+/** Bulan 1 = Juli tahun masuk (awal tahun ajaran pesantren)
+ *  Bulan 12 = Juni tahun berikutnya
+ *  Bulan 13 = Juli tahun berikutnya, dst.
+ *  Total 36 bulan = 3 tahun ajaran */
 function labelBulanSPP(idx, tahunMasuk){
-  var yearOffset = Math.floor((idx-1)/12);
-  var monthIdx = (idx-1)%12;
+  // Konversi index (1-36) ke bulan kalender + offset tahun
+  // idx=1  → Juli tahun masuk       (month=6, year=tahunMasuk)
+  // idx=6  → Desember tahun masuk   (month=11, year=tahunMasuk)
+  // idx=7  → Januari tahun masuk+1  (month=0, year=tahunMasuk+1)
+  // idx=12 → Juni tahun masuk+1     (month=5, year=tahunMasuk+1)
+  var offsetDariJuli = idx - 1;               // 0..35
+  var totalBulanKalender = 6 + offsetDariJuli; // Juli=6, +offset
+  var yearOffset = Math.floor(totalBulanKalender / 12);
+  var monthIdx = totalBulanKalender % 12;
   var year = parseInt(tahunMasuk) + yearOffset;
   return BULAN_INDO_SPP[monthIdx] + ' ' + year;
 }
 
 /** Berapa bulan (relatif hari ini) yang sudah jatuh tempo untuk satu santri */
+/** Berapa bulan (relatif hari ini) yang sudah jatuh tempo untuk satu santri.
+ *  Bulan 1 = Juli tahun masuk. Setiap bulan yang sudah lewat dianggap jatuh tempo. */
 function bulanJatuhTempoSPP(tahunMasuk){
   var today = new Date();
   var maxIdx = 0;
   for (var m=1; m<=36; m++){
-    var d = new Date(parseInt(tahunMasuk), m-1, 1);
+    // Hitung tanggal awal bulan ke-m
+    // Bulan 1 = Juli (month=6), Bulan 7 = Januari tahun berikutnya (month=0)
+    var totalBulanKalender = 6 + (m - 1);
+    var yearOffset = Math.floor(totalBulanKalender / 12);
+    var monthIdx = totalBulanKalender % 12;
+    var d = new Date(parseInt(tahunMasuk) + yearOffset, monthIdx, 1);
     if (d <= today) maxIdx = m; else break;
   }
   return maxIdx;
@@ -6554,7 +6574,198 @@ function escapeHtml(s) {
 }
 
 // ============================================================
-// SISTEM PERIZINAN SANTRI
+// PROGRESS HAFALAN — deteksi juz yang SUDAH SELESAI
+// Metode: Juz X selesai jika halaman AWAL dan halaman AKHIR sudah
+//         pernah disetor sebagai Sabaq (hafalan baru).
+// Referensi: Mushaf Madinah standar (604 halaman, 30 juz)
+// ============================================================
+
+/**
+ * Rentang halaman per juz (Mushaf Madinah standar 604 halaman)
+ * Referensi: Mushaf Rasm Utsmani cetakan King Fahd Complex
+ * Juz 1: 1-21 (Al-Fatihah s/d Al-Baqarah 141)
+ * Juz 2: 22-41 (Al-Baqarah 142 s/d 252)
+ * Juz 30: 582-604 (An-Naba' s/d An-Nas)
+ */
+function getRentangJuz() {
+  // Halaman awal setiap juz — data akurat dari Mushaf Madinah
+  const juzAwal = {
+    1:1,   2:22,  3:42,  4:62,  5:82,   6:102, 7:122, 8:142, 9:162, 10:182,
+    11:202,12:222,13:242,14:262,15:282, 16:302,17:322,18:342,19:362,20:382,
+    21:402,22:422,23:442,24:462,25:482, 26:502,27:522,28:542,29:562,30:582
+  };
+  const range = {};
+  for (var j = 1; j <= 30; j++) {
+    var awal = juzAwal[j];
+    var akhir = (j < 30) ? (juzAwal[j+1] - 1) : 604;
+    range[j] = {awal: awal, akhir: akhir};
+  }
+  return range;
+}
+
+/**
+ * Hitung progress hafalan untuk satu santri berdasarkan halaman Sabaq
+ * Return: {juzSelesai:[1,2,3,30], juzInProgress:[4], totalJuz:4, persen:13.3, detail:{...}}
+ */
+function hitungProgressHafalanSantri(nisn, hafalanRows) {
+  const rentangJuz = getRentangJuz();
+  const halamanTersetor = new Set(); // halaman yang pernah disetor Sabaq
+
+  // Filter hanya jenis Sabaq milik santri ini
+  hafalanRows.forEach(r => {
+    if (norm(r[4]) !== nisn) return;
+    if (norm(r[6]) !== 'Sabaq') return; // hanya Sabaq
+    var halaman = Number(r[10]); // kolom "Halaman Ke"
+    if (halaman && halaman >= 1 && halaman <= 604) {
+      halamanTersetor.add(halaman);
+    }
+  });
+
+  // Cek setiap juz: selesai jika halaman awal DAN akhir sudah tersetor
+  const juzSelesai = [];
+  const juzInProgress = [];
+  const detailJuz = {};
+  var totalHalamanTersetor = halamanTersetor.size;
+
+  for (var j = 1; j <= 30; j++) {
+    var r = rentangJuz[j];
+    var halamanJuzIni = 0;
+    for (var h = r.awal; h <= r.akhir; h++) {
+      if (halamanTersetor.has(h)) halamanJuzIni++;
+    }
+    var totalHalamanJuz = r.akhir - r.awal + 1;
+    var selesaiAwal = halamanTersetor.has(r.awal);
+    var selesaiAkhir = halamanTersetor.has(r.akhir);
+
+    detailJuz[j] = {
+      juz: j,
+      halamanAwal: r.awal,
+      halamanAkhir: r.akhir,
+      totalHalaman: totalHalamanJuz,
+      halamanTersetor: halamanJuzIni,
+      persenJuz: totalHalamanJuz > 0 ? Math.round((halamanJuzIni/totalHalamanJuz)*100) : 0,
+      awalTersetor: selesaiAwal,
+      akhirTersetor: selesaiAkhir,
+      selesai: selesaiAwal && selesaiAkhir,
+    };
+
+    if (selesaiAwal && selesaiAkhir) juzSelesai.push(j);
+    else if (halamanJuzIni > 0) juzInProgress.push(j);
+  }
+
+  const persenTotal = Math.round((totalHalamanTersetor / 604) * 100 * 10) / 10; // 1 desimal
+
+  return {
+    nisn: nisn,
+    juzSelesai: juzSelesai,
+    juzInProgress: juzInProgress,
+    totalJuzSelesai: juzSelesai.length,
+    totalHalamanTersetor: totalHalamanTersetor,
+    persen: persenTotal,
+    detailJuz: detailJuz,
+    ringkasan: buildRingkasanHafalan(juzSelesai, juzInProgress, detailJuz),
+  };
+}
+
+/**
+ * Buat ringkasan teks: "5 juz selesai (Juz 1, 2, 3, 29, 30) · sedang menghafal Juz 4"
+ */
+function buildRingkasanHafalan(juzSelesai, juzInProgress, detailJuz) {
+  if (!juzSelesai.length && !juzInProgress.length) {
+    return 'Belum ada catatan hafalan';
+  }
+  var parts = [];
+  if (juzSelesai.length) {
+    parts.push(juzSelesai.length + ' juz selesai (Juz ' + juzSelesai.join(', ') + ')');
+  }
+  if (juzInProgress.length) {
+    var inProgDetail = juzInProgress.map(function(j){
+      return 'Juz ' + j + ' (' + detailJuz[j].persenJuz + '%)';
+    });
+    parts.push('sedang: ' + inProgDetail.join(', '));
+  }
+  return parts.join(' · ');
+}
+
+/**
+ * API untuk satu santri
+ */
+function apiGetProgressHafalan(p) {
+  const nisn = norm(p.nisn);
+  if (!nisn) return {ok:false, error:'NISN wajib diisi'};
+
+  const ss = getAktifSS();
+  const sh = ss.getSheetByName(SHEET_HAFALAN);
+  if (!sh) return {ok:false, error:'Sheet Hafalan belum ada'};
+
+  const rows = sh.getDataRange().getValues(); rows.shift();
+  const hasil = hitungProgressHafalanSantri(nisn, rows);
+
+  // Ambil nama santri
+  const shSantri = ss.getSheetByName(SHEET_SANTRI);
+  var nama = '';
+  if (shSantri) {
+    const found = shSantri.getDataRange().getValues().slice(1).find(function(r){ return norm(r[0]) === nisn; });
+    if (found) nama = norm(found[1]);
+  }
+  hasil.nama = nama;
+  return {ok:true, data:hasil};
+}
+
+/**
+ * API untuk banyak santri (untuk rekap kelas/halaqoh)
+ * Bisa filter: kelas, halaqoh, gender
+ */
+function apiGetProgressHafalanMassal(p) {
+  const ss = getAktifSS();
+  const sh = ss.getSheetByName(SHEET_HAFALAN);
+  if (!sh) return {ok:false, error:'Sheet Hafalan belum ada'};
+  const shSantri = ss.getSheetByName(SHEET_SANTRI);
+  if (!shSantri) return {ok:false, error:'Sheet Santri belum ada'};
+
+  const hafalanRows = sh.getDataRange().getValues(); hafalanRows.shift();
+  const santriRows = shSantri.getDataRange().getValues();
+  const header = santriRows[0];
+  const iJK = header.indexOf('Jenis Kelamin');
+  santriRows.shift();
+
+  // Filter santri berdasarkan gender kalau ada
+  var santriFilter = santriRows.filter(function(r){
+    if (!norm(r[0])) return false;
+    if (p.gender === 'Putra') return norm(iJK>-1?r[iJK]:r[3]).toLowerCase() === 'laki-laki';
+    if (p.gender === 'Putri') return norm(iJK>-1?r[iJK]:r[3]).toLowerCase() === 'perempuan';
+    return true;
+  });
+
+  // Filter kelas kalau ada
+  if (p.kelas) {
+    const shRombel = ss.getSheetByName(SHEET_ROMBEL);
+    const nisnKelas = {};
+    if (shRombel) {
+      shRombel.getDataRange().getValues().slice(1).forEach(function(r){
+        if (r[0]) nisnKelas[norm(r[0])] = norm(r[2]);
+      });
+    }
+    santriFilter = santriFilter.filter(function(r){ return nisnKelas[norm(r[0])] === p.kelas; });
+  }
+
+  // Hitung progress per santri
+  const hasil = santriFilter.map(function(s){
+    var p = hitungProgressHafalanSantri(norm(s[0]), hafalanRows);
+    p.nama = norm(s[1]);
+    return p;
+  });
+
+  // Urutkan: yang paling banyak juz selesai dulu
+  hasil.sort(function(a,b){
+    if (b.totalJuzSelesai !== a.totalJuzSelesai) return b.totalJuzSelesai - a.totalJuzSelesai;
+    return b.totalHalamanTersetor - a.totalHalamanTersetor;
+  });
+
+  return {ok:true, data:hasil};
+}
+
+// ============================================================
 // Sheet Perizinan: ID | NISN | Nama | Kelas | JenisIzin | Keperluan |
 //   TglKeluar | JamKeluar | TglKembaliRencana | JamKembaliRencana |
 //   Status | DiajukanOleh | WaktuAjuan |

@@ -271,7 +271,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxfVfK6RPrrjqx5V56HjTMrZwyFLB0BO4i8WZXk57RQYLdGHZ73KQw4la9mI8yQAJXV/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -682,6 +682,8 @@
     var dl = '<datalist id="'+listId+'">' + options.map(function(o){ return '<option value="'+esc(o)+'">'; }).join('') + '</datalist>';
     return '<label>'+esc(label)+'</label><input id="'+sid+'" list="'+listId+'" autocomplete="off" placeholder="'+esc(placeholder||'Ketik untuk mencari...')+'" value="'+esc(value||'')+'">' + dl;
   }
+  console.log('%c[WASIAT] Build: 30337514 | fieldText patched: ' + (fieldText.toString().indexOf('replace') > -1), 'background:#0d9488;color:#fff;padding:2px 8px;border-radius:4px');
+
   // Cocokkan input santri (format tampilan "NISN - Nama") kembali ke NISN yang valid.
   // Menerima juga jika user hanya mengetik NISN saja atau nama persis.
   function resolveSantriNisn(raw, santriList){
@@ -3943,14 +3945,20 @@
   // ---------------- SPP SANTRI (dipakai Bendahara & Admin/Mudir) ----------------
   var BULAN_SINGKAT_SPP = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
   function labelBulanSingkatSpp(idx, tahunMasuk){
-    var yearOffset = Math.floor((idx-1)/12);
-    var mi = (idx-1)%12;
+    // Bulan 1 = Juli tahun ajaran (bukan Januari)
+    var totalBulanKalender = 6 + (idx - 1);
+    var yearOffset = Math.floor(totalBulanKalender / 12);
+    var mi = totalBulanKalender % 12;
     return BULAN_SINGKAT_SPP[mi] + " '" + String(parseInt(tahunMasuk)+yearOffset).slice(2);
   }
   function bulanJatuhTempoSppFE(tahunMasuk){
+    // Bulan 1 = Juli tahun ajaran (bukan Januari)
     var today = new Date(); var max = 0;
     for (var m=1; m<=36; m++){
-      var d = new Date(parseInt(tahunMasuk), m-1, 1);
+      var totalBulanKalender = 6 + (m - 1);
+      var yearOffset = Math.floor(totalBulanKalender / 12);
+      var monthIdx = totalBulanKalender % 12;
+      var d = new Date(parseInt(tahunMasuk) + yearOffset, monthIdx, 1);
       if (d <= today) max = m; else break;
     }
     return max;
@@ -5899,6 +5907,172 @@
   }
 
   // ============================================================
+  // PROGRESS HAFALAN — widget untuk Wali Santri
+  // ============================================================
+  function renderProgressHafalanWali(nisn, containerId){
+    var c = document.getElementById(containerId);
+    if (!c) return;
+    c.innerHTML = '<div class="card"><h4>&#128218; Progres Hafalan</h4><p class="muted">Memuat...</p></div>';
+
+    api('getProgressHafalan', {nisn:nisn}).then(function(res){
+      if (!res.ok || !res.data) {
+        c.innerHTML = '<div class="card"><h4>&#128218; Progres Hafalan</h4><p class="muted">Belum ada catatan hafalan.</p></div>';
+        return;
+      }
+      var d = res.data;
+      c.innerHTML = renderKartuProgressHafalan(d, true);
+    }).catch(function(){
+      c.innerHTML = '';
+    });
+  }
+
+  // Render kartu progress hafalan (dipakai wali & rekap)
+  // detail = true → tampilkan grid 30 juz
+  function renderKartuProgressHafalan(d, detail){
+    var persenWarna = d.persen >= 50 ? '#16a34a' : d.persen >= 25 ? '#0891b2' : d.persen >= 10 ? '#d97706' : '#64748b';
+
+    var html = '<div class="card">' +
+      '<h4>&#128218; Progres Hafalan Al-Qur\'an</h4>' +
+      // Ringkasan angka besar
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0">' +
+      '<div style="flex:1;min-width:120px;background:'+persenWarna+'15;border:2px solid '+persenWarna+';border-radius:12px;padding:14px;text-align:center">' +
+      '<div style="font-size:36px;font-weight:800;color:'+persenWarna+';line-height:1">'+d.totalJuzSelesai+'</div>' +
+      '<div style="font-size:11px;color:'+persenWarna+';text-transform:uppercase;letter-spacing:.5px;margin-top:4px">Juz Selesai</div>' +
+      '</div>' +
+      '<div style="flex:1;min-width:120px;background:#f1f5f9;border-radius:12px;padding:14px;text-align:center">' +
+      '<div style="font-size:24px;font-weight:700;color:#334155;line-height:1">'+d.totalHalamanTersetor+'<span style="font-size:14px;color:#94a3b8;font-weight:400">/604</span></div>' +
+      '<div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-top:4px">Halaman Sabaq</div>' +
+      '</div>' +
+      '<div style="flex:1;min-width:120px;background:#f1f5f9;border-radius:12px;padding:14px;text-align:center">' +
+      '<div style="font-size:24px;font-weight:700;color:#334155;line-height:1">'+d.persen+'%</div>' +
+      '<div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-top:4px">Total Al-Qur\'an</div>' +
+      '</div>' +
+      '</div>' +
+
+      // Progress bar
+      '<div style="background:#f1f5f9;border-radius:20px;height:8px;overflow:hidden;margin-bottom:12px">' +
+      '<div style="width:'+d.persen+'%;height:100%;background:linear-gradient(90deg,'+persenWarna+',#0891b2);border-radius:20px;transition:width .8s"></div>' +
+      '</div>' +
+
+      // Ringkasan teks
+      '<div style="font-size:13px;color:#475569;line-height:1.5;padding:8px 0">'+esc(d.ringkasan)+'</div>';
+
+    if (detail) {
+      // Grid 30 juz — hijau=selesai, kuning=proses, abu=belum
+      html += '<div style="margin-top:12px">' +
+        '<div style="font-size:11px;color:#64748b;margin-bottom:6px">Status Setiap Juz:</div>' +
+        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:4px">';
+      for (var j = 1; j <= 30; j++) {
+        var det = d.detailJuz[j] || {selesai:false, persenJuz:0, halamanAwal:0, halamanAkhir:0};
+        var bg, color, label;
+        if (det.selesai) { bg = '#16a34a'; color = '#fff'; label = '✓'; }
+        else if (det.persenJuz > 0) { bg = '#fed7aa'; color = '#c2410c'; label = det.persenJuz+'%'; }
+        else { bg = '#f1f5f9'; color = '#94a3b8'; label = '·'; }
+        var tooltip = 'Juz '+j+' (hal '+det.halamanAwal+'-'+det.halamanAkhir+') · '+
+          (det.selesai?'SELESAI':(det.persenJuz+'% ('+det.halamanTersetor+'/'+det.totalHalaman+' hal)'));
+        html += '<div title="'+esc(tooltip)+'" style="background:'+bg+';color:'+color+';border-radius:6px;padding:6px 2px;text-align:center;font-size:10px;font-weight:700;line-height:1.2">' +
+          '<div style="font-size:9px;opacity:.75;font-weight:400">J'+j+'</div>'+label+'</div>';
+      }
+      html += '</div>' +
+        '<div style="display:flex;gap:10px;font-size:10px;color:#64748b;margin-top:8px;flex-wrap:wrap">' +
+        '<span><span style="display:inline-block;width:10px;height:10px;background:#16a34a;border-radius:2px;vertical-align:middle"></span> Selesai</span>' +
+        '<span><span style="display:inline-block;width:10px;height:10px;background:#fed7aa;border-radius:2px;vertical-align:middle"></span> Sedang Dihafal</span>' +
+        '<span><span style="display:inline-block;width:10px;height:10px;background:#f1f5f9;border-radius:2px;vertical-align:middle;border:1px solid #cbd5e1"></span> Belum</span>' +
+        '</div></div>';
+    }
+
+    html += '<p style="font-size:10px;color:#94a3b8;margin-top:10px;font-style:italic">*Deteksi juz selesai: halaman awal &amp; akhir juz keduanya sudah pernah disetor Sabaq. Standar Mushaf Madinah (604 halaman).</p>' +
+      '</div>';
+    return html;
+  }
+
+  // ============================================================
+  // PROGRESS HAFALAN — halaman rekap untuk Guru/Admin
+  // ============================================================
+  function renderRekapProgressHafalan(gender){
+    var c = getContentEl();
+    var labelG = gender==='Putra'?'👦 Putra':gender==='Putri'?'👧 Putri':'Semua Santri';
+    c.innerHTML = '<div class="card"><h3>📊 Rekap Progres Hafalan — '+labelG+'</h3>' +
+      '<p class="muted">Deteksi otomatis juz yang sudah selesai berdasarkan halaman awal & akhir yang sudah disetor Sabaq.</p>' +
+      '<button id="btnMuatProgress" class="secondary">🔄 Muat Data</button>' +
+      '<div id="progressWrap" style="margin-top:12px"></div></div>';
+
+    document.getElementById('btnMuatProgress').onclick = function(){
+      var btn = this;
+      loadingBtn(btn, 'Memuat...');
+      api('getProgressHafalanMassal', {gender:gender}).then(function(res){
+        resetBtn(btn, '🔄 Muat Data');
+        if (!res.ok) { document.getElementById('progressWrap').innerHTML = errBox(res.error); return; }
+        if (!res.data.length) { document.getElementById('progressWrap').innerHTML = warnBox('Belum ada data.'); return; }
+
+        // Statistik ringkas
+        var totalSelesai = res.data.reduce(function(s,x){ return s + x.totalJuzSelesai; }, 0);
+        var rataJuz = Math.round((totalSelesai / res.data.length) * 10) / 10;
+        var yangSudahMulai = res.data.filter(function(x){ return x.totalHalamanTersetor > 0; }).length;
+
+        var html = '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">' +
+          '<div style="flex:1;min-width:110px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px;text-align:center">' +
+          '<div style="font-size:22px;font-weight:800;color:#16a34a">'+totalSelesai+'</div>' +
+          '<div style="font-size:11px;color:#166534">Total Juz Selesai</div></div>' +
+          '<div style="flex:1;min-width:110px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px;text-align:center">' +
+          '<div style="font-size:22px;font-weight:800;color:#2563eb">'+rataJuz+'</div>' +
+          '<div style="font-size:11px;color:#1e40af">Rata-rata Juz/Santri</div></div>' +
+          '<div style="flex:1;min-width:110px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:10px;text-align:center">' +
+          '<div style="font-size:22px;font-weight:800;color:#d97706">'+yangSudahMulai+'<span style="font-size:12px;color:#94a3b8">/'+res.data.length+'</span></div>' +
+          '<div style="font-size:11px;color:#9a3412">Santri Aktif Setor</div></div>' +
+          '</div>' +
+
+          '<div style="display:flex;justify-content:flex-end;margin-bottom:8px">' +
+          '<button id="btnExcelProgress" class="secondary small">📄 Export Excel</button></div>' +
+
+          '<div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse">' +
+          '<thead><tr style="background:#0d9488;color:#fff">' +
+          '<th style="padding:8px;text-align:center;width:36px">No</th>' +
+          '<th style="padding:8px;text-align:left">Nama Santri</th>' +
+          '<th style="padding:8px;text-align:center;width:80px">Juz Selesai</th>' +
+          '<th style="padding:8px;text-align:center;width:80px">Halaman</th>' +
+          '<th style="padding:8px;text-align:left">Juz yang Sudah Selesai</th>' +
+          '<th style="padding:8px;text-align:center;width:80px">% Total</th>' +
+          '</tr></thead><tbody>';
+
+        res.data.forEach(function(s, i){
+          var warna = s.totalJuzSelesai >= 5 ? '#16a34a' : s.totalJuzSelesai >= 1 ? '#0891b2' : '#94a3b8';
+          html += '<tr style="background:'+(i%2===0?'#fff':'#f8fafc')+'">' +
+            '<td style="padding:6px 8px;text-align:center;color:#94a3b8">'+(i+1)+'</td>' +
+            '<td style="padding:6px 8px;font-weight:600">'+esc(s.nama)+'</td>' +
+            '<td style="padding:6px 8px;text-align:center;font-size:16px;font-weight:800;color:'+warna+'">'+s.totalJuzSelesai+'</td>' +
+            '<td style="padding:6px 8px;text-align:center;color:#64748b">'+s.totalHalamanTersetor+'/604</td>' +
+            '<td style="padding:6px 8px;font-size:11px;color:#475569">'+
+              (s.juzSelesai.length ? 'Juz '+s.juzSelesai.join(', ') : '<span style="color:#94a3b8">-</span>')+
+              (s.juzInProgress.length ? '<br><span style="color:#d97706;font-size:10px">Proses: '+s.juzInProgress.map(function(j){return j+' ('+s.detailJuz[j].persenJuz+'%)'}).join(', ')+'</span>' : '')+
+            '</td>' +
+            '<td style="padding:6px 8px;text-align:center;font-weight:700;color:'+warna+'">'+s.persen+'%</td>' +
+            '</tr>';
+        });
+
+        html += '</tbody></table></div>';
+        document.getElementById('progressWrap').innerHTML = html;
+
+        document.getElementById('btnExcelProgress').onclick = function(){
+          var bom = '\uFEFF';
+          var header = ['No','Nama','Total Juz Selesai','Halaman Tersetor','% Total','Juz Selesai','Juz Sedang Dihafal'];
+          var rows = res.data.map(function(s,i){
+            return [i+1, s.nama, s.totalJuzSelesai, s.totalHalamanTersetor+'/604', s.persen+'%',
+              s.juzSelesai.join(', '), s.juzInProgress.map(function(j){return 'J'+j+':'+s.detailJuz[j].persenJuz+'%'}).join(', ')];
+          });
+          var csv = bom + [header].concat(rows).map(function(r){
+            return r.map(function(v){ var s=String(v||''); return s.includes(',')?'"'+s+'"':s; }).join(',');
+          }).join('\n');
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+          a.download = 'Rekap_Progres_Hafalan_'+todayStr()+'.csv';
+          a.click();
+        };
+      });
+    };
+  }
+
+  // ============================================================
   // PERIZINAN SANTRI
   // ============================================================
   function pembinaPerizinan(gender){
@@ -6201,14 +6375,27 @@
 
   function dashboardPembina(activeKey){
     STATE._contentId = 'dpb-content';
+    // Deteksi gender dari role user
+    var roles = STATE.user.roles || [STATE.user.level];
+    var gender = roles.indexOf('PembinaPutra')!==-1 ? 'Putra' :
+                 roles.indexOf('PembinaPutri')!==-1 ? 'Putri' : '';
+    var labelG = gender==='Putra'?'Putra':gender==='Putri'?'Putri':'';
     var navItems = [
-      {key:'absen',    label:'Absen Maghrib',      icon:'&#127774;'},
-      {key:'rekap',    label:'Rekap Kehadiran',     icon:'&#128202;'},
-      {key:'profil',   label:'Profil Saya',         icon:'&#128100;'}
+      {key:'absen_harian',     label:'Absen Harian'+(labelG?' '+labelG:''), icon:'&#128203;'},
+      {key:'rekap_harian',     label:'Rekap Kehadiran',                     icon:'&#128202;'},
+      {key:'perizinan',        label:'Perizinan Santri',                    icon:'&#128196;'},
+      {key:'catatpelanggaran', label:'Catat Pelanggaran',                   icon:'&#128221;'},
+      {key:'profilsaya',       label:'Profil Saya',                         icon:'&#128100;'}
     ];
-    var map = {absen:pembinaAbsen, rekap:pembinaRekap, profil:guruProfilSaya};
-    activeKey = activeKey && map[activeKey] ? activeKey : 'absen';
-    renderSidebarShell({title:'Dashboard Pembina', navItems:navItems, activeKey:activeKey, contentId:'dpb-content', onSelect:function(key){ map[key](); }});
+    var map = {
+      absen_harian: function(){ pembinaAbsenHarian(gender); },
+      rekap_harian: function(){ pembinaRekapHarian(gender); },
+      perizinan:    function(){ pembinaPerizinan(gender); },
+      catatpelanggaran: function(){ renderFormCatatPelanggaran('dpb-content'); },
+      profilsaya:   guruProfilSaya,
+    };
+    activeKey = activeKey && map[activeKey] ? activeKey : 'absen_harian';
+    renderSidebarShell({title:'Dashboard Pembina'+(labelG?' '+labelG:''), navItems:navItems, activeKey:activeKey, contentId:'dpb-content', onSelect:function(key){ map[key](); }});
     map[activeKey]();
   }
 
@@ -6502,130 +6689,6 @@
     return '<div style="background:rgba(255,255,255,.07);border-radius:6px;padding:4px 10px;font-size:12px;color:'+warna+'">'+label+' <b>'+angka+'</b></div>';
   }
 
-  // Tampilkan widget status pondok di dashboard Pembina
-  function pembinaAbsenHarian(gender){
-    var c = getContentEl();
-    c.innerHTML = '<p>Memuat halaqoh...</p>';
-    // Ambil semua halaqoh yang diampu pembina ini
-    api('getSantriHalaqohGuru', {pengampu: STATE.user.nama}).then(function(res){
-      var halaqohList = res.ok ? res.data : [];
-      if (!halaqohList.length){
-        c.innerHTML = '<div class="card">'+warnBox('Anda belum memiliki halaqoh. Minta Admin mendaftarkan Anda sebagai pengampu di menu Kelola Halaqoh.')+'</div>';
-        return;
-      }
-
-      c.innerHTML = '<div class="card"><h3>&#127774; Absensi Halaqoh Maghrib</h3>'+
-        '<div class="grid2">'+
-        '<div><label>Tanggal</label><input type="date" id="pbTanggal" value="'+todayStr()+'" '+(STATE.pengaturan.IzinkanGantiTanggal?'':'disabled')+'></div>'+
-        '<div><label>Gender Santri</label>'+
-        '<select id="pbGender"><option value="Putra">Putra</option><option value="Putri">Putri</option></select></div>'+
-        '</div>'+
-        '<label>Halaqoh</label>'+
-        '<select id="pbHalaqoh">'+halaqohList.map(function(h){return '<option value="'+esc(h.namaHalaqoh)+'">'+esc(h.namaHalaqoh)+'</option>';}).join('')+'</select>'+
-        '<button id="btnMuatSantriPb" style="margin-top:10px">Tampilkan Santri</button>'+
-        '<div id="pbFormWrap"></div></div>';
-
-      document.getElementById('btnMuatSantriPb').onclick = function(){
-        var namaHalaqoh = document.getElementById('pbHalaqoh').value;
-        var gender = document.getElementById('pbGender').value;
-        var tanggal = document.getElementById('pbTanggal').value || todayStr();
-        document.getElementById('pbFormWrap').innerHTML = '<p>Memuat santri...</p>';
-        api('getSantriHalaqohByGender', {namaHalaqoh:namaHalaqoh, gender:gender}).then(function(r){
-          if(!r.ok){ document.getElementById('pbFormWrap').innerHTML = errBox(r.error); return; }
-          if(!r.data.length){
-            document.getElementById('pbFormWrap').innerHTML = warnBox('Tidak ada santri '+gender+' di halaqoh ini.');
-            return;
-          }
-          var html = '<div class="card" style="margin-top:12px"><h4>'+esc(namaHalaqoh)+' &mdash; Santri '+esc(gender)+' ('+r.data.length+' santri)</h4>';
-          r.data.forEach(function(s){
-            html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9">'+
-              '<b>'+esc(s.nama)+'</b>'+
-              '<select class="pbStatus" data-nisn="'+esc(s.nisn)+'" data-nama="'+esc(s.nama)+'" style="width:130px">'+
-              ['Hadir','Sakit','Izin','Izin Pulang','Alpa'].map(function(st){return '<option value="'+st+'">'+st+'</option>';}).join('')+
-              '</select></div>';
-          });
-          html += '<div id="pbPesan" style="margin-top:10px"></div>'+
-            '<button id="btnSimpanPb" style="margin-top:10px">Simpan Absensi</button>'+
-            '<button class="secondary" id="btnCetakPb" style="margin-top:10px">&#128424; Cetak Daftar Hadir</button></div>';
-          document.getElementById('pbFormWrap').innerHTML = html;
-
-          document.getElementById('btnSimpanPb').onclick = function(){
-            var items = [];
-            document.querySelectorAll('.pbStatus').forEach(function(sel){
-              items.push({nisn:sel.dataset.nisn, nama:sel.dataset.nama, status:sel.value, keterangan:''});
-            });
-            var btn = document.getElementById('btnSimpanPb');
-            btn.disabled=true; btn.textContent='Menyimpan...';
-            api('submitAbsensiHalaqoh', {
-              tanggal:tanggal, hari:hariDariTanggal(tanggal),
-              namaHalaqoh:namaHalaqoh, waktuHalaqoh:'Maghrib',
-              gender:gender, pengampu:STATE.user.nama, items:items
-            }).then(function(res2){
-              btn.disabled=false; btn.textContent='Simpan Absensi';
-              if(!res2.ok){ document.getElementById('pbPesan').innerHTML=errBox(res2.error); return; }
-              if(res2.offline){ document.getElementById('pbPesan').innerHTML='<div style="background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:10px;font-size:13px">'+res2.pesanOffline+'</div>'; btn.disabled=false; btn.textContent='Simpan Absensi'; return; }
-              var hadir = items.filter(function(i){return i.status==='Hadir';}).length;
-              document.getElementById('pbPesan').innerHTML=
-                '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;font-size:13px">'+
-                '&#10004; Tersimpan! Hadir: <b>'+hadir+'</b> / '+items.length+' santri.</div>';
-            });
-          };
-
-          document.getElementById('btnCetakPb').onclick = function(){
-            cetakDaftarHadirHalaqoh(namaHalaqoh, gender, tanggal, r.data);
-          };
-        });
-      };
-    });
-  }
-
-  // ---- Rekap Kehadiran Pembina ----
-  function pembinaRekap(){
-    var c = getContentEl();
-    c.innerHTML = '<p>Memuat...</p>';
-    api('getSantriHalaqohGuru', {pengampu: STATE.user.nama}).then(function(res){
-      var halaqohList = res.ok ? res.data : [];
-      if (!halaqohList.length){ c.innerHTML='<div class="card">'+warnBox('Belum ada halaqoh.')+'</div>'; return; }
-
-      var bt = bulanTahunSaatIni();
-      var tglMulai = bt.tahun+'-'+String(bt.bulan).padStart(2,'0')+'-01';
-
-      c.innerHTML='<div class="card"><h3>&#128202; Rekap Kehadiran Halaqoh Maghrib</h3>'+
-        '<div class="grid2">'+
-        '<div><label>Dari Tanggal</label><input type="date" id="pbRDari" value="'+tglMulai+'"></div>'+
-        '<div><label>Sampai Tanggal</label><input type="date" id="pbRSampai" value="'+todayStr()+'"></div>'+
-        '</div>'+
-        '<label>Halaqoh</label>'+
-        '<select id="pbRHalaqoh">'+halaqohList.map(function(h){return '<option value="'+esc(h.namaHalaqoh)+'">'+esc(h.namaHalaqoh)+'</option>';}).join('')+'</select>'+
-        '<div style="display:flex;gap:8px;margin-top:10px">'+
-        '<button id="btnCariRekapPb">Tampilkan Rekap</button>'+
-        '<button class="secondary" id="btnCetakRekapPb">&#128424; Cetak</button>'+
-        '<button class="secondary" id="btnExcelRekapPb">&#128196; Unduh Excel</button>'+
-        '</div></div>'+
-        '<div id="pbRekapContent" style="margin-top:10px"></div>';
-
-      function muatRekap(){
-        var dari = document.getElementById('pbRDari').value;
-        var sampai = document.getElementById('pbRSampai').value;
-        var halaqoh = document.getElementById('pbRHalaqoh').value;
-        document.getElementById('pbRekapContent').innerHTML='<p>Memuat...</p>';
-        api('getRekapAbsensiHalaqoh',{namaHalaqoh:halaqoh, waktuHalaqoh:'Maghrib', tglMulai:dari, tglAkhir:sampai}).then(function(r){
-          if(!r.ok){ document.getElementById('pbRekapContent').innerHTML=errBox(r.error); return; }
-          tampilkanRekapHalaqoh(r.data, document.getElementById('pbRekapContent'));
-
-          document.getElementById('btnCetakRekapPb').onclick=function(){
-            cetakRekapHalaqoh(r.data);
-          };
-          document.getElementById('btnExcelRekapPb').onclick=function(){
-            unduhExcelRekap(r.data);
-          };
-        });
-      }
-      document.getElementById('btnCariRekapPb').onclick=muatRekap;
-      muatRekap();
-    });
-  }
-
   // ---- Helper: tampilkan rekap (dipakai Pembina dan Admin) ----
   function tampilkanRekapHalaqoh(d, container){
     if (!d || !d.santri || !d.santri.length){
@@ -6741,7 +6804,7 @@
   // ============================================================
 
   function dashboardWali(){
-    render('<div id="dw-top"></div><div id="slideBarWrap"></div><div id="dw-ringkasan"></div><div id="dw-notif" class="card">Memuat notifikasi...</div><div id="dw-jadwal"></div><div id="dw-rekap"></div><div id="dw-rapor"></div><div id="dw-izin"></div><div id="dw-pelanggaran"></div><div id="dw-kantin"></div><div id="dw-kontak"></div>');
+    render('<div id="dw-top"></div><div id="slideBarWrap"></div><div id="dw-ringkasan"></div><div id="dw-notif" class="card">Memuat notifikasi...</div><div id="dw-jadwal"></div><div id="dw-rekap"></div><div id="dw-hafalan"></div><div id="dw-rapor"></div><div id="dw-izin"></div><div id="dw-pelanggaran"></div><div id="dw-kantin"></div><div id="dw-kontak"></div>');
     document.getElementById('dw-top').innerHTML = topbar('Dashboard Wali Santri'); bindLogout();
     renderSlideBar('slideBarWrap');
     var nisn = STATE.user.nisnAnak;
@@ -6750,6 +6813,7 @@
     muatRiwayatPelanggaranWali(nisn);
     muatKantinWali(nisn);
     renderIzinWaliSantri(nisn, 'dw-izin'); // tampilkan riwayat izin anak
+    renderProgressHafalanWali(nisn, 'dw-hafalan'); // tampilkan progress hafalan anak
 
     api('getNotifikasiMingguan', {nisn:nisn}).then(function(res){
       if(!res.ok){ document.getElementById('dw-notif').innerHTML = errBox(res.error); return; }
@@ -6829,6 +6893,7 @@
       {key:'sop', label:'SOP Guru', icon:'&#128203;'},
       {key:'defaultjurnal', label:'Default Jurnal Mengajar', icon:'&#128221;'},
       {key:'website', label:'Info Website', icon:'&#127760;'},
+      {key:'progresshafalan', label:'Progres Hafalan', icon:'&#128218;'},
       {key:'spreadsheet', label:'File Spreadsheet', icon:'&#128196;'},
       {key:'tampilan', label:'Tampilan / Logo', icon:'&#127912;'}
     ];
@@ -6839,7 +6904,9 @@
       persetujuansaldo:function(){ renderPersetujuanSaldo('da-content'); }, spp:function(){ renderSppSantri('da-content'); },
       modulajar:adminModulAjar, rekapjurnal:adminRekapJurnal, rekaphalaqoh:adminRekapHalaqoh,
       raporkelas:adminRaporKelas, kelompokpapel:adminKelompokMapel, sop:adminSOP, defaultjurnal:adminDefaultJurnal,
-      website:adminInfoWebsite, spreadsheet:adminSpreadsheet, tampilan:adminTampilan};
+      website:adminInfoWebsite, spreadsheet:adminSpreadsheet,
+      progresshafalan: function(){ renderRekapProgressHafalan(''); },
+      tampilan:adminTampilan};
     activeKey = activeKey && map[activeKey] ? activeKey : 'ringkasan';
     renderSidebarShell({title:'Dashboard '+STATE.user.level, navItems:navItems, activeKey:activeKey, contentId:'da-content',
       extraTop: adaRoleLain ?
