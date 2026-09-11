@@ -38,6 +38,7 @@ const SHEET_HALAQOH         = 'Halaqoh';
 const SHEET_HALAQOH_ANGGOTA = 'HalaqohAnggota';
 const SHEET_ABSENSI         = 'Absensi';
 const SHEET_HAFALAN         = 'Hafalan';
+const SHEET_PROGRES_HAFALAN_AWAL = 'ProgresHafalanAwal'; // Baseline hafalan sebelum aplikasi digunakan
 const SHEET_NILAI           = 'Nilai'; // struktur disiapkan, UI input menyusul Tahap 2
 const SHEET_REKAP_NILAI     = 'RekapNilai'; // sheet gabungan nilai semua santri x semua mapel, konek ke Rapor
 const SHEET_ROLE            = 'RoleAkses';
@@ -88,7 +89,7 @@ const PELANGGARAN_AKTIF_KEY = 'PELANGGARAN_SS_AKTIF_ID';
 const HARI_LIST = ['Minggu','Senin','Selasa','Rabu','Kamis',"Jum'at",'Sabtu'];
 const STATUS_LIST = ['Hadir','Sakit','Izin','Izin Pulang','Alpa'];
 const JENIS_HAFALAN_SETOR = ['Sabaq','Sabqi','Manzil','Murojaah','Tahsin'];
-const JENIS_HAFALAN_NONSETOR = ['Tidak Setor','Izin','Sakit','Ghaib'];
+const JENIS_HAFALAN_NONSETOR = ['Tidak Setor','Izin','Izin Pulang','Sakit','Ghaib'];
 // Untuk rekap kehadiran halaqoh: jenis-jenis ini dianggap HADIR (termasuk "Tidak Setor",
 // karena santri tetap hadir di halaqoh meski hari itu tidak menyetor hafalan). Hanya
 // Izin/Sakit/Ghaib yang dihitung sebagai status tersendiri (bukan Hadir).
@@ -182,7 +183,6 @@ function route(action, p) {
     case 'getRekapPendapatanPondok': return {ok:true, data: getRekapPendapatanPondok(p.tglMulai, p.tglAkhir, p.jenis)};
     case 'get5TransaksiTerbaruSantri': return {ok:true, data: get5TransaksiTerbaruSantri(p.nisn)};
     case 'getAllTransaksiSantri': return {ok:true, data: getAllTransaksiSantri(p.nisn, p.tglMulai, p.tglAkhir)};
-    case 'setLimitHarianAdmin': return apiSetLimitHarianSantri(p);
     case 'getNotifBadge': return {ok:true, data: getNotifBadge()};
     // Keuangan Bendahara
     case 'getDashboardKeuangan': return {ok:true, data: getDashboardKeuangan(p.bulan, p.tahun)};
@@ -239,7 +239,6 @@ function route(action, p) {
     case 'getSaldoSantriKantin': return {ok:true, data: getSaldoSantriKantin(p.nisn)};
     case 'getRiwayatTransaksiSantriKantin': return {ok:true, data: getRiwayatTransaksiSantriKantin(p.nisn, p.tglMulai, p.tglAkhir)};
     case 'ajukanTopUpSaldo': return apiAjukanTopUpSaldo(p);
-    case 'setLimitHarianSantri': return apiSetLimitHarianSantri(p);
     case 'getSppSaya': return {ok:true, data: getSppSaya(p.nisn)};
     case 'validasiPinTransaksiSantri': return apiValidasiPinTransaksiSantri(p);
     case 'gantiPinTransaksiSantri': return apiGantiPinTransaksiSantri(p);
@@ -346,6 +345,9 @@ function route(action, p) {
     case 'getStatusPondok': return apiGetStatusPondok(p);
     case 'getProgressHafalan':      return apiGetProgressHafalan(p);
     case 'getProgressHafalanMassal': return apiGetProgressHafalanMassal(p);
+    case 'getProgresAwal':          return apiGetProgresAwal(p);
+    case 'simpanProgresAwal':       return apiSimpanProgresAwal(p);
+    case 'hapusProgresAwal':        return apiHapusProgresAwal(p);
     // Perizinan santri
     case 'ajukanIzin':          return apiAjukanIzin(p);
     case 'getDaftarIzin':       return apiGetDaftarIzin(p);
@@ -3364,21 +3366,6 @@ function apiAjukanTopUpSaldo(p) {
 }
 
 // Orang tua mengatur/mengubah limit belanja harian anaknya sendiri (0 = tanpa limit).
-function apiSetLimitHarianSantri(p) {
-  const nisn = norm(p.nisn);
-  const limit = Number(p.limit) || 0;
-  if (!nisn) return {ok:false, error:'NISN wajib diisi'};
-  if (limit < 0) return {ok:false, error:'Limit tidak boleh negatif'};
-  const sh = getAktifSS().getSheetByName(SHEET_SANTRI);
-  const rows = sh.getDataRange().getValues();
-  const header = rows[0];
-  const iLimit = header.indexOf('Limit Harian Kantin');
-  for (let i=1;i<rows.length;i++) {
-    if (norm(rows[i][0]) === nisn) { sh.getRange(i+1, iLimit+1).setValue(limit); return {ok:true}; }
-  }
-  return {ok:false, error:'Data santri tidak ditemukan'};
-}
-
 // Status SPP SATU santri saja -- dipakai dashboard Wali Santri, tidak pernah
 // mengekspos data SPP santri lain lewat aksi ini.
 function getSppSaya(nisn) {
@@ -4307,8 +4294,21 @@ function apiSubmitAbsensi(p) {
   let diupdate = 0;
   daftarJamKe.forEach(function(jamKe){
     (p.items || []).forEach(it => {
-      const s1 = it.sikap1!=null? it.sikap1:4, s2 = it.sikap2!=null? it.sikap2:4, s3 = it.sikap3!=null? it.sikap3:4, s4 = it.sikap4!=null? it.sikap4:4;
-      const nilaiSikap = hitungNilaiSikap(s1,s2,s3,s4);
+      // Kalau santri TIDAK HADIR (Sakit/Izin/Izin Pulang/Alpa) atau sikap eksplisit kosong,
+      // nilai sikap dikosongkan supaya tidak masuk perhitungan rata sikap rapor.
+      // Kalau HADIR dan sikap tidak dikirim, default 4 (asumsi baik).
+      const isHadir = norm(it.status) === 'Hadir';
+      const sikapKosong = (v) => v === '' || v === null || v === undefined;
+      let s1, s2, s3, s4, nilaiSikap;
+      if (!isHadir || (sikapKosong(it.sikap1) && sikapKosong(it.sikap2) && sikapKosong(it.sikap3) && sikapKosong(it.sikap4))) {
+        s1 = ''; s2 = ''; s3 = ''; s4 = ''; nilaiSikap = '';
+      } else {
+        s1 = sikapKosong(it.sikap1) ? 4 : it.sikap1;
+        s2 = sikapKosong(it.sikap2) ? 4 : it.sikap2;
+        s3 = sikapKosong(it.sikap3) ? 4 : it.sikap3;
+        s4 = sikapKosong(it.sikap4) ? 4 : it.sikap4;
+        nilaiSikap = hitungNilaiSikap(s1,s2,s3,s4);
+      }
       const rowIdx = indexBaris[String(jamKe)+'|'+norm(it.nisn)];
       if (rowIdx) {
         sh.getRange(rowIdx,9,1,8).setValues([[it.status, it.keterangan||'', s1,s2,s3,s4, nilaiSikap, new Date()]]);
@@ -4694,8 +4694,19 @@ function apiUpdateAbsensi(p) {
   const sh = getAktifSS().getSheetByName(SHEET_ABSENSI);
   if (!sh) return {ok:false, error:'Sheet Absensi tidak ditemukan.'};
   if (!p.rowIndex || p.rowIndex < 2) return {ok:false, error:'Baris tidak valid.'};
-  const s1 = p.sikap1!=null?p.sikap1:4, s2 = p.sikap2!=null?p.sikap2:4, s3 = p.sikap3!=null?p.sikap3:4, s4 = p.sikap4!=null?p.sikap4:4;
-  const nilaiSikap = hitungNilaiSikap(s1,s2,s3,s4);
+  // Konsisten dengan apiSubmitAbsensi: kalau tidak hadir, nilai sikap dikosongkan
+  const isHadir = norm(p.status) === 'Hadir';
+  const sikapKosong = (v) => v === '' || v === null || v === undefined;
+  let s1, s2, s3, s4, nilaiSikap;
+  if (!isHadir || (sikapKosong(p.sikap1) && sikapKosong(p.sikap2) && sikapKosong(p.sikap3) && sikapKosong(p.sikap4))) {
+    s1 = ''; s2 = ''; s3 = ''; s4 = ''; nilaiSikap = '';
+  } else {
+    s1 = sikapKosong(p.sikap1) ? 4 : p.sikap1;
+    s2 = sikapKosong(p.sikap2) ? 4 : p.sikap2;
+    s3 = sikapKosong(p.sikap3) ? 4 : p.sikap3;
+    s4 = sikapKosong(p.sikap4) ? 4 : p.sikap4;
+    nilaiSikap = hitungNilaiSikap(s1,s2,s3,s4);
+  }
   try {
     sh.getRange(p.rowIndex,9,1,8).setValues([[p.status, p.keterangan||'', s1,s2,s3,s4, nilaiSikap, new Date()]]);
   } catch(e) {
@@ -6574,6 +6585,96 @@ function escapeHtml(s) {
 }
 
 // ============================================================
+// PROGRES HAFALAN AWAL — baseline sebelum aplikasi digunakan
+// Sheet: NISN | Nama | JuzSelesai (CSV) | JuzProses (JSON) | Catatan | DiisiOleh | Waktu
+// JuzProses: [{juz:4, persen:60},{juz:5, persen:20}]
+// ============================================================
+
+function getSheetProgresAwal() {
+  const ss = getAktifSS();
+  let sh = ss.getSheetByName(SHEET_PROGRES_HAFALAN_AWAL);
+  if (!sh) {
+    sh = ss.insertSheet(SHEET_PROGRES_HAFALAN_AWAL);
+    sh.appendRow(['NISN','Nama','Juz Selesai','Juz Proses','Catatan','Diisi Oleh','Waktu']);
+    sh.setFrozenRows(1);
+    sh.setColumnWidth(3, 200); sh.setColumnWidth(4, 250);
+  }
+  return sh;
+}
+
+// Ambil progres awal semua santri (map: nisn → {juzSelesai:[], juzProses:[{juz,persen}]})
+function getMapProgresAwal() {
+  const sh = getSheetProgresAwal();
+  const rows = sh.getDataRange().getValues(); rows.shift();
+  const map = {};
+  rows.forEach(r => {
+    var nisn = norm(r[0]);
+    if (!nisn) return;
+    var juzSelesai = norm(r[2]) ? String(r[2]).split(',').map(function(s){return Number(String(s).trim());}).filter(function(n){return n>=1&&n<=30;}) : [];
+    var juzProses = [];
+    try {
+      var raw = norm(r[3]);
+      if (raw) juzProses = JSON.parse(raw).filter(function(x){ return x && x.juz>=1 && x.juz<=30 && x.persen>0 && x.persen<100; });
+    } catch(e) {}
+    map[nisn] = {juzSelesai:juzSelesai, juzProses:juzProses};
+  });
+  return map;
+}
+
+// API: ambil progres awal satu santri
+function apiGetProgresAwal(p) {
+  const nisn = norm(p.nisn);
+  if (!nisn) return {ok:false, error:'NISN wajib diisi'};
+  const map = getMapProgresAwal();
+  return {ok:true, data: map[nisn] || {juzSelesai:[], juzProses:[]}};
+}
+
+// API: simpan progres awal santri
+function apiSimpanProgresAwal(p) {
+  const nisn = norm(p.nisn);
+  if (!nisn) return {ok:false, error:'NISN wajib diisi'};
+  const nama = norm(p.nama || '');
+  const juzSelesai = Array.isArray(p.juzSelesai) ? p.juzSelesai.filter(function(n){ return n>=1&&n<=30; }) : [];
+  const juzProses = Array.isArray(p.juzProses) ? p.juzProses.filter(function(x){ return x && x.juz>=1 && x.juz<=30 && x.persen>0 && x.persen<100; }) : [];
+
+  // Cek: kalau juz ada di juzSelesai, jangan dobel di juzProses
+  const juzProsesBersih = juzProses.filter(function(x){ return juzSelesai.indexOf(x.juz) === -1; });
+
+  const sh = getSheetProgresAwal();
+  const rows = sh.getDataRange().getValues();
+  let foundRow = 0;
+  for (var i=1;i<rows.length;i++) {
+    if (norm(rows[i][0]) === nisn) { foundRow = i+1; break; }
+  }
+
+  const rowData = [
+    nisn, nama,
+    juzSelesai.sort(function(a,b){return a-b;}).join(','),
+    JSON.stringify(juzProsesBersih),
+    norm(p.catatan||''),
+    norm(p.diisiOleh||''),
+    new Date()
+  ];
+
+  if (foundRow) sh.getRange(foundRow, 1, 1, 7).setValues([rowData]);
+  else sh.appendRow(rowData);
+
+  return {ok:true};
+}
+
+// API: hapus progres awal santri
+function apiHapusProgresAwal(p) {
+  const nisn = norm(p.nisn);
+  if (!nisn) return {ok:false, error:'NISN wajib diisi'};
+  const sh = getSheetProgresAwal();
+  const rows = sh.getDataRange().getValues();
+  for (var i=rows.length-1;i>=1;i--) {
+    if (norm(rows[i][0]) === nisn) sh.deleteRow(i+1);
+  }
+  return {ok:true};
+}
+
+// ============================================================
 // PROGRESS HAFALAN — deteksi juz yang SUDAH SELESAI
 // Metode: Juz X selesai jika halaman AWAL dan halaman AKHIR sudah
 //         pernah disetor sebagai Sabaq (hafalan baru).
@@ -6605,9 +6706,10 @@ function getRentangJuz() {
 
 /**
  * Hitung progress hafalan untuk satu santri berdasarkan halaman Sabaq
+ * DIGABUNG dengan progres awal (baseline sebelum aplikasi).
  * Return: {juzSelesai:[1,2,3,30], juzInProgress:[4], totalJuz:4, persen:13.3, detail:{...}}
  */
-function hitungProgressHafalanSantri(nisn, hafalanRows) {
+function hitungProgressHafalanSantri(nisn, hafalanRows, progresAwal) {
   const rentangJuz = getRentangJuz();
   const halamanTersetor = new Set(); // halaman yang pernah disetor Sabaq
 
@@ -6615,13 +6717,32 @@ function hitungProgressHafalanSantri(nisn, hafalanRows) {
   hafalanRows.forEach(r => {
     if (norm(r[4]) !== nisn) return;
     if (norm(r[6]) !== 'Sabaq') return; // hanya Sabaq
-    var halaman = Number(r[10]); // kolom "Halaman Ke"
-    if (halaman && halaman >= 1 && halaman <= 604) {
-      halamanTersetor.add(halaman);
+    // Kolom "Halaman Ke" bisa berupa:
+    //  - angka tunggal        : "12"
+    //  - rentang tunggal      : "82 - 101"
+    //  - multi-rentang (juz)  : "1 - 21, 82 - 101, 182 - 201"
+    var raw = String(norm(r[10]) || '');
+    if (!raw) return;
+    // Ambil SEMUA rentang di string (pakai matchAll agar semua ter-parse)
+    var re = /(\d+)\s*(?:-\s*(\d+))?/g;
+    var m;
+    while ((m = re.exec(raw)) !== null) {
+      var awal = Number(m[1]);
+      var akhir = m[2] ? Number(m[2]) : awal;
+      if (awal < 1 || awal > 604) continue;
+      if (akhir < awal || akhir > 604) akhir = awal;
+      for (var h = awal; h <= akhir; h++) {
+        halamanTersetor.add(h);
+      }
     }
   });
 
-  // Cek setiap juz: selesai jika halaman awal DAN akhir sudah tersetor
+  // Ambil progres awal (baseline) santri
+  const progAwal = progresAwal || {juzSelesai:[], juzProses:[]};
+  const juzSelesaiAwal = progAwal.juzSelesai || [];
+  const juzProsesAwal = progAwal.juzProses || []; // [{juz, persen}]
+
+  // Cek setiap juz: SELESAI jika (halaman awal & akhir sudah tersetor) ATAU (juz di juzSelesaiAwal)
   const juzSelesai = [];
   const juzInProgress = [];
   const detailJuz = {};
@@ -6636,6 +6757,23 @@ function hitungProgressHafalanSantri(nisn, hafalanRows) {
     var totalHalamanJuz = r.akhir - r.awal + 1;
     var selesaiAwal = halamanTersetor.has(r.awal);
     var selesaiAkhir = halamanTersetor.has(r.akhir);
+    var selesaiViaSabaq = selesaiAwal && selesaiAkhir;
+    var selesaiViaAwal = juzSelesaiAwal.indexOf(j) !== -1;
+
+    // Progres awal untuk juz yang sedang dihafal (belum selesai)
+    var prosesAwalJuz = juzProsesAwal.find(function(x){ return x.juz === j; });
+    var persenAwal = prosesAwalJuz ? prosesAwalJuz.persen : 0;
+
+    // Persentase total: gabung dari Sabaq (halaman) dan progres awal
+    var persenSabaq = totalHalamanJuz > 0 ? Math.round((halamanJuzIni/totalHalamanJuz)*100) : 0;
+    var persenGabungan = Math.max(persenSabaq, persenAwal);
+    if (selesaiViaAwal || selesaiViaSabaq) persenGabungan = 100;
+
+    var sumber = [];
+    if (selesaiViaAwal) sumber.push('baseline');
+    if (selesaiViaSabaq) sumber.push('sabaq');
+    else if (persenSabaq > 0) sumber.push('sabaq');
+    else if (persenAwal > 0) sumber.push('baseline');
 
     detailJuz[j] = {
       juz: j,
@@ -6643,27 +6781,57 @@ function hitungProgressHafalanSantri(nisn, hafalanRows) {
       halamanAkhir: r.akhir,
       totalHalaman: totalHalamanJuz,
       halamanTersetor: halamanJuzIni,
-      persenJuz: totalHalamanJuz > 0 ? Math.round((halamanJuzIni/totalHalamanJuz)*100) : 0,
+      persenJuz: persenGabungan,
       awalTersetor: selesaiAwal,
       akhirTersetor: selesaiAkhir,
-      selesai: selesaiAwal && selesaiAkhir,
+      selesai: selesaiViaAwal || selesaiViaSabaq,
+      sumber: sumber.join('+') || null, // 'baseline', 'sabaq', 'baseline+sabaq'
     };
 
-    if (selesaiAwal && selesaiAkhir) juzSelesai.push(j);
-    else if (halamanJuzIni > 0) juzInProgress.push(j);
+    if (selesaiViaAwal || selesaiViaSabaq) juzSelesai.push(j);
+    else if (persenGabungan > 0) juzInProgress.push(j);
   }
 
-  const persenTotal = Math.round((totalHalamanTersetor / 604) * 100 * 10) / 10; // 1 desimal
+  // Total halaman efektif: halaman Sabaq + estimasi dari juz selesai baseline
+  var halamanDariBaseline = 0;
+  juzSelesaiAwal.forEach(function(j){
+    if (juzSelesai.indexOf(j) !== -1) {
+      var r = rentangJuz[j];
+      var totalHalJuz = r.akhir - r.awal + 1;
+      // Kurangi halaman yang sudah dihitung dari Sabaq di juz ini
+      var halSabaqJuzIni = 0;
+      for (var h = r.awal; h <= r.akhir; h++) if (halamanTersetor.has(h)) halSabaqJuzIni++;
+      halamanDariBaseline += (totalHalJuz - halSabaqJuzIni);
+    }
+  });
+  // Untuk juz proses baseline (belum selesai), estimasi dari persen
+  juzProsesAwal.forEach(function(x){
+    if (juzSelesai.indexOf(x.juz) !== -1) return; // sudah dihitung sbg selesai
+    var r = rentangJuz[x.juz];
+    var totalHalJuz = r.akhir - r.awal + 1;
+    var halBaseline = Math.round(totalHalJuz * x.persen / 100);
+    var halSabaqJuzIni = 0;
+    for (var h = r.awal; h <= r.akhir; h++) if (halamanTersetor.has(h)) halSabaqJuzIni++;
+    if (halBaseline > halSabaqJuzIni) {
+      halamanDariBaseline += (halBaseline - halSabaqJuzIni);
+    }
+  });
+
+  var totalHalamanEfektif = totalHalamanTersetor + halamanDariBaseline;
+  const persenTotal = Math.round((totalHalamanEfektif / 604) * 100 * 10) / 10; // 1 desimal
 
   return {
     nisn: nisn,
     juzSelesai: juzSelesai,
     juzInProgress: juzInProgress,
     totalJuzSelesai: juzSelesai.length,
-    totalHalamanTersetor: totalHalamanTersetor,
+    totalHalamanTersetor: totalHalamanEfektif,
+    halamanSabaq: totalHalamanTersetor, // dari setoran via app
+    halamanBaseline: halamanDariBaseline, // dari input awal
     persen: persenTotal,
     detailJuz: detailJuz,
     ringkasan: buildRingkasanHafalan(juzSelesai, juzInProgress, detailJuz),
+    punyaProgresAwal: (juzSelesaiAwal.length + juzProsesAwal.length) > 0,
   };
 }
 
@@ -6696,10 +6864,9 @@ function apiGetProgressHafalan(p) {
 
   const ss = getAktifSS();
   const sh = ss.getSheetByName(SHEET_HAFALAN);
-  if (!sh) return {ok:false, error:'Sheet Hafalan belum ada'};
-
-  const rows = sh.getDataRange().getValues(); rows.shift();
-  const hasil = hitungProgressHafalanSantri(nisn, rows);
+  const rows = sh ? sh.getDataRange().getValues().slice(1) : [];
+  const mapAwal = getMapProgresAwal();
+  const hasil = hitungProgressHafalanSantri(nisn, rows, mapAwal[nisn]);
 
   // Ambil nama santri
   const shSantri = ss.getSheetByName(SHEET_SANTRI);
@@ -6719,11 +6886,11 @@ function apiGetProgressHafalan(p) {
 function apiGetProgressHafalanMassal(p) {
   const ss = getAktifSS();
   const sh = ss.getSheetByName(SHEET_HAFALAN);
-  if (!sh) return {ok:false, error:'Sheet Hafalan belum ada'};
   const shSantri = ss.getSheetByName(SHEET_SANTRI);
   if (!shSantri) return {ok:false, error:'Sheet Santri belum ada'};
 
-  const hafalanRows = sh.getDataRange().getValues(); hafalanRows.shift();
+  const hafalanRows = sh ? sh.getDataRange().getValues().slice(1) : [];
+  const mapAwal = getMapProgresAwal();
   const santriRows = shSantri.getDataRange().getValues();
   const header = santriRows[0];
   const iJK = header.indexOf('Jenis Kelamin');
@@ -6749,11 +6916,27 @@ function apiGetProgressHafalanMassal(p) {
     santriFilter = santriFilter.filter(function(r){ return nisnKelas[norm(r[0])] === p.kelas; });
   }
 
+  // Filter berdasarkan pengampu halaqoh Al-Qur'an
+  // Guru pengampu hanya melihat santri di halaqoh yang dia ampu
+  if (p.pengampu) {
+    const nisnDiHalaqoh = new Set();
+    try {
+      const halaqohList = getHalaqohList().filter(function(h){
+        return pengampuCocok(h.pengampuList, norm(p.pengampu));
+      });
+      halaqohList.forEach(function(h){
+        (h.santriList||[]).forEach(function(s){ if (s.nisn) nisnDiHalaqoh.add(norm(s.nisn)); });
+      });
+    } catch(e) {}
+    santriFilter = santriFilter.filter(function(r){ return nisnDiHalaqoh.has(norm(r[0])); });
+  }
+
   // Hitung progress per santri
   const hasil = santriFilter.map(function(s){
-    var p = hitungProgressHafalanSantri(norm(s[0]), hafalanRows);
-    p.nama = norm(s[1]);
-    return p;
+    var nisn = norm(s[0]);
+    var pr = hitungProgressHafalanSantri(nisn, hafalanRows, mapAwal[nisn]);
+    pr.nama = norm(s[1]);
+    return pr;
   });
 
   // Urutkan: yang paling banyak juz selesai dulu
@@ -7173,7 +7356,11 @@ function apiGetRekapAbsensiHarian(p) {
 }
 
 // Info real-time keberadaan santri di pondok
-// Berdasarkan absensi harian terakhir yang diisi
+// LOGIKA: Sistem melacak STATUS TERAKHIR santri hari ini dari semua sumber
+// Kalau catatan terakhir = "Izin Pulang" → dia sedang keluar
+// Kalau catatan terakhir = status lain (Hadir/Sakit/Izin/Alpa) → dia di pondok
+// Contoh: pagi izin pulang, siang tercatat hadir di mapel → dianggap SUDAH KEMBALI
+// Sumber: 1) AbsensiHarian (Pembina), 2) Absensi (mapel), 3) Hafalan (halaqoh)
 function apiGetStatusPondok(p) {
   const ss = getAktifSS();
   const tz = Session.getScriptTimeZone();
@@ -7188,86 +7375,149 @@ function apiGetStatusPondok(p) {
   santriRows.shift();
 
   let totalPutra = 0, totalPutri = 0;
+  const jkMap = {};       // nisn → jk lowercase
+  const namaMap = {};     // nisn → nama
   santriRows.forEach(r => {
     if (!norm(r[0])) return;
-    const jk = norm(iJK>-1 ? r[iJK] : r[3]).toLowerCase();
+    var nisn = norm(r[0]);
+    var jk = norm(iJK>-1 ? r[iJK] : r[3]).toLowerCase();
+    jkMap[nisn] = jk;
+    namaMap[nisn] = norm(r[1]);
     if (jk === 'laki-laki') totalPutra++;
     else if (jk === 'perempuan') totalPutri++;
   });
   const totalSantri = totalPutra + totalPutri;
 
-  // Ambil absensi harian terakhir
-  const sh = ss.getSheetByName(SHEET_ABSENSI_HARIAN);
-  if (!sh || sh.getLastRow() <= 1) {
-    return {ok:true, tanggal:tanggalHariIni, sudahAbsen:false,
-      total:totalSantri, diPondok:totalSantri, izinPulang:0,
-      putra:{total:totalPutra, diPondok:totalPutra, izinPulang:0},
-      putri:{total:totalPutri, diPondok:totalPutri, izinPulang:0},
-      detail:[]};
+  // Ambil kelas dari Rombel
+  const shRombel = ss.getSheetByName(SHEET_ROMBEL);
+  const kelasMap = {};
+  if (shRombel) {
+    shRombel.getDataRange().getValues().slice(1).forEach(r => {
+      if (r[0]) kelasMap[norm(r[0])] = norm(r[2]);
+    });
   }
 
-  const rows = sh.getDataRange().getValues(); rows.shift();
-  // Ambil tanggal absensi terakhir yang tersedia
-  const tglAbsen = rows.reduce((latest, r) => {
-    const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
-    return tgl > latest ? tgl : latest;
-  }, '');
+  // === CATAT STATUS TERAKHIR santri HARI INI dari semua sumber ===
+  // Key: nisn, Value: {status, keterangan, sumber, waktu}
+  // Waktu paling belakang menang (status TERBARU adalah status aktual)
+  const statusTerakhir = {};
 
-  // Filter absensi terakhir
-  const absenTerakhir = rows.filter(r => {
-    const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
-    return tgl === tglAbsen;
-  });
+  function catatStatus(nisn, status, keterangan, sumber, waktu) {
+    if (!nisn || !jkMap[nisn]) return; // hanya santri terdaftar
+    if (!status) return;
+    var existing = statusTerakhir[nisn];
+    if (existing && existing.waktu >= waktu) return; // yang lama/sama, skip
+    statusTerakhir[nisn] = {
+      status: status,
+      keterangan: keterangan || '',
+      sumber: sumber,
+      waktu: waktu,
+    };
+  }
 
-  // Hitung per status
-  const statusCount = {Hadir:0, Sakit:0, Izin:0, 'Izin Pulang':0, Alpa:0};
-  const putraCount  = {diPondok:0, izinPulang:0};
-  const putriCount  = {diPondok:0, izinPulang:0};
+  // Sumber 1: AbsensiHarian (Pembina) — HARI INI saja
+  let sudahAbsenHarian = false;
+  const shHarian = ss.getSheetByName(SHEET_ABSENSI_HARIAN);
+  if (shHarian && shHarian.getLastRow() > 1) {
+    const rows = shHarian.getDataRange().getValues(); rows.shift();
+    rows.forEach(r => {
+      const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
+      if (tgl !== tanggalHariIni) return;
+      sudahAbsenHarian = true;
+      var waktu = r[8] instanceof Date ? r[8].getTime() : Date.now();
+      catatStatus(norm(r[2]), norm(r[5]), norm(r[6]), 'Pembina', waktu);
+    });
+  }
+
+  // Sumber 2: Absensi (guru mapel) — HARI INI saja
+  const shAbsensi = ss.getSheetByName(SHEET_ABSENSI);
+  if (shAbsensi && shAbsensi.getLastRow() > 1) {
+    const rows = shAbsensi.getDataRange().getValues(); rows.shift();
+    rows.forEach(r => {
+      const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
+      if (tgl !== tanggalHariIni) return;
+      var waktu = r[9] instanceof Date ? r[9].getTime() : Date.now();
+      var ket = norm(r[8])==='Izin Pulang' ? ('via ' + norm(r[3]||'mapel')) : '';
+      catatStatus(norm(r[6]), norm(r[8]), ket, 'Guru Mapel', waktu);
+    });
+  }
+
+  // Sumber 3: Hafalan (guru halaqoh) — HARI INI saja
+  // Untuk hafalan: jenis "Sabaq/Sabqi/Manzil/Murojaah/Tahsin/Tidak Setor" → dianggap HADIR
+  //                jenis "Izin Pulang/Izin/Sakit/Ghaib" → status sesuai
+  const shHafalan = ss.getSheetByName(SHEET_HAFALAN);
+  if (shHafalan && shHafalan.getLastRow() > 1) {
+    const rows = shHafalan.getDataRange().getValues(); rows.shift();
+    rows.forEach(r => {
+      const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
+      if (tgl !== tanggalHariIni) return;
+      var jenis = norm(r[6]);
+      var status;
+      if (JENIS_HAFALAN_DIANGGAP_HADIR.indexOf(jenis) !== -1) status = 'Hadir';
+      else if (jenis === 'Izin Pulang') status = 'Izin Pulang';
+      else if (jenis === 'Sakit') status = 'Sakit';
+      else if (jenis === 'Izin') status = 'Izin';
+      else if (jenis === 'Ghaib') status = 'Alpa';
+      else status = 'Hadir';
+      var waktu = r[12] instanceof Date ? r[12].getTime() : Date.now();
+      var ket = status === 'Izin Pulang' ? ('via halaqoh ' + norm(r[2]||'')) : '';
+      catatStatus(norm(r[4]), status, ket, 'Guru Halaqoh', waktu);
+    });
+  }
+
+  // === HITUNG BREAKDOWN dari statusTerakhir ===
   const izinPulangList = [];
+  let hadir = 0, sakit = 0, izin = 0, alpa = 0;
+  let putraIzin = 0, putriIzin = 0;
 
-  // Map NISN → JK dari sheet Santri
-  const jkMap = {};
-  santriRows.forEach(r => {
-    if (r[0]) jkMap[norm(r[0])] = norm(iJK>-1?r[iJK]:r[3]).toLowerCase();
+  Object.keys(statusTerakhir).forEach(function(nisn) {
+    var s = statusTerakhir[nisn];
+    var status = s.status;
+    if (status === 'Hadir') hadir++;
+    else if (status === 'Sakit') sakit++;
+    else if (status === 'Izin') izin++;
+    else if (status === 'Alpa') alpa++;
+    else if (status === 'Izin Pulang') {
+      var jk = jkMap[nisn] === 'laki-laki' ? 'Putra' : 'Putri';
+      if (jk === 'Putra') putraIzin++;
+      else putriIzin++;
+      izinPulangList.push({
+        nisn: nisn,
+        nama: namaMap[nisn] || '',
+        kelas: kelasMap[nisn] || '-',
+        keterangan: s.keterangan,
+        sumber: s.sumber,
+        waktu: s.waktu,
+        jk: jk,
+      });
+    }
   });
 
-  absenTerakhir.forEach(r => {
-    const status = norm(r[5]);
-    statusCount[status] = (statusCount[status]||0) + 1;
-    const nisn = norm(r[2]);
-    const jk = jkMap[nisn] || '';
-    const isPulang = status === 'Izin Pulang';
-    if (isPulang) {
-      izinPulangList.push({nisn, nama:norm(r[3]), kelas:norm(r[4]),
-        keterangan:norm(r[6]), jk: jk==='laki-laki'?'Putra':'Putri'});
-    }
-    if (jk === 'laki-laki') {
-      if (!isPulang) putraCount.diPondok++;
-      else putraCount.izinPulang++;
-    } else if (jk === 'perempuan') {
-      if (!isPulang) putriCount.diPondok++;
-      else putriCount.izinPulang++;
-    }
-  });
-
-  const diPondok = (statusCount['Hadir']||0) + (statusCount['Sakit']||0) +
-                   (statusCount['Izin']||0) + (statusCount['Alpa']||0);
+  const totalIzinPulang = izinPulangList.length;
+  const diPondok = totalSantri - totalIzinPulang;
+  const putraDiPondok = totalPutra - putraIzin;
+  const putriDiPondok = totalPutri - putriIzin;
 
   return {
     ok: true,
-    tanggal: tglAbsen,
-    hariIni: tglAbsen === tanggalHariIni,
-    sudahAbsen: absenTerakhir.length > 0,
+    tanggal: tanggalHariIni,
+    hariIni: true,
+    sudahAbsen: sudahAbsenHarian || Object.keys(statusTerakhir).length > 0,
     total: totalSantri,
     diPondok: diPondok,
-    izinPulang: statusCount['Izin Pulang']||0,
-    hadir: statusCount['Hadir']||0,
-    sakit: statusCount['Sakit']||0,
-    izin: statusCount['Izin']||0,
-    alpa: statusCount['Alpa']||0,
-    putra: {total:totalPutra, diPondok:putraCount.diPondok, izinPulang:putraCount.izinPulang},
-    putri: {total:totalPutri, diPondok:putriCount.diPondok, izinPulang:putriCount.izinPulang},
+    izinPulang: totalIzinPulang,
+    hadir: hadir,
+    sakit: sakit,
+    izin: izin,
+    alpa: alpa,
+    putra: {total:totalPutra, diPondok:putraDiPondok, izinPulang:putraIzin},
+    putri: {total:totalPutri, diPondok:putriDiPondok, izinPulang:putriIzin},
     izinPulangList: izinPulangList,
+    sumberIzinPulang: {
+      pembina: izinPulangList.filter(x => x.sumber === 'Pembina').length,
+      mapel:   izinPulangList.filter(x => x.sumber === 'Guru Mapel').length,
+      halaqoh: izinPulangList.filter(x => x.sumber === 'Guru Halaqoh').length,
+    },
   };
 }
 

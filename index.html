@@ -271,7 +271,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxux3hH84To15x_5PAGpLcfLp6lV4UI9fN9M-EBGR0lQBkCnfkjDSofWg0Yf5Gzd5aa/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -297,9 +297,9 @@
     var d = new Date(parts[0], parts[1]-1, parts[2]);
     return HARI_LIST[d.getDay()];
   }
-  var JENIS_HAFALAN_ALL = ['Sabaq','Sabqi','Manzil','Murojaah','Tahsin','Tidak Setor','Izin','Sakit','Ghaib'];
+  var JENIS_HAFALAN_ALL = ['Sabaq','Sabqi','Manzil','Murojaah','Tahsin','Tidak Setor','Izin','Izin Pulang','Sakit','Ghaib'];
   var JENIS_HAFALAN_SETOR = ['Sabaq','Sabqi','Manzil','Murojaah','Tahsin'];
-  var PETA_KELAS_BADGE_HAFALAN = {'Sabaq':'sabaq','Sabqi':'sabqi','Manzil':'manzil','Murojaah':'murojaah','Tahsin':'tahsin','Tidak Setor':'tidaksetor','Izin':'izin','Sakit':'sakit','Ghaib':'ghaib'};
+  var PETA_KELAS_BADGE_HAFALAN = {'Sabaq':'sabaq','Sabqi':'sabqi','Manzil':'manzil','Murojaah':'murojaah','Tahsin':'tahsin','Tidak Setor':'tidaksetor','Izin':'izin','Izin Pulang':'izinpulang','Sakit':'sakit','Ghaib':'ghaib'};
   function badgeJenisHafalan(jenis){
     var kelas = PETA_KELAS_BADGE_HAFALAN[jenis] || 'tidaksetor';
     return '<span class="badge-hafalan '+kelas+'">'+esc(jenis)+'</span>';
@@ -394,6 +394,29 @@
     for (var i=0;i<QURAN_DB.length;i++) {
       var namaTanpaAwalan = QURAN_DB[i][1].toLowerCase().replace(/^(al|asy|an|at|as|az|ad|ar)['-]?\s*/,'');
       if (namaTanpaAwalan === qTanpaAwalan) return QURAN_DB[i];
+    }
+    return null;
+  }
+
+  // Rentang halaman per juz (Mushaf Madinah 604 halaman)
+  // Juz 1: 1-21, Juz 2: 22-41, ..., Juz 30: 582-604
+  var JUZ_AWAL_HALAMAN = {
+    1:1,   2:22,  3:42,  4:62,  5:82,   6:102, 7:122, 8:142, 9:162, 10:182,
+    11:202,12:222,13:242,14:262,15:282, 16:302,17:322,18:342,19:362,20:382,
+    21:402,22:422,23:442,24:462,25:482, 26:502,27:522,28:542,29:562,30:582
+  };
+  function rentangHalamanJuz(juz){
+    juz = Number(juz);
+    if (!juz || juz < 1 || juz > 30) return null;
+    var awal = JUZ_AWAL_HALAMAN[juz];
+    var akhir = juz < 30 ? (JUZ_AWAL_HALAMAN[juz+1] - 1) : 604;
+    return {awal: awal, akhir: akhir};
+  }
+  function hitungJuzDariHalaman(halaman){
+    halaman = Number(halaman);
+    if (!halaman || halaman < 1 || halaman > 604) return null;
+    for (var j=30; j>=1; j--) {
+      if (halaman >= JUZ_AWAL_HALAMAN[j]) return j;
     }
     return null;
   }
@@ -1047,13 +1070,13 @@
     'Admin': [
       {key:'adminpenuh',      label:'Dashboard Admin',     icon:'&#9881;&#65039;'},
       {key:'raporkelas',      label:'Rapor Santri',        icon:'&#128203;'},
-      {key:'rekaphalaqoh',    label:'Rekap Halaqoh',       icon:'&#127774;'},
+      {key:'rekaphalaqoh',    label:'Rekap Halaqoh',       icon:'&#128218;'},
       {key:'rekapjurnal',     label:'Rekap Jurnal Guru',   icon:'&#128221;'}
     ],
     'Mudir': [
       {key:'adminpenuh',      label:'Dashboard Mudir',     icon:'&#9881;&#65039;'},
       {key:'raporkelas',      label:'Rapor Santri',        icon:'&#128203;'},
-      {key:'rekaphalaqoh',    label:'Rekap Halaqoh',       icon:'&#127774;'}
+      {key:'rekaphalaqoh',    label:'Rekap Halaqoh',       icon:'&#128218;'}
     ]
   };
 
@@ -1062,7 +1085,7 @@
     var m = {
       // Guru
       jadwal:guruJadwal, riwayatabsen:guruRiwayat, rekapabsen:guruRekapAbsensi,
-      hafalan:guruIsiHafalan, riwayathafalan:guruRiwayatHafalan, progresshafalan:guruProgressHafalan,
+      hafalan:guruIsiHafalan, riwayathafalan:guruRiwayatHafalan, progresshafalan:function(){ renderRekapProgressHafalan({pengampu:STATE.user.nama}); },
       inputnilai:guruInputNilai, riwayatnilai:guruRiwayatNilai, rekapnilai:guruRekapNilaiRapor,
       raporkelassaya:guruRaporKelas,
       pelanggaran:guruCatatPelanggaran, santrisaya:guruSantriSaya, profilsaya:guruProfilSaya,
@@ -1890,7 +1913,7 @@
     ];
     var map = {
       jadwal:guruJadwal, riwayatabsen:guruRiwayat, rekapabsen:guruRekapAbsensi,
-      hafalan:guruIsiHafalan, riwayathafalan:guruRiwayatHafalan, progresshafalan:guruProgressHafalan,
+      hafalan:guruIsiHafalan, riwayathafalan:guruRiwayatHafalan, progresshafalan:function(){ renderRekapProgressHafalan({pengampu:STATE.user.nama}); },
       inputnilai:guruInputNilai, riwayatnilai:guruRiwayatNilai, rekapnilai:guruRekapNilaiRapor,
       pelanggaran:guruCatatPelanggaran, santrisaya:guruSantriSaya, profilsaya:guruProfilSaya,
       modulajar:guruModulAjar, riwayatjurnal:guruRiwayatJurnal, sop:guruSOP
@@ -2420,15 +2443,27 @@
           '<b>'+esc(s.nama)+'</b> <span class="muted">('+esc(s.nisn)+')</span><br>'+
           '<select class="statusSelect">'+['Hadir','Sakit','Izin','Izin Pulang','Alpa'].map(function(st){return '<option value="'+st+'">'+st+'</option>';}).join('')+'</select>'+
           '<input placeholder="Keterangan (opsional)" class="ketInput">'+
-          '<div class="grid4">'+['Kedisiplinan','Kesopanan','Keaktifan','Tanggung Jawab'].map(function(lbl,i){
+          '<div class="sikapWrap"><div class="grid4">'+['Kedisiplinan','Kesopanan','Keaktifan','Tanggung Jawab'].map(function(lbl,i){
             return '<div><span class="muted" style="font-size:10px">'+lbl+'</span><select class="sikapSelect">'+[1,2,3,4].map(function(v){return '<option value="'+v+'" '+(v===4?'selected':'')+'>'+v+'</option>';}).join('')+'</select></div>';
-          }).join('')+'</div></div>';
+          }).join('')+'</div></div></div>';
       });
       htmlAbsen += '</div><button type="button" id="btnSimpanAbsen">Simpan Absensi</button>'+
         '<button type="button" class="secondary" id="btnBatalAbsen">Batal</button>'+
         '<div id="pesanSimpanAbsen"></div></div>';
 
       c.innerHTML = htmlRPP + htmlAbsen;
+
+      // Toggle nilai sikap otomatis: hanya tampil kalau santri HADIR
+      // Kalau Sakit/Izin/Izin Pulang/Alpa → sembunyikan (tidak perlu isi nilai sikap)
+      function toggleSikapRow(row){
+        var status = row.querySelector('.statusSelect').value;
+        var wrap = row.querySelector('.sikapWrap');
+        if (wrap) wrap.style.display = (status === 'Hadir') ? '' : 'none';
+      }
+      document.querySelectorAll('#formAbsenSantri > div').forEach(function(row){
+        row.querySelector('.statusSelect').addEventListener('change', function(){ toggleSikapRow(row); });
+        toggleSikapRow(row); // set awal
+      });
 
       if(document.getElementById('btnExpandRPP')){
         document.getElementById('btnExpandRPP').onclick = function(){
@@ -2447,10 +2482,19 @@
       document.getElementById('btnSimpanAbsen').onclick = function(){
         var items = [];
         document.querySelectorAll('#formAbsenSantri > div').forEach(function(row){
+          var status = row.querySelector('.statusSelect').value;
           var sikapEls = row.querySelectorAll('.sikapSelect');
-          items.push({nisn:row.dataset.nisn, nama:row.dataset.nama, status:row.querySelector('.statusSelect').value,
+          // Nilai sikap HANYA dihitung kalau santri HADIR
+          // Kalau tidak hadir, kirim kosong supaya tidak masuk perhitungan rata sikap
+          var isHadir = (status === 'Hadir');
+          items.push({
+            nisn:row.dataset.nisn, nama:row.dataset.nama, status:status,
             keterangan:row.querySelector('.ketInput').value,
-            sikap1:Number(sikapEls[0].value), sikap2:Number(sikapEls[1].value), sikap3:Number(sikapEls[2].value), sikap4:Number(sikapEls[3].value)});
+            sikap1: isHadir ? Number(sikapEls[0].value) : '',
+            sikap2: isHadir ? Number(sikapEls[1].value) : '',
+            sikap3: isHadir ? Number(sikapEls[2].value) : '',
+            sikap4: isHadir ? Number(sikapEls[3].value) : ''
+          });
         });
         var btn=document.getElementById('btnSimpanAbsen'); btn.disabled=true; btn.innerText='Menyimpan...';
         var tanggalDipakai=(document.getElementById('absenTanggal').value)||todayStr();
@@ -2619,18 +2663,36 @@
           document.querySelectorAll('.btnEditA').forEach(function(btn){
             btn.onclick = function(){
               var row = lastData.find(function(r){return r.rowIndex===Number(btn.dataset.row);});
-              openModal('Edit Absensi',
+              var modalRef = openModal('Edit Absensi',
                 fieldSelect('editStatus','Status',['Hadir','Sakit','Izin','Izin Pulang','Alpa'], row.status) +
                 fieldText('editKet','Keterangan', row.keterangan) +
+                '<div id="editSikapWrap">' +
                 fieldSelect('editS1','Kedisiplinan',['1','2','3','4'], String(row.sikap1||4)) +
                 fieldSelect('editS2','Kesopanan',['1','2','3','4'], String(row.sikap2||4)) +
                 fieldSelect('editS3','Keaktifan',['1','2','3','4'], String(row.sikap3||4)) +
-                fieldSelect('editS4','Tanggung Jawab',['1','2','3','4'], String(row.sikap4||4)),
+                fieldSelect('editS4','Tanggung Jawab',['1','2','3','4'], String(row.sikap4||4)) +
+                '</div>',
                 function(modal){
-                  return api('updateAbsensi', {rowIndex: Number(btn.dataset.row), status: modal.querySelector('#editStatus').value, keterangan: modal.querySelector('#editKet').value,
-                    sikap1:Number(modal.querySelector('#editS1').value), sikap2:Number(modal.querySelector('#editS2').value),
-                    sikap3:Number(modal.querySelector('#editS3').value), sikap4:Number(modal.querySelector('#editS4').value)}).then(cari);
+                  var status = modal.querySelector('#editStatus').value;
+                  var isHadir = (status === 'Hadir');
+                  return api('updateAbsensi', {
+                    rowIndex: Number(btn.dataset.row),
+                    status: status,
+                    keterangan: modal.querySelector('#editKet').value,
+                    sikap1: isHadir ? Number(modal.querySelector('#editS1').value) : '',
+                    sikap2: isHadir ? Number(modal.querySelector('#editS2').value) : '',
+                    sikap3: isHadir ? Number(modal.querySelector('#editS3').value) : '',
+                    sikap4: isHadir ? Number(modal.querySelector('#editS4').value) : ''
+                  }).then(cari);
                 });
+              // Toggle sikap wrap saat status berubah
+              function toggleEditSikap(){
+                var status = modalRef.querySelector('#editStatus').value;
+                var wrap = modalRef.querySelector('#editSikapWrap');
+                if (wrap) wrap.style.display = (status === 'Hadir') ? '' : 'none';
+              }
+              modalRef.querySelector('#editStatus').addEventListener('change', toggleEditSikap);
+              toggleEditSikap();
             };
           });
           document.querySelectorAll('.btnHapusA').forEach(function(btn){
@@ -2928,20 +2990,34 @@
   function simpanDraftHafalan(key){
     try {
       var data = {};
+      var val = function(row, sel){ var el = row.querySelector(sel); return el ? el.value : ''; };
       document.querySelectorAll('#formHafalan > div').forEach(function(row){
+        if (!row.dataset || !row.dataset.nisn) return;
         data[row.dataset.nisn] = {
-          jenis: row.querySelector('.jenisSelect').value,
-          surah: row.querySelector('.surahInput').value,
-          ayatAwal: row.querySelector('.ayatAwalInput').value,
-          ayatAkhir: row.querySelector('.ayatAkhirInput').value,
-          juz: row.querySelector('.juzInput').value,
-          halamanAwal: row.querySelector('.halamanAwalInput').value,
-          halamanAkhir: row.querySelector('.halamanAkhirInput').value,
-          nilai: row.querySelector('.nilaiSelect').value
+          jenis: val(row, '.jenisSelect'),
+          mode:  val(row, '.modeInput'),
+          surah: val(row, '.surahInput'),
+          ayatAwal: val(row, '.ayatAwalInput'),
+          ayatAkhir: val(row, '.ayatAkhirInput'),
+          juz: val(row, '.juzInput'),
+          halamanAwal: val(row, '.halamanAwalInput'),
+          halamanAkhir: val(row, '.halamanAkhirInput'),
+          halPanelDari: val(row, '.halPanelDari'),
+          halPanelSampai: val(row, '.halPanelSampai'),
+          juzPanel: (function(){
+            var checks = row.querySelectorAll('.juzCheck:checked');
+            return Array.from(checks).map(function(c){return Number(c.value);});
+          })(),
+          multiSurah: (function(){
+            var el = row.querySelector('.multiSurahPanel');
+            if (!el) return [];
+            return Array.from(el.selectedOptions).map(function(o){return o.value;});
+          })(),
+          nilai: val(row, '.nilaiSelect')
         };
       });
       localStorage.setItem(key, JSON.stringify({waktuSimpan: Date.now(), data: data}));
-    } catch(e) { /* localStorage penuh/nonaktif -- diamkan, jangan sampai mengganggu pengisian */ }
+    } catch(e) { /* localStorage penuh/nonaktif -- diamkan */ }
   }
   function ambilDraftHafalan(key){
     try {
@@ -3000,7 +3076,18 @@
           '<p class="faded hintHafalan">Memuat riwayat...</p>' +
           '<label class="muted">Jenis Hafalan</label>' +
           '<select class="jenisSelect">' + JENIS_HAFALAN_ALL.map(function(j){return '<option value="'+j+'">'+j+'</option>';}).join('') + '</select>' +
+          // MODE INPUT SELECTOR — hanya muncul untuk jenis Sabaq/Sabqi/Manzil/Murojaah/Tahsin
+          '<div class="modeInputWrap">' +
+          '<label class="muted">Mode Input</label>' +
+          '<select class="modeInput" style="width:100%">' +
+          '<option value="ayat">Per Ayat (isi surah + ayat)</option>' +
+          '<option value="halaman">Per Rentang Halaman (isi halaman)</option>' +
+          '<option value="juz">Per Juz Utuh (pilih juz saja)</option>' +
+          '<option value="multi">Multi-Surah (beberapa surah sekaligus)</option>' +
+          '</select></div>' +
           '<div class="detailHafalan">' +
+          // === PANEL MODE AYAT (default) ===
+          '<div class="panelAyat">' +
           '<label class="muted">Nama Surah</label>' +
           '<div class="surahPickerWrap" style="position:relative">' +
           '<input class="surahCari" placeholder="&#128269; Ketik nomor atau nama surah..." autocomplete="off" style="width:100%;margin-bottom:4px">' +
@@ -3020,6 +3107,36 @@
           '</div>' +
           '<div style="margin-bottom:6px"><label class="muted">Halaman Sampai <span class="muted" style="font-weight:400;font-size:11px">(otomatis, bisa diubah manual)</span></label>' +
           '<input class="halamanAkhirInput" type="number" min="1" max="604" placeholder="?" style="width:100%;background:#f8fafc;font-weight:600;color:#0d9488"></div>' +
+          '</div>' +
+          // === PANEL MODE HALAMAN (rentang halaman saja) ===
+          '<div class="panelHalaman" style="display:none">' +
+          '<div class="grid2">' +
+          '<div><label class="muted">Halaman Dari</label>' +
+          '<input class="halPanelDari" type="number" min="1" max="604" placeholder="10" style="width:100%"></div>' +
+          '<div><label class="muted">Halaman Sampai</label>' +
+          '<input class="halPanelSampai" type="number" min="1" max="604" placeholder="12" style="width:100%"></div>' +
+          '</div>' +
+          '<p class="faded" style="font-size:11px">Juz akan dihitung otomatis dari halaman.</p>' +
+          '</div>' +
+          // === PANEL MODE JUZ UTUH (bisa pilih beberapa juz sekaligus) ===
+          '<div class="panelJuz" style="display:none">' +
+          '<label class="muted">Pilih Juz (bisa pilih lebih dari satu)</label>' +
+          '<div class="juzPanelGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:4px;padding:6px;border:1px solid #e2e8f0;border-radius:8px;max-height:160px;overflow-y:auto">' +
+          Array.from({length:30},function(_,i){
+            var j = i+1;
+            return '<label style="display:flex;align-items:center;gap:4px;padding:4px 6px;background:#f8fafc;border-radius:6px;cursor:pointer;font-size:12px">' +
+              '<input type="checkbox" class="juzCheck" data-juz="'+j+'" value="'+j+'" style="margin:0">' +
+              '<span>Juz '+j+'</span></label>';
+          }).join('') + '</div>' +
+          '<p class="faded" style="font-size:11px">Centang beberapa juz yang disetorkan sekaligus.</p>' +
+          '</div>' +
+          // === PANEL MODE MULTI-SURAH ===
+          '<div class="panelMulti" style="display:none">' +
+          '<label class="muted">Pilih beberapa surah (Ctrl/Cmd + klik untuk pilih banyak)</label>' +
+          '<select class="multiSurahPanel" multiple size="8" style="width:100%">' +
+          QURAN_DB.map(function(s){return '<option value="'+esc(s[1])+'">'+s[0]+'. '+esc(s[1])+'</option>';}).join('') + '</select>' +
+          '<p class="faded" style="font-size:11px">Cocok untuk setoran beberapa surah pendek sekaligus.</p>' +
+          '</div>' +
           '<label class="muted">Nilai Hafalan</label>' +
           '<select class="nilaiSelect"><option value="">-- Pilih Nilai --</option>' + opsiNilai.map(function(n){return '<option value="'+n+'">'+n+'</option>';}).join('') + '</select>' +
           '</div></div>';
@@ -3030,7 +3147,20 @@
 
       function toggleDetail(row){
         var jenis = row.querySelector('.jenisSelect').value;
-        row.querySelector('.detailHafalan').style.display = JENIS_HAFALAN_SETOR.indexOf(jenis) === -1 ? 'none' : 'block';
+        var isSetor = JENIS_HAFALAN_SETOR.indexOf(jenis) !== -1;
+        row.querySelector('.detailHafalan').style.display = isSetor ? 'block' : 'none';
+        // Mode input selector juga di-hide untuk jenis non-setor
+        var modeWrap = row.querySelector('.modeInputWrap');
+        if (modeWrap) modeWrap.style.display = isSetor ? 'block' : 'none';
+      }
+
+      // Toggle panel input sesuai mode yang dipilih
+      function togglePanelMode(row){
+        var mode = row.querySelector('.modeInput').value;
+        row.querySelector('.panelAyat').style.display    = mode === 'ayat'    ? '' : 'none';
+        row.querySelector('.panelHalaman').style.display = mode === 'halaman' ? '' : 'none';
+        row.querySelector('.panelJuz').style.display     = mode === 'juz'     ? '' : 'none';
+        row.querySelector('.panelMulti').style.display   = mode === 'multi'   ? '' : 'none';
       }
       // Isi ulang seluruh field (surah/ayat/juz/halaman/nilai) sesuai riwayat TERAKHIR
       // untuk jenis hafalan yang sedang dipilih -- supaya pengampu tinggal mengubah
@@ -3167,6 +3297,11 @@
           toggleDetail(row);
           terapkanRiwayat(row, row.querySelector('.jenisSelect').value);
         };
+        // Toggle panel sesuai mode input
+        row.querySelector('.modeInput').onchange = function(){
+          togglePanelMode(row);
+        };
+        togglePanelMode(row); // set awal
       });
 
       // Pulihkan draft yang belum sempat tersimpan (kalau ada) -- didahulukan dari
@@ -3178,15 +3313,40 @@
         wrap.querySelectorAll('.santriRowHafalan').forEach(function(row){
           var d = draft[row.dataset.nisn];
           if (!d) return;
-          row.querySelector('.jenisSelect').value = d.jenis;
+          var setVal = function(sel, val){ var el = row.querySelector(sel); if (el) el.value = val || ''; };
+          setVal('.jenisSelect', d.jenis);
           toggleDetail(row);
-          row.querySelector('.surahInput').value = d.surah || '';
-          row.querySelector('.ayatAwalInput').value = d.ayatAwal || '';
-          row.querySelector('.ayatAkhirInput').value = d.ayatAkhir || '';
-          if (d.juz) row.querySelector('.juzInput').value = d.juz;
-          if (d.halamanAwal) row.querySelector('.halamanAwalInput').value = d.halamanAwal;
-          if (d.halamanAkhir) row.querySelector('.halamanAkhirInput').value = d.halamanAkhir;
-          row.querySelector('.nilaiSelect').value = d.nilai || '';
+          // Pulihkan mode input (kalau draft lama tidak punya, default 'ayat')
+          setVal('.modeInput', d.mode || 'ayat');
+          togglePanelMode(row);
+          // Mode Ayat (existing)
+          setVal('.surahInput', d.surah);
+          setVal('.ayatAwalInput', d.ayatAwal);
+          setVal('.ayatAkhirInput', d.ayatAkhir);
+          if (d.juz) setVal('.juzInput', d.juz);
+          if (d.halamanAwal) setVal('.halamanAwalInput', d.halamanAwal);
+          if (d.halamanAkhir) setVal('.halamanAkhirInput', d.halamanAkhir);
+          // Mode Halaman
+          setVal('.halPanelDari', d.halPanelDari);
+          setVal('.halPanelSampai', d.halPanelSampai);
+          // Mode Juz (array of juz numbers)
+          if (d.juzPanel) {
+            var juzList = Array.isArray(d.juzPanel) ? d.juzPanel :
+                          (typeof d.juzPanel === 'string' && d.juzPanel ? [Number(d.juzPanel)] : []);
+            row.querySelectorAll('.juzCheck').forEach(function(cb){
+              cb.checked = juzList.indexOf(Number(cb.value)) !== -1;
+            });
+          }
+          // Mode Multi-Surah
+          if (d.multiSurah && d.multiSurah.length) {
+            var multiEl = row.querySelector('.multiSurahPanel');
+            if (multiEl) {
+              Array.from(multiEl.options).forEach(function(o){
+                o.selected = d.multiSurah.indexOf(o.value) !== -1;
+              });
+            }
+          }
+          setVal('.nilaiSelect', d.nilai);
         });
         document.getElementById('pesanSimpanHafalan').innerHTML = warnBox('Isian yang belum sempat tersimpan sebelumnya berhasil dipulihkan otomatis. Silakan lanjutkan dan klik Simpan.');
       }
@@ -3203,25 +3363,79 @@
       document.getElementById('btnSimpanHafalan').onclick = function(){
         var items = [];
         var adaError = false;
+        var pesanError = '';
         document.querySelectorAll('#formHafalan > div').forEach(function(row){
           var jenis = row.querySelector('.jenisSelect').value;
           var it = {nisn: row.dataset.nisn, nama: row.dataset.nama, jenisHafalan: jenis};
           if (JENIS_HAFALAN_SETOR.indexOf(jenis) !== -1) {
-            var ayatAwal = row.querySelector('.ayatAwalInput').value.trim();
-            var ayatAkhir = row.querySelector('.ayatAkhirInput').value.trim();
-            if (ayatAwal && ayatAkhir && Number(ayatAkhir) < Number(ayatAwal)) { adaError = true; }
-            it.surah = row.querySelector('.surahInput').value;
-            it.ayat = ayatAwal && ayatAkhir ? (ayatAwal + ' - ' + ayatAkhir) : ayatAwal;
-            it.juz = row.querySelector('.juzInput').value;
             it.nilai = row.querySelector('.nilaiSelect').value;
-            var halamanAwal = row.querySelector('.halamanAwalInput').value;
-            var halamanAkhir = row.querySelector('.halamanAkhirInput').value || halamanAwal;
-            if (halamanAkhir && halamanAwal && Number(halamanAkhir) < Number(halamanAwal)) { adaError = true; }
-            it.halamanKe = (!halamanAkhir || halamanAwal === halamanAkhir) ? halamanAwal : (halamanAwal + ' - ' + halamanAkhir);
+            var mode = row.querySelector('.modeInput').value;
+
+            if (mode === 'ayat') {
+              // MODE 1: Per Ayat (existing)
+              var ayatAwal = row.querySelector('.ayatAwalInput').value.trim();
+              var ayatAkhir = row.querySelector('.ayatAkhirInput').value.trim();
+              if (ayatAwal && ayatAkhir && Number(ayatAkhir) < Number(ayatAwal)) { adaError = true; pesanError = 'Ayat "sampai" lebih kecil dari "dari".'; }
+              it.surah = row.querySelector('.surahInput').value;
+              it.ayat = ayatAwal && ayatAkhir ? (ayatAwal + ' - ' + ayatAkhir) : ayatAwal;
+              it.juz = row.querySelector('.juzInput').value;
+              var halamanAwal = row.querySelector('.halamanAwalInput').value;
+              var halamanAkhir = row.querySelector('.halamanAkhirInput').value || halamanAwal;
+              if (halamanAkhir && halamanAwal && Number(halamanAkhir) < Number(halamanAwal)) { adaError = true; pesanError = 'Halaman "sampai" lebih kecil dari "dari".'; }
+              it.halamanKe = (!halamanAkhir || halamanAwal === halamanAkhir) ? halamanAwal : (halamanAwal + ' - ' + halamanAkhir);
+
+            } else if (mode === 'halaman') {
+              // MODE 2: Per Rentang Halaman
+              var halDari = row.querySelector('.halPanelDari').value.trim();
+              var halSampai = row.querySelector('.halPanelSampai').value.trim() || halDari;
+              if (!halDari) { adaError = true; pesanError = 'Halaman "dari" wajib diisi untuk mode Rentang Halaman.'; }
+              if (halDari && halSampai && Number(halSampai) < Number(halDari)) { adaError = true; pesanError = 'Halaman "sampai" lebih kecil dari "dari".'; }
+              it.halamanKe = (halDari === halSampai || !halSampai) ? halDari : (halDari + ' - ' + halSampai);
+              // Auto-hitung juz dari halaman awal
+              it.juz = hitungJuzDariHalaman(Number(halDari)) || '';
+              it.surah = '';
+              it.ayat = '';
+
+            } else if (mode === 'juz') {
+              // MODE 3: Per Juz Utuh (bisa multi)
+              var juzTerpilih = Array.from(row.querySelectorAll('.juzCheck:checked')).map(function(cb){return Number(cb.value);}).sort(function(a,b){return a-b;});
+              if (!juzTerpilih.length) { adaError = true; pesanError = 'Pilih minimal satu juz untuk mode Juz Utuh.'; }
+              it.juz = juzTerpilih.join(',');
+              it.surah = juzTerpilih.map(function(j){return 'Juz '+j;}).join(', ');
+              it.ayat = '';
+              // Bangun halamanKe: cek apakah juz berturutan
+              if (juzTerpilih.length === 1) {
+                var r0 = rentangHalamanJuz(juzTerpilih[0]);
+                it.halamanKe = r0 ? (r0.awal + ' - ' + r0.akhir) : '';
+              } else {
+                // Kelompokkan juz yang berturutan
+                var groups = [], cur = [juzTerpilih[0]];
+                for (var k=1;k<juzTerpilih.length;k++) {
+                  if (juzTerpilih[k] === juzTerpilih[k-1] + 1) cur.push(juzTerpilih[k]);
+                  else { groups.push(cur); cur = [juzTerpilih[k]]; }
+                }
+                groups.push(cur);
+                it.halamanKe = groups.map(function(g){
+                  var rA = rentangHalamanJuz(g[0]);
+                  var rB = rentangHalamanJuz(g[g.length-1]);
+                  return rA && rB ? (rA.awal + ' - ' + rB.akhir) : '';
+                }).filter(Boolean).join(', ');
+              }
+
+            } else if (mode === 'multi') {
+              // MODE 4: Multi-Surah
+              var opts = row.querySelector('.multiSurahPanel').selectedOptions;
+              var surahDipilih = Array.from(opts).map(function(o){return o.value;});
+              if (!surahDipilih.length) { adaError = true; pesanError = 'Pilih minimal satu surah untuk mode Multi-Surah.'; }
+              it.surah = surahDipilih.join(' + ');
+              it.ayat = '';
+              it.juz = '';
+              it.halamanKe = '';
+            }
           }
           items.push(it);
         });
-        if (adaError) { document.getElementById('pesanSimpanHafalan').innerHTML = errBox('Ada isian rentang yang terbalik (nilai "sampai" lebih kecil dari "dari"). Periksa kembali Ayat dan Halaman sebelum menyimpan.'); return; }
+        if (adaError) { document.getElementById('pesanSimpanHafalan').innerHTML = errBox(pesanError || 'Ada isian yang salah. Periksa kembali sebelum menyimpan.'); return; }
         var btn = document.getElementById('btnSimpanHafalan'); btn.disabled = true; btn.innerText = 'Menyimpan...';
         api('submitHafalan', {tanggal: document.getElementById('hfTanggal').value, waktu: waktu, halaqoh: namaHalaqoh, pengampu: STATE.user.nama, items: items})
           .then(function(res2){
@@ -3237,50 +3451,183 @@
   }
 
   // Modal untuk membetulkan kesalahan pencatatan hafalan (bukan menghapus & catat ulang)
+  // Deteksi mode input dari data existing hafalan
+  function deteksiModeHafalan(row){
+    var surah = String(row.surah || '').trim();
+    // Mode "juz" -- surah dimulai dengan "Juz " (baik single "Juz 5" maupun multi "Juz 1, Juz 2, Juz 3")
+    if (/^Juz\s+\d+/i.test(surah)) return 'juz';
+    // Mode "multi" -- surah mengandung " + " (surah pendek digabung dengan +)
+    if (surah.indexOf(' + ') !== -1) return 'multi';
+    // Mode "halaman" -- ada halaman tapi tidak ada surah atau ayat
+    if (!surah && !row.ayat && row.halamanKe) return 'halaman';
+    // Default: mode "ayat"
+    return 'ayat';
+  }
+
   function bukaEditHafalan(row, muatUlang){
     var ayatRange = parseRange(row.ayat);
     var halamanRange = parseRange(row.halamanKe);
-    var opsiHalaman = Array.from({length:22},function(_,i){return i+1;});
+    var modeAwal = deteksiModeHafalan(row);
+    var juzListAwal = []; // array nomor juz kalau mode 'juz'
+    var multiSurahAwal = [];
+    if (modeAwal === 'juz') {
+      // Extract SEMUA nomor juz dari string, contoh: "Juz 1, Juz 2, Juz 3"
+      var matches = String(row.surah).match(/Juz\s+(\d+)/gi) || [];
+      juzListAwal = matches.map(function(m){
+        return Number(m.match(/\d+/)[0]);
+      });
+    } else if (modeAwal === 'multi') {
+      multiSurahAwal = String(row.surah).split(/\s*\+\s*/).map(function(s){return s.trim();}).filter(Boolean);
+    }
+
+    var opsiJuz30 = Array.from({length:30},function(_,i){return i+1;});
+    var opsiNilai = Array.from({length:10},function(_,i){return (i+1)*10;});
     var datalistHtml = '<datalist id="editDaftarSurah">' + DAFTAR_SURAH.map(function(s){return '<option value="'+esc(s)+'">';}).join('') + '</datalist>';
+
     var fieldsHtml = datalistHtml +
       fieldSelect('ehJenis','Jenis Hafalan', JENIS_HAFALAN_ALL, row.jenis) +
+
       '<div id="ehDetailWrap">' +
-      '<label class="muted">Nama Surah</label><input id="ehSurah" list="editDaftarSurah" value="'+esc(row.surah||'')+'">' +
+      // MODE INPUT SELECTOR (sama seperti form input)
+      '<label class="muted">Mode Input</label>' +
+      '<select id="ehMode" style="width:100%">' +
+      '<option value="ayat"'+(modeAwal==='ayat'?' selected':'')+'>Per Ayat (isi surah + ayat)</option>' +
+      '<option value="halaman"'+(modeAwal==='halaman'?' selected':'')+'>Per Rentang Halaman (isi halaman)</option>' +
+      '<option value="juz"'+(modeAwal==='juz'?' selected':'')+'>Per Juz Utuh (pilih juz saja)</option>' +
+      '<option value="multi"'+(modeAwal==='multi'?' selected':'')+'>Multi-Surah (beberapa surah sekaligus)</option>' +
+      '</select>' +
+
+      // === PANEL AYAT ===
+      '<div id="ehPanelAyat" style="display:none">' +
+      '<label class="muted">Nama Surah</label><input id="ehSurah" list="editDaftarSurah" value="'+esc(modeAwal==='ayat'?(row.surah||''):'')+'">' +
       '<div class="grid2">' +
       '<div><label class="muted">Ayat (dari - sampai)</label><div style="display:flex;align-items:center;gap:6px">' +
-      '<input id="ehAyatAwal" type="number" min="1" style="flex:1" value="'+esc(ayatRange.awal)+'"><span>-</span><input id="ehAyatAkhir" type="number" min="1" style="flex:1" value="'+esc(ayatRange.akhir)+'"></div></div>' +
-      '<div><label class="muted">Juz</label><select id="ehJuz">' + Array.from({length:30},function(_,i){return i+1;}).map(function(j){return '<option value="'+j+'" '+(Number(row.juz)===j?'selected':'')+'>'+j+'</option>';}).join('') + '</select></div>' +
+      '<input id="ehAyatAwal" type="number" min="1" style="flex:1" value="'+esc(ayatRange.awal||'')+'"><span>-</span><input id="ehAyatAkhir" type="number" min="1" style="flex:1" value="'+esc(ayatRange.akhir||'')+'"></div></div>' +
+      '<div><label class="muted">Juz</label><select id="ehJuz"><option value="">--</option>' + opsiJuz30.map(function(j){return '<option value="'+j+'" '+(Number(row.juz)===j?'selected':'')+'>'+j+'</option>';}).join('') + '</select></div>' +
       '</div>' +
       '<label class="muted">Halaman (dari - sampai)</label><div style="display:flex;align-items:center;gap:6px">' +
-      '<select id="ehHalAwal">' + opsiHalaman.map(function(h){return '<option value="'+h+'" '+(String(h)===halamanRange.awal?'selected':'')+'>'+h+'</option>';}).join('') + '</select>' +
-      '<span>-</span>' +
-      '<select id="ehHalAkhir">' + opsiHalaman.map(function(h){return '<option value="'+h+'" '+(String(h)===halamanRange.akhir?'selected':'')+'>'+h+'</option>';}).join('') + '</select>' +
+      '<input id="ehHalAwal" type="number" min="1" max="604" style="flex:1" value="'+esc(modeAwal==='ayat'?(halamanRange.awal||''):'')+'"><span>-</span>' +
+      '<input id="ehHalAkhir" type="number" min="1" max="604" style="flex:1" value="'+esc(modeAwal==='ayat'?(halamanRange.akhir||''):'')+'"></div>' +
       '</div>' +
+
+      // === PANEL HALAMAN ===
+      '<div id="ehPanelHalaman" style="display:none">' +
+      '<div class="grid2">' +
+      '<div><label class="muted">Halaman Dari</label><input id="ehHalPanelDari" type="number" min="1" max="604" placeholder="10" style="width:100%" value="'+esc(modeAwal==='halaman'?(halamanRange.awal||''):'')+'"></div>' +
+      '<div><label class="muted">Halaman Sampai</label><input id="ehHalPanelSampai" type="number" min="1" max="604" placeholder="12" style="width:100%" value="'+esc(modeAwal==='halaman'?(halamanRange.akhir||''):'')+'"></div>' +
+      '</div>' +
+      '<p class="faded" style="font-size:11px">Juz akan dihitung otomatis dari halaman.</p>' +
+      '</div>' +
+
+      // === PANEL JUZ UTUH (multi) ===
+      '<div id="ehPanelJuz" style="display:none">' +
+      '<label class="muted">Pilih Juz (bisa pilih lebih dari satu)</label>' +
+      '<div id="ehJuzGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:4px;padding:6px;border:1px solid #e2e8f0;border-radius:8px;max-height:160px;overflow-y:auto">' +
+      opsiJuz30.map(function(j){
+        var checked = juzListAwal.indexOf(j) !== -1 ? ' checked' : '';
+        return '<label style="display:flex;align-items:center;gap:4px;padding:4px 6px;background:#f8fafc;border-radius:6px;cursor:pointer;font-size:12px">' +
+          '<input type="checkbox" class="ehJuzCheck" value="'+j+'"'+checked+' style="margin:0">' +
+          '<span>Juz '+j+'</span></label>';
+      }).join('') + '</div>' +
+      '<p class="faded" style="font-size:11px">Centang beberapa juz yang disetorkan sekaligus.</p>' +
+      '</div>' +
+
+      // === PANEL MULTI-SURAH ===
+      '<div id="ehPanelMulti" style="display:none">' +
+      '<label class="muted">Pilih beberapa surah (Ctrl/Cmd + klik untuk pilih banyak)</label>' +
+      '<select id="ehMultiPanel" multiple size="8" style="width:100%">' +
+      QURAN_DB.map(function(s){
+        var sel = multiSurahAwal.indexOf(s[1]) !== -1 ? ' selected' : '';
+        return '<option value="'+esc(s[1])+'"'+sel+'>'+s[0]+'. '+esc(s[1])+'</option>';
+      }).join('') + '</select>' +
+      '<p class="faded" style="font-size:11px">Cocok untuk setoran beberapa surah pendek sekaligus.</p>' +
+      '</div>' +
+
       '<label class="muted">Nilai Hafalan</label><select id="ehNilai"><option value="">-- Tidak diisi --</option>' +
-      Array.from({length:10},function(_,i){return (i+1)*10;}).map(function(n){return '<option value="'+n+'" '+(String(row.nilai)===String(n)?'selected':'')+'>'+n+'</option>';}).join('') + '</select>' +
+      opsiNilai.map(function(n){return '<option value="'+n+'" '+(String(row.nilai)===String(n)?'selected':'')+'>'+n+'</option>';}).join('') + '</select>' +
       '</div>';
+
     var modal = openModal('Edit Riwayat Hafalan - '+row.nama, fieldsHtml, function(m){
       var jenisBaru = m.querySelector('#ehJenis').value;
       var payload = {rowIndex: row.rowIndex, jenisHafalan: jenisBaru};
+
       if (JENIS_HAFALAN_SETOR.indexOf(jenisBaru) !== -1) {
-        payload.surah = m.querySelector('#ehSurah').value;
-        var aAwal = m.querySelector('#ehAyatAwal').value, aAkhir = m.querySelector('#ehAyatAkhir').value;
-        payload.ayat = (aAwal && aAkhir) ? (aAwal+' - '+aAkhir) : aAwal;
-        payload.juz = m.querySelector('#ehJuz').value;
-        var hAwal = m.querySelector('#ehHalAwal').value, hAkhir = m.querySelector('#ehHalAkhir').value;
-        payload.halamanKe = (hAwal === hAkhir) ? hAwal : (hAwal+' - '+hAkhir);
+        var mode = m.querySelector('#ehMode').value;
         payload.nilai = m.querySelector('#ehNilai').value;
+
+        if (mode === 'ayat') {
+          payload.surah = m.querySelector('#ehSurah').value;
+          var aAwal = m.querySelector('#ehAyatAwal').value, aAkhir = m.querySelector('#ehAyatAkhir').value;
+          if (aAwal && aAkhir && Number(aAkhir) < Number(aAwal)) { alert('Ayat "sampai" lebih kecil dari "dari".'); return false; }
+          payload.ayat = (aAwal && aAkhir) ? (aAwal+' - '+aAkhir) : aAwal;
+          payload.juz = m.querySelector('#ehJuz').value;
+          var hAwal = m.querySelector('#ehHalAwal').value, hAkhir = m.querySelector('#ehHalAkhir').value || hAwal;
+          if (hAwal && hAkhir && Number(hAkhir) < Number(hAwal)) { alert('Halaman "sampai" lebih kecil dari "dari".'); return false; }
+          payload.halamanKe = (!hAkhir || hAwal === hAkhir) ? hAwal : (hAwal+' - '+hAkhir);
+
+        } else if (mode === 'halaman') {
+          var hDari = m.querySelector('#ehHalPanelDari').value.trim();
+          var hSampai = m.querySelector('#ehHalPanelSampai').value.trim() || hDari;
+          if (!hDari) { alert('Halaman "dari" wajib diisi untuk mode Rentang Halaman.'); return false; }
+          if (hSampai && Number(hSampai) < Number(hDari)) { alert('Halaman "sampai" lebih kecil dari "dari".'); return false; }
+          payload.halamanKe = (hDari === hSampai) ? hDari : (hDari+' - '+hSampai);
+          payload.juz = hitungJuzDariHalaman(Number(hDari)) || '';
+          payload.surah = '';
+          payload.ayat = '';
+
+        } else if (mode === 'juz') {
+          var juzArr = Array.from(m.querySelectorAll('.ehJuzCheck:checked')).map(function(cb){return Number(cb.value);}).sort(function(a,b){return a-b;});
+          if (!juzArr.length) { alert('Pilih minimal satu juz untuk mode Juz Utuh.'); return false; }
+          payload.juz = juzArr.join(',');
+          payload.surah = juzArr.map(function(j){return 'Juz '+j;}).join(', ');
+          payload.ayat = '';
+          // Bangun halamanKe berdasarkan grup juz berturutan
+          if (juzArr.length === 1) {
+            var r0e = rentangHalamanJuz(juzArr[0]);
+            payload.halamanKe = r0e ? (r0e.awal + ' - ' + r0e.akhir) : '';
+          } else {
+            var groupsE = [], curE = [juzArr[0]];
+            for (var ke=1;ke<juzArr.length;ke++) {
+              if (juzArr[ke] === juzArr[ke-1] + 1) curE.push(juzArr[ke]);
+              else { groupsE.push(curE); curE = [juzArr[ke]]; }
+            }
+            groupsE.push(curE);
+            payload.halamanKe = groupsE.map(function(g){
+              var rA = rentangHalamanJuz(g[0]);
+              var rB = rentangHalamanJuz(g[g.length-1]);
+              return rA && rB ? (rA.awal + ' - ' + rB.akhir) : '';
+            }).filter(Boolean).join(', ');
+          }
+
+        } else if (mode === 'multi') {
+          var opts = m.querySelector('#ehMultiPanel').selectedOptions;
+          var surahDipilih = Array.from(opts).map(function(o){return o.value;});
+          if (!surahDipilih.length) { alert('Pilih minimal satu surah untuk mode Multi-Surah.'); return false; }
+          payload.surah = surahDipilih.join(' + ');
+          payload.ayat = '';
+          payload.juz = '';
+          payload.halamanKe = '';
+        }
       } else {
         payload.surah=''; payload.ayat=''; payload.juz=''; payload.halamanKe=''; payload.nilai='';
       }
       api('updateHafalan', payload).then(function(r){ if(!r.ok) alert(r.error); else muatUlang(); });
     });
-    function toggleDetail(){
+
+    function togglePanel(){
       var jenis = modal.querySelector('#ehJenis').value;
-      modal.querySelector('#ehDetailWrap').style.display = JENIS_HAFALAN_SETOR.indexOf(jenis)===-1 ? 'none' : 'block';
+      var isSetor = JENIS_HAFALAN_SETOR.indexOf(jenis) !== -1;
+      modal.querySelector('#ehDetailWrap').style.display = isSetor ? 'block' : 'none';
+      if (!isSetor) return;
+      var mode = modal.querySelector('#ehMode').value;
+      modal.querySelector('#ehPanelAyat').style.display    = mode === 'ayat'    ? '' : 'none';
+      modal.querySelector('#ehPanelHalaman').style.display = mode === 'halaman' ? '' : 'none';
+      modal.querySelector('#ehPanelJuz').style.display     = mode === 'juz'     ? '' : 'none';
+      modal.querySelector('#ehPanelMulti').style.display   = mode === 'multi'   ? '' : 'none';
     }
-    modal.querySelector('#ehJenis').onchange = toggleDetail;
-    toggleDetail();
+    modal.querySelector('#ehJenis').onchange = togglePanel;
+    modal.querySelector('#ehMode').onchange = togglePanel;
+    togglePanel();
   }
 
   // ---- Rekap Absensi per Santri (dilihat Guru) ----
@@ -5987,25 +6334,61 @@
   }
 
   // ============================================================
-  // PROGRESS HAFALAN — halaman rekap untuk Guru/Admin
+  // PROGRESS HAFALAN — halaman rekap untuk Admin/Mudir/Guru
+  // opts: {gender:'Putra'|'Putri'|'', pengampu:'Nama Guru'|null}
+  // Kalau pengampu diisi, hanya tampil santri di halaqoh yang dia ampu
   // ============================================================
-  function renderRekapProgressHafalan(gender){
+  function renderRekapProgressHafalan(opts){
+    // Kompat: kalau opts adalah string, treat as gender (backward compat)
+    if (typeof opts === 'string') opts = {gender: opts};
+    opts = opts || {};
+    var gender = opts.gender || '';
+    var pengampu = opts.pengampu || '';
     var c = getContentEl();
     var labelG = gender==='Putra'?'👦 Putra':gender==='Putri'?'👧 Putri':'Semua Santri';
-    c.innerHTML = '<div class="card"><h3>📊 Rekap Progres Hafalan — '+labelG+'</h3>' +
-      '<p class="muted">Deteksi otomatis juz yang sudah selesai berdasarkan halaman awal & akhir yang sudah disetor Sabaq.</p>' +
-      '<button id="btnMuatProgress" class="secondary">🔄 Muat Data</button>' +
-      '<div id="progressWrap" style="margin-top:12px"></div></div>';
+    var judulExtra = pengampu ? ' — Halaqoh Saya' : '';
+    c.innerHTML = '<div class="card"><h3>📊 Rekap Progres Hafalan'+judulExtra+' — '+labelG+'</h3>' +
+      '<p class="muted">' + (pengampu
+        ? 'Menampilkan santri di halaqoh yang Anda ampu.'
+        : 'Deteksi otomatis juz selesai dari halaman awal &amp; akhir yang disetor Sabaq, ditambah input progres awal (baseline).') +
+      '</p>' +
+      '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">' +
+      '<button id="phTabRekap">📊 Rekap Progres</button>' +
+      '<button id="phTabInputAwal">✏️ Input Progres Awal</button>' +
+      '</div>' +
+      '<div id="phSecRekap"></div>' +
+      '<div id="phSecInputAwal" style="display:none"></div>' +
+      '</div>';
+
+    function setTab(t){
+      var el1 = document.getElementById('phTabRekap'), el2 = document.getElementById('phTabInputAwal');
+      el1.style.cssText = t==='rekap'
+        ? 'background:#0d9488;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:600;cursor:pointer'
+        : 'background:#f1f5f9;color:#475569;border:none;border-radius:8px;padding:8px 16px;cursor:pointer';
+      el2.style.cssText = t==='input'
+        ? 'background:#0d9488;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:600;cursor:pointer'
+        : 'background:#f1f5f9;color:#475569;border:none;border-radius:8px;padding:8px 16px;cursor:pointer';
+      document.getElementById('phSecRekap').style.display = t==='rekap'?'':'none';
+      document.getElementById('phSecInputAwal').style.display = t==='input'?'':'none';
+      if (t==='input') renderFormInputProgresAwal(gender, pengampu);
+    }
+    document.getElementById('phTabRekap').onclick = function(){ setTab('rekap'); };
+    document.getElementById('phTabInputAwal').onclick = function(){ setTab('input'); };
+    setTab('rekap');
+
+    // ISI TAB REKAP
+    var wrapRekap = document.getElementById('phSecRekap');
+    wrapRekap.innerHTML = '<button id="btnMuatProgress" class="secondary">🔄 Muat Data</button>' +
+      '<div id="progressWrap" style="margin-top:12px"></div>';
 
     document.getElementById('btnMuatProgress').onclick = function(){
       var btn = this;
       loadingBtn(btn, 'Memuat...');
-      api('getProgressHafalanMassal', {gender:gender}).then(function(res){
+      api('getProgressHafalanMassal', {gender:gender, pengampu:pengampu}).then(function(res){
         resetBtn(btn, '🔄 Muat Data');
         if (!res.ok) { document.getElementById('progressWrap').innerHTML = errBox(res.error); return; }
         if (!res.data.length) { document.getElementById('progressWrap').innerHTML = warnBox('Belum ada data.'); return; }
 
-        // Statistik ringkas
         var totalSelesai = res.data.reduce(function(s,x){ return s + x.totalJuzSelesai; }, 0);
         var rataJuz = Math.round((totalSelesai / res.data.length) * 10) / 10;
         var yangSudahMulai = res.data.filter(function(x){ return x.totalHalamanTersetor > 0; }).length;
@@ -6019,12 +6402,10 @@
           '<div style="font-size:11px;color:#1e40af">Rata-rata Juz/Santri</div></div>' +
           '<div style="flex:1;min-width:110px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:10px;text-align:center">' +
           '<div style="font-size:22px;font-weight:800;color:#d97706">'+yangSudahMulai+'<span style="font-size:12px;color:#94a3b8">/'+res.data.length+'</span></div>' +
-          '<div style="font-size:11px;color:#9a3412">Santri Aktif Setor</div></div>' +
+          '<div style="font-size:11px;color:#9a3412">Santri Aktif</div></div>' +
           '</div>' +
-
           '<div style="display:flex;justify-content:flex-end;margin-bottom:8px">' +
           '<button id="btnExcelProgress" class="secondary small">📄 Export Excel</button></div>' +
-
           '<div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse">' +
           '<thead><tr style="background:#0d9488;color:#fff">' +
           '<th style="padding:8px;text-align:center;width:36px">No</th>' +
@@ -6034,12 +6415,13 @@
           '<th style="padding:8px;text-align:left">Juz yang Sudah Selesai</th>' +
           '<th style="padding:8px;text-align:center;width:80px">% Total</th>' +
           '</tr></thead><tbody>';
-
         res.data.forEach(function(s, i){
           var warna = s.totalJuzSelesai >= 5 ? '#16a34a' : s.totalJuzSelesai >= 1 ? '#0891b2' : '#94a3b8';
           html += '<tr style="background:'+(i%2===0?'#fff':'#f8fafc')+'">' +
             '<td style="padding:6px 8px;text-align:center;color:#94a3b8">'+(i+1)+'</td>' +
-            '<td style="padding:6px 8px;font-weight:600">'+esc(s.nama)+'</td>' +
+            '<td style="padding:6px 8px;font-weight:600">'+esc(s.nama)+
+              (s.punyaProgresAwal?' <span style="background:#e0e7ff;color:#4338ca;padding:1px 5px;border-radius:8px;font-size:9px">📋 baseline</span>':'')+
+              '</td>' +
             '<td style="padding:6px 8px;text-align:center;font-size:16px;font-weight:800;color:'+warna+'">'+s.totalJuzSelesai+'</td>' +
             '<td style="padding:6px 8px;text-align:center;color:#64748b">'+s.totalHalamanTersetor+'/604</td>' +
             '<td style="padding:6px 8px;font-size:11px;color:#475569">'+
@@ -6049,7 +6431,6 @@
             '<td style="padding:6px 8px;text-align:center;font-weight:700;color:'+warna+'">'+s.persen+'%</td>' +
             '</tr>';
         });
-
         html += '</tbody></table></div>';
         document.getElementById('progressWrap').innerHTML = html;
 
@@ -6070,6 +6451,165 @@
         };
       });
     };
+  }
+
+  // Form input progres awal (baseline sebelum aplikasi digunakan)
+  function renderFormInputProgresAwal(gender, pengampu){
+    var wrap = document.getElementById('phSecInputAwal');
+    var subInfo = pengampu
+      ? 'Hanya santri di halaqoh yang Anda ampu yang bisa dipilih.'
+      : 'Isi juz yang sudah dihafal santri SEBELUM aplikasi ini digunakan.';
+    wrap.innerHTML = '<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px;margin-bottom:12px">' +
+      '<b>📋 Input Progres Awal Hafalan</b><br>' +
+      '<small style="color:#1e40af">'+subInfo+' Data ini akan digabungkan dengan setoran Sabaq via aplikasi.</small>' +
+      '</div>' +
+      '<label>Pilih Santri</label>' +
+      '<input id="phInpSantri" placeholder="Ketik nama santri..." autocomplete="off">' +
+      '<div id="phFormInput" style="margin-top:12px;display:none"></div>';
+
+    // Kalau pengampu diisi, ambil santri dari halaqoh guru itu
+    // Kalau tidak, ambil semua santri sesuai gender
+    var loadPromise;
+    if (pengampu) {
+      loadPromise = api('getSantriHalaqohGuru', {pengampu: pengampu}).then(function(resH){
+        if (!resH.ok || !resH.data.length) return {ok:true, data:[]};
+        // Perlu ambil detail santri dari getHalaqohList — fallback ke getSantriHarian jika perlu
+        return api('getProgressHafalanMassal', {gender:gender, pengampu:pengampu}).then(function(res){
+          if (!res.ok) return {ok:true, data:[]};
+          // Konversi format: {nisn, nama}
+          return {ok:true, data: res.data.map(function(s){ return {nisn:s.nisn, nama:s.nama}; })};
+        });
+      });
+    } else {
+      loadPromise = api('getSantriHarian', {gender:gender});
+    }
+
+    loadPromise.then(function(res){
+      if (!res.ok) return;
+      var inp = document.getElementById('phInpSantri');
+      var dl = document.createElement('datalist');
+      dl.id = 'phInpSantriDL';
+      res.data.forEach(function(s){ var o=document.createElement('option'); o.value=s.nisn+' - '+s.nama; dl.appendChild(o); });
+      inp.parentNode.appendChild(dl);
+      inp.setAttribute('list', 'phInpSantriDL');
+      inp._daftar = res.data;
+
+      inp.addEventListener('change', function(){
+        var raw = inp.value.trim();
+        var found = res.data.find(function(s){ return (s.nisn+' - '+s.nama)===raw || s.nama===raw || s.nisn===raw; });
+        if (!found) { document.getElementById('phFormInput').style.display = 'none'; return; }
+        renderFormJuzUntukSantri(found.nisn, found.nama);
+      });
+    });
+  }
+
+  // Form checklist 30 juz + proses
+  function renderFormJuzUntukSantri(nisn, nama){
+    var form = document.getElementById('phFormInput');
+    form.style.display = '';
+    form.innerHTML = '<p class="muted">Memuat progres tersimpan...</p>';
+
+    api('getProgresAwal', {nisn:nisn}).then(function(res){
+      var data = res.ok ? res.data : {juzSelesai:[], juzProses:[]};
+      var juzSelesaiSet = new Set(data.juzSelesai);
+      var juzProsesMap = {};
+      (data.juzProses||[]).forEach(function(x){ juzProsesMap[x.juz] = x.persen; });
+
+      var html = '<div class="card"><h4>✏️ Progres Awal: '+esc(nama)+'</h4>' +
+        '<p style="font-size:12px;color:#64748b">Centang juz yang sudah SELESAI, atau isi persentase untuk juz yang sedang dihafal.</p>' +
+
+        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-top:10px">';
+
+      for (var j=1;j<=30;j++) {
+        var selesai = juzSelesaiSet.has(j);
+        var persen = juzProsesMap[j] || 0;
+        html += '<div style="border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;background:'+(selesai?'#f0fdf4':(persen>0?'#fff7ed':'#fff'))+'">' +
+          '<label style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:13px;cursor:pointer">' +
+          '<input type="checkbox" class="phJuzSelesai" data-juz="'+j+'"'+(selesai?' checked':'')+' style="width:16px;height:16px">' +
+          '<span>Juz '+j+'</span>' +
+          (selesai?'<span style="color:#16a34a;font-size:11px;margin-left:auto">✓ Selesai</span>':'')+
+          '</label>' +
+          '<div class="phProsesWrap" style="margin-top:6px;display:'+(selesai?'none':'')+'">' +
+          '<div style="display:flex;align-items:center;gap:6px">' +
+          '<input type="range" class="phJuzPersen" data-juz="'+j+'" min="0" max="99" step="5" value="'+persen+'" style="flex:1">' +
+          '<span class="phPersenLabel" style="font-size:12px;font-weight:600;min-width:36px;text-align:right;color:#d97706">'+persen+'%</span>' +
+          '</div></div></div>';
+      }
+
+      html += '</div>' +
+        '<label style="margin-top:12px;display:block">Catatan (opsional)</label>' +
+        '<textarea id="phCatatan" rows="2" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:8px" placeholder="Contoh: Data dari kartu hafalan lama tanggal 1 Sep 2026"></textarea>' +
+        '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">' +
+        '<button id="btnSimpanProgresAwal">💾 Simpan Progres Awal</button>' +
+        '<button class="secondary" id="btnHapusProgresAwal">🗑️ Hapus Semua</button>' +
+        '</div>' +
+        '<div id="phPesanSimpan" style="margin-top:8px"></div></div>';
+
+      form.innerHTML = html;
+
+      // Update label persen live + toggle proses saat selesai dicentang
+      form.querySelectorAll('.phJuzSelesai').forEach(function(cb){
+        cb.onchange = function(){
+          var parent = cb.closest('div[style*="border:1px"]');
+          var proses = parent.querySelector('.phProsesWrap');
+          if (cb.checked) {
+            proses.style.display = 'none';
+            parent.style.background = '#f0fdf4';
+            parent.querySelector('.phJuzPersen').value = 0;
+            parent.querySelector('.phPersenLabel').textContent = '0%';
+          } else {
+            proses.style.display = '';
+            parent.style.background = '#fff';
+          }
+        };
+      });
+      form.querySelectorAll('.phJuzPersen').forEach(function(range){
+        range.oninput = function(){
+          var v = Number(range.value);
+          var parent = range.closest('div[style*="border:1px"]');
+          parent.querySelector('.phPersenLabel').textContent = v + '%';
+          parent.style.background = v > 0 ? '#fff7ed' : '#fff';
+        };
+      });
+
+      // Simpan
+      document.getElementById('btnSimpanProgresAwal').onclick = function(){
+        var btn = this;
+        var juzSelesai = [];
+        var juzProses = [];
+        form.querySelectorAll('.phJuzSelesai').forEach(function(cb){
+          var j = Number(cb.dataset.juz);
+          if (cb.checked) juzSelesai.push(j);
+        });
+        form.querySelectorAll('.phJuzPersen').forEach(function(r){
+          var j = Number(r.dataset.juz);
+          var p = Number(r.value);
+          if (p > 0 && juzSelesai.indexOf(j) === -1) juzProses.push({juz:j, persen:p});
+        });
+
+        loadingBtn(btn, 'Menyimpan...');
+        api('simpanProgresAwal', {
+          nisn: nisn, nama: nama,
+          juzSelesai: juzSelesai, juzProses: juzProses,
+          catatan: document.getElementById('phCatatan').value,
+          diisiOleh: STATE.user.nama,
+        }).then(function(r){
+          resetBtn(btn, '💾 Simpan Progres Awal');
+          if (!r.ok) { document.getElementById('phPesanSimpan').innerHTML = errBox(r.error); return; }
+          document.getElementById('phPesanSimpan').innerHTML =
+            '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;color:#16a34a">' +
+            '✅ Tersimpan! ' + juzSelesai.length + ' juz selesai, ' + juzProses.length + ' juz proses.</div>';
+        });
+      };
+
+      // Hapus
+      document.getElementById('btnHapusProgresAwal').onclick = function(){
+        if (!confirm('Hapus semua progres awal santri ini?')) return;
+        api('hapusProgresAwal', {nisn:nisn}).then(function(r){
+          if (r.ok) renderFormJuzUntukSantri(nisn, nama);
+        });
+      };
+    });
   }
 
   // ============================================================
@@ -6399,9 +6939,9 @@
     map[activeKey]();
   }
 
-  // ---- Absen Maghrib ----
   // ============================================================
   // ABSENSI HARIAN PEMBINA
+  // (Menggantikan sistem absen halaqoh Maghrib lama untuk Pembina)
   // ============================================================
   function pembinaAbsenHarian(gender){
     var c = getContentEl();
@@ -6659,12 +7199,15 @@
         // Daftar santri yang izin pulang
         (izinPulang > 0 ? (
           '<div style="margin-top:10px;border-top:1px solid rgba(255,255,255,.1);padding-top:8px">' +
-          '<div style="font-size:11px;opacity:.7;margin-bottom:6px">🚪 Sedang Izin Pulang:</div>' +
+          '<div style="font-size:11px;opacity:.7;margin-bottom:6px">🚪 Sedang Izin Pulang'+
+          (res.sumberIzinPulang ? ' (Pembina: '+res.sumberIzinPulang.pembina+' · Mapel: '+res.sumberIzinPulang.mapel+' · Halaqoh: '+res.sumberIzinPulang.halaqoh+')' : '')+
+          ':</div>' +
           res.izinPulangList.filter(function(s){
             return !gender || s.jk===gender;
           }).map(function(s){
+            var sBadge = s.sumber==='Guru Mapel'?'📖':s.sumber==='Guru Halaqoh'?'📿':'👨‍🏫';
             return '<div style="font-size:12px;background:rgba(255,255,255,.07);border-radius:6px;padding:4px 8px;margin-bottom:4px">'+
-              '<b>'+s.nama+'</b> <span style="opacity:.6;font-size:11px">'+s.kelas+'</span>'+
+              sBadge+' <b>'+s.nama+'</b> <span style="opacity:.6;font-size:11px">'+s.kelas+'</span>'+
               (s.keterangan?' <span style="opacity:.5;font-size:10px">· '+s.keterangan+'</span>':'')+
               '</div>';
           }).join('') +
@@ -6887,7 +7430,7 @@
       {key:'spp', label:'SPP Santri', icon:'&#128179;'},
       {key:'modulajar', label:'Modul Ajar & RPP', icon:'&#128218;'},
       {key:'rekapjurnal', label:'Rekap Jurnal Guru', icon:'&#128221;'},
-      {key:'rekaphalaqoh', label:'Rekap Halaqoh', icon:'&#127774;'},
+      {key:'rekaphalaqoh', label:'Rekap Halaqoh', icon:'&#128218;'},
       {key:'raporkelas', label:'Rapor Santri', icon:'&#128203;'},
       {key:'kelompokpapel', label:'Kelompok Mata Pelajaran', icon:'&#128204;'},
       {key:'sop', label:'SOP Guru', icon:'&#128203;'},
@@ -8217,7 +8760,7 @@
     c.innerHTML='<div class="card"><h3>&#128203; Rapor Santri</h3>'+
       '<p class="muted">Pilih kelas untuk melihat dan mencetak rapor semua santri.</p>'+
       '</div><p>Memuat daftar kelas...</p>';
-    api('getDaftarKelas',{}).then(function(res){
+    api('getDaftarKelasRombel',{}).then(function(res){
       if(!res.ok){c.innerHTML=errBox(res.error);return;}
       var kelasList=res.data||[];
       c.innerHTML='<div class="card"><h3>&#128203; Rapor Santri</h3>'+
@@ -8320,13 +8863,14 @@
     });
   }
 
-  // ============ ADMIN: REKAP HALAQOH MAGHRIB ============
+  // ============ ADMIN: REKAP HALAQOH AL-QURAN ============
   function adminRekapHalaqoh(){
     var c = getContentEl();
     var bt = bulanTahunSaatIni();
     var tglMulai = bt.tahun+'-'+String(bt.bulan).padStart(2,'0')+'-01';
 
-    c.innerHTML='<div class="card"><h3>&#127774; Rekap Halaqoh Maghrib</h3>'+
+    c.innerHTML='<div class="card"><h3>&#128218; Rekap Halaqoh Al-Qur\'an</h3>'+
+      '<p class="muted">Rekap kehadiran santri di halaqoh (semua waktu: Subuh, Dhuha, Maghrib, dll)</p>'+
       '<div class="grid2">'+
       '<div><label>Dari Tanggal</label><input type="date" id="arDari" value="'+tglMulai+'"></div>'+
       '<div><label>Sampai Tanggal</label><input type="date" id="arSampai" value="'+todayStr()+'"></div>'+
