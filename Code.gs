@@ -148,6 +148,11 @@ function route(action, p) {
     case 'migrasiSkemaLama': return apiMigrasiSkemaLama();
 
     case 'getPengaturan': return {ok:true, data: getPengaturan()};
+    case 'getVersiData': return apiGetVersiData();
+    // Notifikasi push (OneSignal)
+    case 'kirimPushManual':      return apiKirimPushManual(p);
+    case 'pasangTriggerNotif':   return apiPasangTriggerNotif(p.aktif === true || p.aktif === 'true');
+    case 'statusTriggerNotif':   return apiStatusTriggerNotif();
     case 'simpanPengaturan':       return apiSimpanPengaturan(p);
     case 'getPengaturanBatch':     return apiGetPengaturanBatch(p);
     case 'simpanPengaturanBatch':  return apiSimpanPengaturanBatch(p);
@@ -1632,6 +1637,73 @@ function apiSetTahunAjaranAktif(id) {
   return {ok:true};
 }
 
+// Sidik jari satu sheet: dipakai untuk mendeteksi ADA perubahan data, bukan untuk
+// mengetahui apa yang berubah. Memakai jumlah baris/kolom + hash MD5 seluruh isinya,
+// jadi perubahan di tengah data (misal nama santri diedit) ikut terdeteksi.
+function sidikJariSheet(ss, namaSheet) {
+  try {
+    const sh = ss.getSheetByName(namaSheet);
+    if (!sh) return '0';
+    const rng = sh.getDataRange();
+    if (rng.getNumRows() < 1) return '0';
+    const nilai = rng.getValues();
+    const teks = nilai.map(r => r.join('\u0001')).join('\u0002');
+    const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, teks, Utilities.Charset.UTF_8);
+    // Ambil 8 byte pertama saja -- cukup untuk membandingkan "berubah / tidak berubah"
+    // dan membuat hasilnya jauh lebih ringkas untuk dikirim ke aplikasi.
+    let hex = '';
+    for (let i = 0; i < 8 && i < digest.length; i++) {
+      hex += ('0' + (digest[i] & 0xFF).toString(16)).slice(-2);
+    }
+    return nilai.length + 'x' + (nilai[0] ? nilai[0].length : 0) + '-' + hex;
+  } catch (e) {
+    return 'err';
+  }
+}
+
+// Penanda versi PER KELOMPOK DATA. Aplikasi membandingkan hanya kelompok yang
+// berkaitan dengan role yang sedang dipakai, supaya notifikasi "tersedia pembaruan"
+// muncul saat memang relevan -- bukan setiap kali ada guru lain menyimpan absensi.
+//
+// Sheet transaksional (Absensi, Hafalan, Nilai, Jurnal, transaksi kantin) SENGAJA
+// tidak masuk sini: isinya berubah sepanjang hari oleh banyak orang, dan perubahan
+// itu tidak mengubah apa yang bisa dikerjakan user, jadi tidak layak jadi notifikasi.
+function apiGetVersiData() {
+  const cache = CacheService.getScriptCache();
+  const KUNCI = 'wasiatVersiDataV2';
+  try {
+    const tersimpan = cache.get(KUNCI);
+    if (tersimpan) return {ok:true, versi: JSON.parse(tersimpan), dariCache: true};
+  } catch (e) { /* cache bermasalah: hitung langsung */ }
+
+  let versi = {};
+  try {
+    const ss = getAktifSS();
+    const master = getMasterSS();
+    versi = {
+      santri:        sidikJariSheet(ss, SHEET_SANTRI),
+      guru:          sidikJariSheet(ss, SHEET_GURU),
+      mapel:         sidikJariSheet(ss, SHEET_MAPEL),
+      kelas:         sidikJariSheet(ss, SHEET_DAFTAR_KELAS) + '|' + sidikJariSheet(ss, SHEET_ROMBEL),
+      halaqoh:       sidikJariSheet(ss, SHEET_HALAQOH) + '|' + sidikJariSheet(ss, SHEET_HALAQOH_ANGGOTA),
+      jadwal:        sidikJariSheet(ss, SHEET_JAM_PELAJARAN),
+      roleakses:     sidikJariSheet(ss, SHEET_ROLE),
+      tugaspembina:  sidikJariSheet(ss, SHEET_TUGAS_PEMBINA),
+      pengaturan:    sidikJariSheet(master, SHEET_PENGATURAN),
+      sop:           sidikJariSheet(master, SHEET_SOP)
+    };
+  } catch (e) {
+    // Jangan sampai menggagalkan aplikasi -- kembalikan kosong, aplikasi akan
+    // menganggap "tidak ada perubahan" dan tetap berjalan normal.
+    return {ok:true, versi:{}, gagalBaca:true};
+  }
+  // Cache 2 menit: menghitung sidik jari beberapa sheet cukup berat, dan data master
+  // tidak berubah setiap detik. Ini melindungi kuota Apps Script saat banyak
+  // perangkat memeriksa bersamaan.
+  try { cache.put(KUNCI, JSON.stringify(versi), 120); } catch (e) {}
+  return {ok:true, versi: versi};
+}
+
 function getAktifSS() {
   let id = PROP.getProperty(AKTIF_KEY);
   if (!id) {
@@ -2184,6 +2256,10 @@ function apiTarikSaldoSantriBendahara(p) {
           'Waktu: '+tgl+' '+wkt+'\n\nJazakumullah khairan.';
         kirimWAFonnteUmum(noWa, pesan);
       }
+      try {
+        kirimPushKeWali(nisn, '\uD83D\uDCB8 Penarikan Saldo',
+          nama + ': ' + keterangan + ' ' + rp(nominal) + '. Sisa saldo: ' + rp(saldoSekarang) + '.');
+      } catch(e) { Logger.log('Notif wali tarik saldo gagal: ' + e.message); }
       return {ok:true, nama:nama, saldoSebelum:saldoSebelum, saldoSekarang:saldoSekarang};
     }
     return {ok:false, error:'Santri tidak ditemukan'};
@@ -2339,6 +2415,10 @@ function apiTambahSaldoSantriManual(p) {
             waKirim = true;
           } catch(e) { Logger.log('Gagal kirim WA: ' + e.message); }
         }
+        try {
+          kirimPushKeWali(nisn, '\uD83D\uDCB0 Saldo Ditambahkan',
+            nama + ': ' + keterangan + ' ' + rp(nominal) + '. Saldo sekarang: ' + rp(saldoBaru) + '.');
+        } catch(e) { Logger.log('Notif wali top up gagal: ' + e.message); }
         return {ok:true, saldoBaru:saldoBaru, saldoSebelum:saldoSebelum, nama:nama, waKirim:waKirim};
       }
     }
@@ -2613,6 +2693,14 @@ function apiProsesTransaksiKantin(p) {
           totalPotongan, nisn, namaSantri, 'TRX-' + todayStr + '-' + nisn);
       } catch(e) { Logger.log('Gagal catat pendapatan pondok: ' + e.message); }
     }
+
+    // Notifikasi push ke wali -- diletakkan paling akhir setelah semua pencatatan
+    // selesai, dan tidak boleh mempengaruhi hasil transaksi.
+    try {
+      const daftarItem = items.map(function(it){ return it.nama + ' x' + it.jumlah; }).join(', ');
+      kirimPushKeWali(nisn, '\uD83D\uDED2 Belanja Kantin',
+        namaSantri + ' belanja ' + rp(total) + ' (' + daftarItem + '). Sisa saldo: ' + rp(saldoSekarang) + '.');
+    } catch(e) { Logger.log('Notif wali belanja gagal: ' + e.message); }
 
     return {ok:true, saldoSekarang: saldoSekarang, namaSantri: namaSantri, total: total};
   } finally {
@@ -3026,6 +3114,12 @@ function apiToggleSppBulan(p){
         if (noWa) {
           kirimWAFonnteUmum(noWa, 'Assalamualaikum Wr. Wb.\n\nYth. Orang Tua/Wali Santri *'+nama+'*\n\nAlhamdulillah, pembayaran SPP bulan *'+labelBulanSPP(bulan, tahunMasuk)+'* telah berhasil diproses.\n\nJumlah: Rp'+biayaBaris.toLocaleString('id-ID')+'\nStatus: LUNAS \u2713\n\nJazakumullah khairan atas kerjasamanya.');
         }
+        // Push ke wali. Sengaja DI LUAR syarat noWa di atas: push tidak butuh nomor
+        // telepon, jadi tetap terkirim walau nomor WA santri belum terisi.
+        try {
+          kirimPushKeWali(nisn, '\u2705 SPP Lunas',
+            'Pembayaran SPP ' + labelBulanSPP(bulan, tahunMasuk) + ' untuk ' + nama + ' sebesar ' + rp(biayaBaris) + ' sudah tercatat LUNAS. Jazakumullah khairan.');
+        } catch(e) { Logger.log('Notif wali SPP lunas gagal: ' + e.message); }
         break;
       }
     }
@@ -3358,8 +3452,16 @@ function jalankanPengingatSPP() {
   let terkirim = 0, gagal = 0, tanpaWA = 0;
 
   tunggakan.forEach(function(s) {
+    // Push ke wali dikirim lebih dulu dan TIDAK bergantung pada nomor WA. Ini penting:
+    // sebelumnya santri yang nomor WA-nya belum terdaftar dilewati sama sekali, jadi
+    // walinya tidak pernah diingatkan. Dengan push, mereka tetap dapat pemberitahuan.
+    try {
+      kirimPushKeWali(s.nisn, '\uD83D\uDCB3 Pengingat Pembayaran SPP',
+        'Tunggakan SPP ' + s.nama + ': ' + rp(s.tunggakanSPP) + ' (' + s.jumlahBulan + ' bulan). Mohon segera diselesaikan. Jazakumullah khairan.');
+    } catch(e) { Logger.log('Notif wali tagihan SPP gagal: ' + e.message); }
+
     if (!s.noWa) {
-      Logger.log('⚠️ ' + s.nama + ': No WA tidak terdaftar, dilewati.');
+      Logger.log('\u26A0\uFE0F ' + s.nama + ': No WA tidak terdaftar, WA dilewati (push tetap dikirim).');
       tanpaWA++;
       return;
     }
@@ -3719,7 +3821,18 @@ function apiSavePencatatanPelanggaran(p) {
     const pesan = 'Assalamualaikum Wr. Wb.\n\nYth. Orang Tua/Wali dari *'+namaSantri+'*\n\nPada tanggal '+tanggal+', ananda tercatat melakukan pelanggaran:\n\n*'+pelanggaran+'* (-'+poinPelanggaran+' poin)\n\nSisa poin bulan ini: *'+poinBaru+' / '+modal+' poin*\nStatus: '+(statusBaru==='Habis'?'*HABIS*':'Aktif')+'\n\nDemikian info ini kami sampaikan sebagai bahan nasihat dan penguatan bagi ananda.\n\nWassalamualaikum Wr. Wb.\n_Notifikasi otomatis dari aplikasi pondok_';
     kirimWAFonnte(noWaOrtu, pesan);
   }
+  // Push ke wali -- di luar syarat noWaOrtu karena push tidak butuh nomor telepon.
+  if (pelanggaran) {
+    try {
+      kirimPushKeWali(nisn, '\u26A0\uFE0F Catatan Pelanggaran',
+        namaSantri + ' tercatat: ' + pelanggaran + ' (-' + poinPelanggaran + ' poin) pada ' + tanggal + '. Sisa poin bulan ini: ' + poinBaru + '/' + modal + '.');
+    } catch(e) { Logger.log('Notif wali pelanggaran gagal: ' + e.message); }
+  }
   if (statusBaru === 'Habis' && statusLama !== 'Habis') {
+    try {
+      kirimPushKeWali(nisn, '\uD83D\uDD34 Poin Santri Habis',
+        'Poin ' + namaSantri + ' telah habis (0 poin) bulan ini. Ananda akan mendapat pembinaan sesuai aturan pondok.');
+    } catch(e) { Logger.log('Notif wali poin habis gagal: ' + e.message); }
     if (noWaOrtu) {
       kirimWAFonnte(noWaOrtu, 'Assalamualaikum Wr. Wb.\n\n*NOTIFIKASI POIN HABIS*\n\nPoin santri *'+namaSantri+'* telah *HABIS* (0 poin) pada bulan ini.\n\nDengan demikian ananda akan mendapat pembinaan sesuai aturan pondok. Untuk koordinasi bisa menghubungi pengurus.\n\nWassalamualaikum Wr. Wb.');
     }
@@ -8077,4 +8190,350 @@ function previewHapusFotoTugas() {
   }
   Logger.log('Foto yang akan dihapus: ' + JSON.stringify(akan_dihapus));
   return akan_dihapus;
+}
+
+
+// ============================================================
+// MODUL NOTIFIKASI PUSH (OneSignal)
+//
+// Kenapa OneSignal: mengirim push notification ke HP butuh pesan yang dienkripsi
+// (ECDH + AES-GCM) sesuai standar Web Push. Google Apps Script tidak punya alat
+// kriptografi untuk itu, jadi tidak bisa mengirim push sendiri. OneSignal bertindak
+// sebagai perantara: kita cukup mengirim permintaan biasa ke API mereka, lalu mereka
+// yang mengurus enkripsi dan pengirimannya ke Google/Apple. Paket gratisnya sudah
+// lebih dari cukup untuk jumlah pengguna satu pesantren.
+//
+// Cara kerja pengingat jadwal:
+// 1. Trigger Apps Script berjalan tiap 5 menit.
+// 2. Dicek: ada jam pelajaran yang akan mulai dalam ~5 menit ke depan?
+// 3. Kalau ada, dicari guru yang mengajar pada jam itu HARI INI.
+// 4. Push dikirim ke guru tersebut (dikenali lewat namanya sebagai External ID).
+//
+// Pengingat yang sudah terkirim dicatat supaya tidak dikirim dua kali dalam satu hari.
+// ============================================================
+
+const NOTIF_TERKIRIM_KEY = 'wasiatNotifTerkirim'; // penanda di Script Properties
+
+// Jam mulai tiap "jam ke-" diambil dari Pengaturan (key: JamPelajaranWaktu),
+// diisi Admin dengan format "1|07:00" satu per baris. Dipakai karena jadwal di
+// aplikasi ini memakai "jam ke-" (jam ke-1, ke-2, dst), bukan jam dinding.
+function getJamPelajaranWaktu() {
+  const teks = String(getPengaturan().JamPelajaranWaktu || '').trim();
+  if (!teks) return {};
+  const hasil = {};
+  teks.split('\n').forEach(function(baris){
+    const bagian = String(baris).split('|');
+    const jamKe = norm(bagian[0]);
+    const waktu = norm(bagian[1]);
+    if (jamKe && /^\d{1,2}:\d{2}$/.test(waktu)) hasil[String(jamKe)] = waktu;
+  });
+  return hasil;
+}
+
+// Ubah "07:05" menjadi jumlah menit sejak tengah malam, supaya mudah dibandingkan.
+function keMenit(jamStr) {
+  const m = String(jamStr || '').match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return -1;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+
+// Kirim push lewat OneSignal ke daftar External ID (di aplikasi ini External ID =
+// nama pengguna, sama seperti yang dipakai di kolom Pengampu/Pembina).
+// Mengembalikan {ok, terkirim} -- tidak pernah melempar error supaya kegagalan
+// notifikasi tidak ikut menggagalkan proses lain yang memanggilnya.
+function kirimPushOneSignal(externalIds, judul, isi, tautan) {
+  try {
+    const p = getPengaturan();
+    const appId = norm(p.OneSignalAppId);
+    const apiKey = norm(p.OneSignalApiKey);
+    if (!appId || !apiKey) return {ok:false, error:'App ID / API Key OneSignal belum diatur.'};
+
+    const daftar = (externalIds || []).map(norm).filter(Boolean);
+    if (!daftar.length) return {ok:false, error:'Tidak ada penerima.'};
+
+    const body = {
+      app_id: appId,
+      include_aliases: { external_id: daftar },
+      target_channel: 'push',
+      headings: { en: String(judul || 'WASIAT'), id: String(judul || 'WASIAT') },
+      contents: { en: String(isi || ''), id: String(isi || '') },
+      // Muncul dengan suara & getaran bawaan sistem (perilaku default push Android).
+      android_channel_id: undefined,
+      url: tautan || undefined
+    };
+
+    const resp = UrlFetchApp.fetch('https://api.onesignal.com/notifications', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'Authorization': 'Key ' + apiKey },
+      payload: JSON.stringify(body),
+      muteHttpExceptions: true
+    });
+    const kode = resp.getResponseCode();
+    const teks = resp.getContentText();
+    if (kode < 200 || kode >= 300) {
+      Logger.log('OneSignal gagal (' + kode + '): ' + teks);
+      return {ok:false, error:'OneSignal menolak permintaan (kode ' + kode + '). ' + teks.slice(0, 200)};
+    }
+    let hasil = {};
+    try { hasil = JSON.parse(teks); } catch(e) {}
+    // OneSignal mengembalikan recipients: 0 kalau tidak ada perangkat yang cocok --
+    // ini kasus paling sering (user belum menekan "Aktifkan Notifikasi" di aplikasi).
+    if (hasil && hasil.recipients === 0) {
+      return {ok:false, error:'Tidak ada perangkat terdaftar untuk penerima ini. Pastikan mereka sudah membuka aplikasi dan menekan "Aktifkan Notifikasi".'};
+    }
+    return {ok:true, terkirim: (hasil && hasil.recipients) || daftar.length, id: hasil && hasil.id};
+  } catch (e) {
+    Logger.log('kirimPushOneSignal error: ' + e.message);
+    return {ok:false, error:'Gagal menghubungi OneSignal: ' + e.message};
+  }
+}
+
+// Penanda "sudah dikirim hari ini" supaya pengingat yang sama tidak dikirim berulang
+// setiap kali trigger berjalan. Disimpan per tanggal lalu dibersihkan sendiri.
+function sudahDikirimHariIni(kunci) {
+  const tz = Session.getScriptTimeZone();
+  const hari = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  let data = {};
+  try { data = JSON.parse(PROP.getProperty(NOTIF_TERKIRIM_KEY) || '{}'); } catch(e) {}
+  if (data.tanggal !== hari) data = { tanggal: hari, kunci: {} };
+  if (data.kunci[kunci]) return true;
+  data.kunci[kunci] = 1;
+  try { PROP.setProperty(NOTIF_TERKIRIM_KEY, JSON.stringify(data)); } catch(e) {}
+  return false;
+}
+
+// ---- Pengingat jadwal mengajar guru ----
+// Dijalankan trigger tiap 5 menit. Mengirim push ke guru yang jam mengajarnya
+// akan mulai dalam beberapa menit ke depan.
+function cekJadwalKirimNotif() {
+  try {
+    const p = getPengaturan();
+    if (norm(p.NotifJadwalAktif) !== 'true') return;
+    if (!norm(p.OneSignalAppId) || !norm(p.OneSignalApiKey)) return;
+
+    const jamMap = getJamPelajaranWaktu();
+    if (!Object.keys(jamMap).length) return; // Admin belum mengisi jam pelajaran
+
+    const tz = Session.getScriptTimeZone();
+    const sekarang = new Date();
+    const menitSekarang = sekarang.getHours() * 60 + sekarang.getMinutes();
+    const namaHariIni = HARI_LIST[sekarang.getDay()];
+    // Berapa menit sebelum jam mulai notifikasi dikirim (default 10 menit).
+    const jedaMenit = Number(p.NotifJadwalJedaMenit) > 0 ? Number(p.NotifJadwalJedaMenit) : 10;
+
+    // Cari jam ke- yang waktunya jatuh dalam jendela pengiriman.
+    // Jendela dibuat selebar interval trigger (5 menit) supaya tidak ada yang terlewat
+    // kalau trigger berjalan sedikit tidak tepat waktu.
+    const jamKeCocok = [];
+    Object.keys(jamMap).forEach(function(jamKe){
+      const mulai = keMenit(jamMap[jamKe]);
+      if (mulai < 0) return;
+      const selisih = mulai - menitSekarang;
+      if (selisih <= jedaMenit && selisih > jedaMenit - 6) jamKeCocok.push(jamKe);
+    });
+    if (!jamKeCocok.length) return;
+
+    const sh = getAktifSS().getSheetByName(SHEET_MAPEL);
+    if (!sh) return;
+    const rows = sh.getDataRange().getValues(); rows.shift();
+
+    jamKeCocok.forEach(function(jamKe){
+      // Kumpulkan jadwal hari ini pada jam ke- tersebut, dikelompokkan per guru
+      const perGuru = {};
+      rows.forEach(function(r){
+        const mapel = norm(r[0]), kelas = norm(r[1]), pengampu = norm(r[2]);
+        const hari = norm(r[3]), jk = String(r[4] === '' ? '' : r[4]).trim();
+        if (!pengampu || jk !== String(jamKe)) return;
+        if (normNama(hari) !== normNama(namaHariIni)) return;
+        if (!perGuru[pengampu]) perGuru[pengampu] = [];
+        perGuru[pengampu].push(mapel + ' (' + kelas + ')');
+      });
+
+      Object.keys(perGuru).forEach(function(guru){
+        const kunci = 'jadwal|' + guru + '|' + jamKe;
+        if (sudahDikirimHariIni(kunci)) return;
+        const daftarKelas = perGuru[guru].join(', ');
+        kirimPushOneSignal(
+          [guru],
+          '\u23F0 Jadwal mengajar segera dimulai',
+          jedaMenit + ' menit lagi: ' + daftarKelas + ' (jam ke-' + jamKe + ', ' + jamMap[jamKe] + '). Jangan lupa isi absensi.',
+          ''
+        );
+      });
+    });
+  } catch (e) {
+    Logger.log('cekJadwalKirimNotif error: ' + e.message);
+  }
+}
+
+// ---- Pengingat tugas harian pembina ----
+// Jam pengingat diambil dari Pengaturan (key: JadwalNotifTugasPembina) dengan
+// format "HH:MM|Pesan pengingat" satu per baris. Dipakai pendekatan ini -- bukan
+// menambah kolom jam di sheet TugasPembina -- supaya struktur sheet yang sudah
+// berjalan tidak perlu diubah sama sekali.
+function cekTugasPembinaKirimNotif() {
+  try {
+    const p = getPengaturan();
+    if (norm(p.NotifTugasPembinaAktif) !== 'true') return;
+    if (!norm(p.OneSignalAppId) || !norm(p.OneSignalApiKey)) return;
+
+    const teks = String(p.JadwalNotifTugasPembina || '').trim();
+    if (!teks) return;
+
+    const sekarang = new Date();
+    const menitSekarang = sekarang.getHours() * 60 + sekarang.getMinutes();
+
+    // Kumpulkan nama semua Pembina dari RoleAkses (push dikirim per nama).
+    const shRole = getAktifSS().getSheetByName(SHEET_ROLE);
+    if (!shRole) return;
+    const baris = shRole.getDataRange().getValues(); baris.shift();
+    const pembina = [];
+    baris.forEach(function(r){
+      const nama = norm(r[0]);
+      const level = norm(r[3]);
+      if (!nama) return;
+      if (level.indexOf('Pembina') !== -1) pembina.push(nama);
+    });
+    if (!pembina.length) return;
+
+    teks.split('\n').forEach(function(bar){
+      const bagian = String(bar).split('|');
+      const jam = norm(bagian[0]);
+      const pesan = norm(bagian[1]) || 'Waktunya menjalankan tugas harian.';
+      const mulai = keMenit(jam);
+      if (mulai < 0) return;
+      const selisih = mulai - menitSekarang;
+      // Dikirim tepat saat waktunya (jendela 6 menit mengikuti interval trigger)
+      if (selisih > 0 || selisih <= -6) return;
+      const kunci = 'tugas|' + jam;
+      if (sudahDikirimHariIni(kunci)) return;
+      kirimPushOneSignal(pembina, '\u2705 Tugas Harian (' + jam + ')', pesan, '');
+    });
+  } catch (e) {
+    Logger.log('cekTugasPembinaKirimNotif error: ' + e.message);
+  }
+}
+
+// Satu fungsi gabungan yang dipanggil trigger, supaya cukup satu trigger 5 menit
+// untuk semua jenis pengingat (kuota trigger Apps Script terbatas).
+function jalankanSemuaPengingatNotif() {
+  cekJadwalKirimNotif();
+  cekTugasPembinaKirimNotif();
+}
+
+// Pasang / hapus trigger dari UI Admin.
+function apiPasangTriggerNotif(aktif) {
+  try {
+    // Hapus trigger lama dengan nama fungsi yang sama supaya tidak menumpuk
+    ScriptApp.getProjectTriggers().forEach(function(t){
+      if (t.getHandlerFunction() === 'jalankanSemuaPengingatNotif') ScriptApp.deleteTrigger(t);
+    });
+    if (!aktif) return {ok:true, pesan:'Pengingat otomatis dimatikan.'};
+    ScriptApp.newTrigger('jalankanSemuaPengingatNotif').timeBased().everyMinutes(5).create();
+    return {ok:true, pesan:'Pengingat otomatis dipasang (diperiksa tiap 5 menit).'};
+  } catch (e) {
+    return {ok:false, error:'Gagal memasang trigger: ' + e.message};
+  }
+}
+
+function apiStatusTriggerNotif() {
+  try {
+    const ada = ScriptApp.getProjectTriggers().some(function(t){
+      return t.getHandlerFunction() === 'jalankanSemuaPengingatNotif';
+    });
+    return {ok:true, aktif: ada};
+  } catch (e) {
+    return {ok:true, aktif:false, catatan:'Tidak bisa membaca status trigger: ' + e.message};
+  }
+}
+
+// Kirim push manual -- dipakai Admin untuk uji coba dan untuk pengumuman.
+function apiKirimPushManual(p) {
+  const judul = norm(p.judul) || 'Pengumuman';
+  const isi = norm(p.isi);
+  if (!isi) return {ok:false, error:'Isi pesan wajib diisi.'};
+
+  let penerima = [];
+  if (p.target === 'diri' ) {
+    penerima = [norm(p.namaPengirim)];
+  } else if (p.target === 'pembina' || p.target === 'guru') {
+    const shRole = getAktifSS().getSheetByName(SHEET_ROLE);
+    const baris = shRole.getDataRange().getValues(); baris.shift();
+    baris.forEach(function(r){
+      const nama = norm(r[0]), level = norm(r[3]);
+      if (!nama) return;
+      if (p.target === 'pembina' && level.indexOf('Pembina') !== -1) penerima.push(nama);
+      if (p.target === 'guru' && level.indexOf('Guru') !== -1) penerima.push(nama);
+    });
+  } else if (Array.isArray(p.penerima)) {
+    penerima = p.penerima;
+  }
+  return kirimPushOneSignal(penerima, judul, isi, '');
+}
+
+
+// ============================================================
+// NOTIFIKASI PUSH KE ORANG TUA / WALI SANTRI
+//
+// Push dikirim berdasarkan NISN santri: dicari akun ber-role WaliSantri di RoleAkses
+// yang kolom "NISN Anak"-nya memuat NISN tersebut, lalu push dikirim ke NAMA akun itu
+// (karena External ID di aplikasi = nama pengguna).
+//
+// Mendukung kondisi berikut:
+// - Satu santri punya lebih dari satu akun wali (misal ayah dan ibu punya akun sendiri)
+//   -> keduanya dapat notifikasi.
+// - Satu akun wali punya beberapa anak (kolom NISN Anak berisi beberapa NISN dipisah
+//   koma) -> pencocokan dilakukan per NISN, bukan membandingkan seluruh isi kolom.
+//
+// Semua pengiriman dibungkus try/catch dan TIDAK PERNAH mengembalikan error ke
+// pemanggil. Alasannya penting: fungsi ini disisipkan ke dalam proses transaksi
+// (belanja, top up, pelunasan SPP). Kalau notifikasi gagal -- misal OneSignal belum
+// diatur atau internet server sedang bermasalah -- transaksinya HARUS tetap berhasil.
+// Uang dan pencatatan jauh lebih penting daripada notifikasi.
+// ============================================================
+
+function cariNamaWaliDariNisn(nisn) {
+  try {
+    nisn = norm(nisn);
+    if (!nisn) return [];
+    const sh = getAktifSS().getSheetByName(SHEET_ROLE);
+    if (!sh) return [];
+    const rows = sh.getDataRange().getValues(); rows.shift();
+    const hasil = [];
+    rows.forEach(function(r){
+      const nama = norm(r[0]);
+      const level = norm(r[3]);
+      const kolomNisn = norm(r[4]);
+      if (!nama || !kolomNisn) return;
+      if (level.indexOf('WaliSantri') === -1) return;
+      // Kolom NISN Anak bisa memuat beberapa NISN dipisah koma
+      const daftar = kolomNisn.split(',').map(function(x){ return norm(x); }).filter(Boolean);
+      if (daftar.indexOf(nisn) !== -1 && hasil.indexOf(nama) === -1) hasil.push(nama);
+    });
+    return hasil;
+  } catch (e) {
+    Logger.log('cariNamaWaliDariNisn error: ' + e.message);
+    return [];
+  }
+}
+
+// Kirim push ke wali dari satu santri. Aman dipanggil dari mana saja -- kegagalan
+// hanya dicatat di log, tidak pernah mengganggu proses yang memanggilnya.
+function kirimPushKeWali(nisn, judul, isi) {
+  try {
+    const p = getPengaturan();
+    if (norm(p.NotifWaliAktif) !== 'true') return;
+    if (!norm(p.OneSignalAppId) || !norm(p.OneSignalApiKey)) return;
+    const wali = cariNamaWaliDariNisn(nisn);
+    if (!wali.length) return;
+    kirimPushOneSignal(wali, judul, isi, '');
+  } catch (e) {
+    Logger.log('kirimPushKeWali error: ' + e.message);
+  }
+}
+
+// Format rupiah singkat untuk isi notifikasi
+function rp(n) {
+  return 'Rp' + (Number(n) || 0).toLocaleString('id-ID');
 }

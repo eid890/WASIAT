@@ -10,7 +10,7 @@
 //
 // CACHE_VERSION diisi otomatis saat build — ubah ini kalau mau paksa re-cache semua.
 
-const CACHE_VERSION = 'wasiat-d5414f9b'; // diupdate otomatis tiap build
+const CACHE_VERSION = 'wasiat-offline-v3'; // diupdate otomatis tiap build
 const CACHE_NAME = CACHE_VERSION;
 const APP_SHELL = [
   '/',
@@ -30,9 +30,13 @@ self.addEventListener('install', function(e) {
   e.waitUntil(
     caches.open(CACHE_NAME).then(function(cache) {
       return cache.addAll(APP_SHELL);
-    }).then(function() {
-      return self.skipWaiting(); // langsung aktif tanpa tunggu tab lama
     })
+    // CATATAN: skipWaiting() sengaja TIDAK dipanggil di sini.
+    // Kalau dipanggil, versi baru langsung aktif dan memicu controllerchange di tab
+    // yang sedang terbuka -> halaman reload paksa. Itu berbahaya untuk guru yang
+    // sedang mengisi absensi/hafalan tapi belum menekan Simpan. Sekarang versi baru
+    // MENUNGGU sampai user menekan "Perbarui Sekarang" di banner (aplikasi mengirim
+    // pesan SKIP_WAITING), jadi reload selalu atas persetujuan user.
   );
 });
 
@@ -64,11 +68,18 @@ self.addEventListener('fetch', function(e) {
   var req = e.request;
   var url = new URL(req.url);
 
-  // Jangan intercept: Apps Script, Google APIs, request non-GET
+  // Jangan intercept: Apps Script, Google APIs, OneSignal (push), request non-GET
+  //
+  // OneSignal WAJIB dikecualikan: permintaan ke servernya harus selalu langsung ke
+  // jaringan (tidak boleh dijawab dari cache), dan folder /push/onesignal/ adalah
+  // wilayah service worker milik OneSignal sendiri -- kalau ikut di-cache di sini,
+  // pendaftaran push bisa memakai berkas lama dan notifikasi gagal diterima.
   if (
     url.hostname.indexOf('script.google.com') !== -1 ||
     url.hostname.indexOf('googleusercontent.com') !== -1 ||
     url.hostname.indexOf('googleapis.com') !== -1 ||
+    url.hostname.indexOf('onesignal.com') !== -1 ||
+    url.pathname.indexOf('/push/onesignal/') === 0 ||
     req.method !== 'GET'
   ) return;
 
