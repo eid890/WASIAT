@@ -271,7 +271,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyExz5k65hK7XZZ7QlsXHjBTb6igjdUp57ZLoQEZ0C7u_j9F1cWtcxaUlsqUUEMnmcf/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -400,9 +400,13 @@
 
   // Rentang halaman per juz (Mushaf Madinah 604 halaman)
   // Juz 1: 1-21, Juz 2: 22-41, ..., Juz 30: 582-604
+  // Halaman awal setiap juz — Mushaf Utsmani/Madinah 604 halaman.
+  // Diverifikasi terhadap daftar juz aplikasi Qur'an (Sept 2026).
+  // Catatan: juz TIDAK selalu pas 20 halaman. Juz 6 dan juz 10 hanya
+  // 19 halaman, sedangkan juz 7 dan juz 11 mulai 1 halaman lebih awal.
   var JUZ_AWAL_HALAMAN = {
-    1:1,   2:22,  3:42,  4:62,  5:82,   6:102, 7:122, 8:142, 9:162, 10:182,
-    11:202,12:222,13:242,14:262,15:282, 16:302,17:322,18:342,19:362,20:382,
+    1:1,   2:22,  3:42,  4:62,  5:82,   6:102, 7:121, 8:142, 9:162, 10:182,
+    11:201,12:222,13:242,14:262,15:282, 16:302,17:322,18:342,19:362,20:382,
     21:402,22:422,23:442,24:462,25:482, 26:502,27:522,28:542,29:562,30:582
   };
   function rentangHalamanJuz(juz){
@@ -435,20 +439,114 @@
     return 30;
   }
 
-  // Hitung halaman dari nama surah + nomor ayat (perkiraan mushaf pojok 604 hal)
-  // Cara: halaman_mulai_surah + estimasi posisi ayat dalam surah
+  // ---- HALAMAN MUSHAF UTSMANI (Madinah, 604 halaman) ----
+  // Data EKSAK, bukan perkiraan. Sumber: Mushaf-Learning/quran-text
+  // (metadata/pages.json -- batas halaman Mushaf Al-Madinah, 604 halaman),
+  // diverifikasi silang dengan QUL Mushaf Al-Madinah V1 cetakan 1405H.
+  // Validasi: hal 1 = Al-Fatihah 1-7, hal 2 = Al-Baqarah 1-5,
+  // hal 3 = Al-Baqarah 6-16, hal 604 = Al-Ikhlas+Al-Falaq+An-Nas.
+  // Seluruh 30 batas juz cocok dengan JUZ_AWAL_HALAMAN di atas.
+
+  // Nomor urut ayat global (1..6236)
+  var _OFFSET_AYAT = (function(){
+    var o = [], n = 0;
+    QURAN_DB.forEach(function(s){ o[s[0]] = n; n += s[2]; });
+    return o;
+  })();
+  function _idxAyatGlobal(noSurah, noAyat){ return _OFFSET_AYAT[noSurah] + Number(noAyat); }
+
+  // Nomor ayat global dari ayat PERTAMA setiap halaman mushaf (604 entri).
+  // HAL_AWAL_ABS[n-1] = ayat global pertama pada halaman n.
+  var HAL_AWAL_ABS = [
+    1,8,13,24,32,37,45,56,65,69,77,84,
+    91,96,101,109,113,120,127,134,142,149,153,161,
+    171,177,184,189,194,198,204,210,218,223,227,232,
+    238,241,245,253,256,260,264,267,272,277,282,289,
+    290,294,303,309,316,323,331,339,346,355,364,371,
+    377,385,394,402,409,415,426,434,442,447,451,459,
+    467,474,480,488,494,500,505,508,513,517,520,527,
+    531,538,545,553,559,568,573,580,585,588,595,599,
+    607,615,621,628,634,641,648,656,664,669,672,675,
+    679,683,687,693,701,706,711,715,720,727,734,740,
+    746,752,759,765,773,778,783,790,798,808,817,825,
+    834,842,849,858,863,871,880,884,891,900,908,914,
+    921,927,932,936,941,947,955,966,977,985,992,998,
+    1006,1012,1022,1028,1036,1042,1050,1059,1075,1085,1092,1098,
+    1104,1110,1114,1118,1125,1133,1142,1150,1161,1169,1177,1186,
+    1194,1201,1206,1213,1222,1230,1236,1242,1249,1256,1262,1267,
+    1272,1276,1283,1290,1297,1304,1308,1315,1322,1329,1335,1342,
+    1347,1353,1358,1365,1371,1379,1385,1390,1398,1407,1418,1426,
+    1435,1443,1453,1462,1471,1479,1486,1493,1502,1511,1519,1527,
+    1536,1545,1555,1562,1571,1582,1591,1601,1611,1619,1627,1634,
+    1640,1649,1660,1666,1675,1683,1692,1700,1708,1713,1721,1726,
+    1736,1742,1750,1756,1761,1769,1775,1784,1793,1803,1818,1834,
+    1854,1873,1893,1908,1916,1928,1936,1944,1956,1966,1974,1981,
+    1989,1995,2004,2012,2020,2030,2037,2047,2057,2068,2079,2088,
+    2096,2105,2116,2126,2134,2145,2156,2161,2168,2175,2186,2194,
+    2202,2215,2224,2238,2251,2262,2276,2289,2302,2315,2327,2346,
+    2361,2386,2400,2413,2425,2436,2447,2462,2474,2484,2494,2508,
+    2519,2528,2541,2556,2565,2574,2585,2596,2601,2611,2619,2626,
+    2634,2642,2651,2660,2668,2674,2691,2701,2716,2733,2748,2763,
+    2778,2792,2802,2812,2819,2823,2828,2835,2845,2850,2853,2858,
+    2867,2876,2888,2899,2911,2923,2933,2952,2972,2993,3016,3044,
+    3069,3092,3116,3139,3160,3173,3182,3195,3204,3215,3223,3236,
+    3248,3258,3266,3274,3281,3288,3296,3303,3312,3323,3330,3337,
+    3347,3355,3364,3371,3379,3386,3393,3404,3415,3425,3434,3442,
+    3451,3460,3470,3481,3489,3498,3504,3515,3524,3534,3540,3549,
+    3556,3564,3569,3577,3584,3588,3596,3607,3614,3621,3629,3638,
+    3646,3655,3664,3672,3679,3691,3699,3705,3718,3733,3746,3760,
+    3776,3789,3813,3840,3865,3891,3915,3942,3971,3987,3997,4013,
+    4032,4054,4064,4069,4080,4090,4099,4106,4115,4126,4133,4141,
+    4150,4159,4167,4174,4183,4192,4200,4211,4219,4230,4239,4248,
+    4257,4265,4273,4283,4288,4295,4304,4317,4324,4336,4348,4359,
+    4373,4386,4399,4415,4433,4454,4474,4487,4496,4506,4516,4525,
+    4531,4539,4546,4557,4565,4575,4584,4593,4599,4607,4612,4617,
+    4624,4631,4646,4666,4682,4706,4727,4750,4767,4785,4811,4829,
+    4853,4874,4896,4918,4942,4969,4996,5030,5056,5079,5087,5094,
+    5100,5105,5111,5116,5126,5130,5136,5143,5151,5156,5162,5169,
+    5178,5186,5193,5200,5209,5218,5223,5230,5237,5242,5254,5268,
+    5287,5314,5332,5358,5386,5415,5430,5448,5461,5476,5495,5513,
+    5543,5571,5597,5617,5642,5673,5703,5728,5759,5801,5830,5855,
+    5883,5910,5932,5964,5994,6017,6044,6073,6099,6126,6138,6156,
+    6177,6194,6208,6222
+  ];
+
+  // Halaman mushaf dari nomor surah + nomor ayat -- hasil PASTI.
+  function halamanDariSurahAyat(noSurah, noAyat){
+    var t = _idxAyatGlobal(noSurah, noAyat);
+    if (!t || t < 1 || t > 6236) return null;
+    var lo = 0, hi = 603, ans = 1;
+    while (lo <= hi) {
+      var mid = (lo + hi) >> 1;
+      if (HAL_AWAL_ABS[mid] <= t) { ans = mid + 1; lo = mid + 1; }
+      else hi = mid - 1;
+    }
+    return ans;
+  }
+
+  // Hitung halaman dari nama surah + nomor ayat.
   function hitungHalamanDariAyat(namaSurah, noAyat) {
+    var d = hitungHalamanDetail(namaSurah, noAyat);
+    return d ? d.halaman : null;
+  }
+
+  // Versi lengkap: {halaman, pasti}. Sejak memakai tabel eksak,
+  // "pasti" selalu true -- field dipertahankan agar pemanggil lama tetap jalan.
+  function hitungHalamanDetail(namaSurah, noAyat) {
     var surah = cariDataSurah(namaSurah);
     if (!surah) return null;
-    var no = surah[0], totalAyat = surah[2], halMulai = surah[4];
-    noAyat = Math.max(1, Number(noAyat)||1);
-    // Hitung halaman surah berikutnya (atau 605 kalau surah terakhir)
-    var halAkhir = (no < 114) ? QURAN_DB[no][4] : 605;
-    var totalHalaman = halAkhir - halMulai;
-    if (totalHalaman <= 0) return halMulai;
-    // Estimasi proporsional berdasarkan posisi ayat
-    var rasio = (noAyat - 1) / totalAyat;
-    return Math.min(halMulai + Math.floor(rasio * totalHalaman), halAkhir - 1);
+    noAyat = Math.max(1, Math.min(Number(noAyat) || 1, surah[2]));
+    var hal = halamanDariSurahAyat(surah[0], noAyat);
+    return hal ? {halaman: hal, pasti: true} : null;
+  }
+
+  // Rentang halaman untuk satu rentang ayat dalam satu surah.
+  function hitungRentangHalaman(namaSurah, ayatAwal, ayatAkhir){
+    var a = hitungHalamanDariAyat(namaSurah, ayatAwal);
+    var b = hitungHalamanDariAyat(namaSurah, ayatAkhir || ayatAwal);
+    if (!a) return null;
+    if (!b || b < a) b = a;
+    return {awal: a, akhir: b};
   }
 
 
@@ -720,6 +818,59 @@
     return m ? m.nisn : null;
   }
   function labelSantri(s){ return s.nisn + ' - ' + s.nama; }
+
+  // Widget multi-pilih santri untuk field "NISN Anak" (RoleAkses) -- mendukung wali
+  // dengan >1 anak. existingCsv: NISN dipisah koma (format lama, tunggal, tetap valid
+  // karena cuma 1 chip). Render: chip-chip terpilih + input autocomplete untuk menambah,
+  // dan 1 hidden input '#'+id yang menyimpan hasil akhir (CSV NISN) untuk dibaca saat submit.
+  function fieldMultiSantri(id, label, daftarSantri, existingCsv, placeholder){
+    var sid = id.replace(/ /g,'_');
+    var awal = String(existingCsv||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
+    return '<label>'+esc(label)+'</label>' +
+      '<div id="'+sid+'_chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px" data-nisn-terpilih="'+esc(awal.join(','))+'"></div>' +
+      fieldAutocomplete(sid+'_input', '', daftarSantri.map(labelSantri), '', placeholder) +
+      '<button type="button" id="'+sid+'_tambah" class="secondary small" style="margin-top:6px">+ Tambah Anak</button>' +
+      '<input type="hidden" id="'+sid+'" value="'+esc(awal.join(','))+'">';
+  }
+  // Render ulang chip santri terpilih untuk widget fieldMultiSantri (dipanggil dari luar,
+  // dari tempat form dibuka, karena butuh akses ke daftarSantri untuk mengubah NISN->nama).
+  function renderChipMultiSantri(sid, daftarSantri){
+    var wrap = document.getElementById(sid+'_chips');
+    var hidden = document.getElementById(sid);
+    if (!wrap || !hidden) return;
+    var list = (wrap.dataset.nisnTerpilih||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
+    hidden.value = list.join(',');
+    wrap.innerHTML = list.map(function(n){
+      var s = daftarSantri.find(function(x){ return String(x.nisn)===String(n); });
+      var teks = s ? labelSantri(s) : n;
+      return '<span style="display:inline-flex;align-items:center;gap:6px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:16px;padding:4px 6px 4px 12px;font-size:13px">'+esc(teks)+
+        '<button type="button" data-hapus="'+esc(n)+'" style="border:none;background:#e2e8f0;border-radius:50%;width:18px;height:18px;line-height:1;cursor:pointer;font-size:12px">&times;</button></span>';
+    }).join('') || '<span class="muted" style="font-size:13px">Belum ada anak dipilih.</span>';
+    wrap.querySelectorAll('button[data-hapus]').forEach(function(btn){
+      btn.onclick = function(){
+        var sisa = list.filter(function(n){ return n !== btn.dataset.hapus; });
+        wrap.dataset.nisnTerpilih = sisa.join(',');
+        renderChipMultiSantri(sid, daftarSantri);
+      };
+    });
+  }
+  // Pasang tombol "+ Tambah Anak" untuk widget fieldMultiSantri (dipanggil setelah form dirender).
+  function bindTambahMultiSantri(sid, daftarSantri){
+    var wrap = document.getElementById(sid+'_chips');
+    var input = document.getElementById(sid+'_input');
+    var btn = document.getElementById(sid+'_tambah');
+    if (!wrap || !input || !btn) return;
+    renderChipMultiSantri(sid, daftarSantri);
+    btn.onclick = function(){
+      var nisnBaru = resolveSantriNisn(input.value, daftarSantri);
+      if (!nisnBaru) { alert('Pilih santri dari saran yang muncul saat mengetik.'); return; }
+      var list = (wrap.dataset.nisnTerpilih||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
+      if (list.indexOf(nisnBaru) === -1) list.push(nisnBaru);
+      wrap.dataset.nisnTerpilih = list.join(',');
+      input.value = '';
+      renderChipMultiSantri(sid, daftarSantri);
+    };
+  }
   // Ayat maupun Halaman disimpan sebagai teks rentang "dari - sampai" (contoh: "2 - 21").
   // Fungsi generik ini memecah nilai lama (baik format rentang maupun angka tunggal)
   // jadi {awal, akhir} supaya form Isi Hafalan bisa menampilkan kembali sebagai dua kolom.
@@ -1026,18 +1177,20 @@
       {key:'wk_rapor',        label:'Rapor Santri',        icon:'&#128203;'}
     ],
     'Bendahara': [
-      {key:'dasbor',          label:'Dasbor Keuangan',     icon:'&#128200;'},
-      {key:'transaksi',       label:'Catat Transaksi',     icon:'&#128221;'},
-      {key:'tarikkasir',      label:'Tarik Saldo Santri',  icon:'&#128717;'},
-      {key:'bku',             label:'Buku Kas Umum',       icon:'&#128218;'},
-      {key:'laporan',         label:'Laporan Bulanan',     icon:'&#128202;'},
-      {key:'pendapatan',      label:'Pendapatan Pondok',   icon:'&#128180;'},
-      {key:'anggaran',        label:'Anggaran Kegiatan',   icon:'&#127919;'},
-      {key:'spp',             label:'SPP & Tunggakan',     icon:'&#128179;'},
-      {key:'persetujuan',     label:'Persetujuan Saldo',   icon:'&#9989;'},
-      {key:'pengaturan',      label:'Pengaturan Kantin',   icon:'&#9881;&#65039;'},
-      {key:'tarif',           label:'Kelola Tarif',        icon:'&#128204;'},
-      {key:'kategori',        label:'Kelola Kategori',     icon:'&#127991;'}
+      {key:'dasbor',          label:'Dasbor Keuangan',      icon:'&#128200;'},
+      {key:'transaksi',       label:'Catat Transaksi',      icon:'&#128221;'},
+      {key:'tambahsaldo',     label:'Tambah Saldo Santri',  icon:'&#128176;'},
+      {key:'tarikkasir',      label:'Tarik Saldo Santri',   icon:'&#128717;'},
+      {key:'riwayatmutasi',   label:'Riwayat Tarik/Tambah', icon:'&#128337;'},
+      {key:'bku',             label:'Buku Kas Umum',        icon:'&#128218;'},
+      {key:'laporan',         label:'Laporan Bulanan',      icon:'&#128202;'},
+      {key:'pendapatan',      label:'Pendapatan Pondok',    icon:'&#128180;'},
+      {key:'anggaran',        label:'Anggaran Kegiatan',    icon:'&#127919;'},
+      {key:'spp',             label:'SPP & Tunggakan',      icon:'&#128179;'},
+      {key:'persetujuan',     label:'Persetujuan Saldo',    icon:'&#9989;'},
+      {key:'pengaturan',      label:'Pengaturan Kantin',    icon:'&#9881;&#65039;'},
+      {key:'tarif',           label:'Kelola Tarif',         icon:'&#128204;'},
+      {key:'kategori',        label:'Kelola Kategori',      icon:'&#127991;'}
     ],
     'PemilikBarang': [
       {key:'kasir',           label:'Kasir (Jual)',         icon:'&#128717;'},
@@ -1047,6 +1200,7 @@
       {key:'riwsaldo',        label:'Riwayat Saldo',       icon:'&#128337;'}
     ],
     'PembinaPutra': [
+      {key:'tugasharian',      label:'Tugas Harian',         icon:'&#9989;'},
       {key:'absen_harian',     label:'Absen Harian Putra',   icon:'&#128104;'},
       {key:'rekap_harian',     label:'Rekap Kehadiran',      icon:'&#128202;'},
       {key:'perizinan',        label:'Perizinan Santri',     icon:'&#128196;'},
@@ -1054,6 +1208,7 @@
       {key:'profilsaya',       label:'Profil Saya',          icon:'&#128100;'},
     ],
     'PembinaPutri': [
+      {key:'tugasharian',      label:'Tugas Harian',         icon:'&#9989;'},
       {key:'absen_harian',     label:'Absen Harian Putri',   icon:'&#128105;'},
       {key:'rekap_harian',     label:'Rekap Kehadiran',      icon:'&#128202;'},
       {key:'perizinan',        label:'Perizinan Santri',     icon:'&#128196;'},
@@ -1061,6 +1216,7 @@
       {key:'profilsaya',       label:'Profil Saya',          icon:'&#128100;'},
     ],
     'Pembina': [
+      {key:'tugasharian',      label:'Tugas Harian',         icon:'&#9989;'},
       {key:'absen_harian',     label:'Absen Harian',         icon:'&#128203;'},
       {key:'rekap_harian',     label:'Rekap Kehadiran',      icon:'&#128202;'},
       {key:'perizinan',        label:'Perizinan Santri',     icon:'&#128196;'},
@@ -1071,7 +1227,9 @@
       {key:'adminpenuh',      label:'Dashboard Admin',     icon:'&#9881;&#65039;'},
       {key:'raporkelas',      label:'Rapor Santri',        icon:'&#128203;'},
       {key:'rekaphalaqoh',    label:'Rekap Halaqoh',       icon:'&#128218;'},
-      {key:'rekapjurnal',     label:'Rekap Jurnal Guru',   icon:'&#128221;'}
+      {key:'rekapjurnal',     label:'Rekap Jurnal Guru',   icon:'&#128221;'},
+      {key:'kelolatugas',     label:'Tugas Pembina',       icon:'&#9989;'},
+      {key:'rekaptugas',      label:'Rekap Tugas Pembina', icon:'&#128202;'}
     ],
     'Mudir': [
       {key:'adminpenuh',      label:'Dashboard Mudir',     icon:'&#9881;&#65039;'},
@@ -1123,10 +1281,13 @@
         pembinaPerizinan(gender);
       },
       catatpelanggaran:function(){ renderFormCatatPelanggaran(STATE._contentId||'da-content'); },
+      tugasharian:function(){ pembinaTugasHarian(); },
       // Admin/Mudir (kalau multi-role)
       adminpenuh:function(){ dashboardAdmin(); },
       raporkelas:adminRaporKelas, kelompokpapel:adminKelompokMapel,
       rekaphalaqoh:adminRekapHalaqoh, rekapjurnal:adminRekapJurnal,
+      rekaptugas:function(){ adminRekapTugasPembina(); },
+      kelolatugas:function(){ adminKelolaTugasPembina(); },
     };
     return m;
   }
@@ -2588,7 +2749,7 @@
     var jmlHadir=0, jmlSakit=0, jmlIzin=0, jmlAlpa=0;
     santriRows.forEach(function(row){
       var st=row.querySelector('.statusSelect').value;
-      if(st==='Hadir')jmlHadir++;else if(st==='Sakit')jmlSakit++;else if(st==='Izin')jmlIzin++;else jmlAlpa++;
+      if(st==='Hadir')jmlHadir++;else if(st==='Sakit')jmlSakit++;else if(st==='Izin'||st==='Izin Pulang')jmlIzin++;else jmlAlpa++;
     });
     var win = window.open('','_blank');
     win.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Rekap Sesi</title>' +
@@ -2795,6 +2956,8 @@
         '<div><label class="muted">Sampai Tanggal</label><input type="date" id="'+containerId+'_trxAkhir"></div></div>' +
         '<button class="small" id="'+containerId+'_btnTrx">Tampilkan Riwayat Transaksi</button>' +
         '<div id="'+containerId+'_trxTable"></div></div>') : '';
+      var kartuProgresHafalanHtml = opts.sudahAdaKartuHafalan ? '' :
+        '<div class="card"><h3>Progres Hafalan (Total Juz Selesai)</h3><div id="'+containerId+'_progresHafalan">Memuat...</div></div>';
       container.innerHTML =
         '<div class="card"><h3>Kehadiran & Nilai Sikap</h3>' +
         (daftarTA.length>1 ? ('<label class="muted">Tahun Ajaran</label><select id="'+containerId+'_ta">' +
@@ -2803,7 +2966,7 @@
         '<div class="card"><h3>Rekap Kehadiran Halaqoh</h3>' +
         warnBox('Dihitung dari jenis hafalan yang dicatat pengampu: Sabaq/Sabqi/Manzil/Murojaah/Tahsin/Tidak Setor = Hadir. Izin/Sakit/Ghaib sesuai keterangan itu.') +
         '<div id="'+containerId+'_rekapHalaqoh">Memuat...</div></div>' +
-        '<div class="card"><h3>Progres Hafalan (Total Juz Selesai)</h3><div id="'+containerId+'_progresHafalan">Memuat...</div></div>' +
+        kartuProgresHafalanHtml +
         '<div class="card"><h3>Riwayat Catatan Hafalan</h3>' +
         '<div class="grid2"><div><label class="muted">Bulan</label><select id="'+containerId+'_bulan">' +
           [['1','Januari'],['2','Februari'],['3','Maret'],['4','April'],['5','Mei'],['6','Juni'],['7','Juli'],['8','Agustus'],['9','September'],['10','Oktober'],['11','November'],['12','Desember']]
@@ -3206,32 +3369,36 @@
         var halAwalInput = row.querySelector('.halamanAwalInput');
         var halAkhirInput = row.querySelector('.halamanAkhirInput');
 
-        // Hitung juz berdasarkan ayat awal
+        // Juz -- selalu PASTI (dihitung dari batas juz resmi)
         if (ayatAwal) {
           var juz = hitungJuzDariAyat(surah, ayatAwal);
-          if (juz) {
-            juzInput.value = juz;
-            juzInput.style.color = '#0d9488';
-          }
+          if (juz) { juzInput.value = juz; juzInput.style.color = '#0d9488'; }
         }
-        // Hitung halaman berdasarkan ayat awal dan akhir
+        // Halaman -- dihitung dari tabel eksak 604 halaman Mushaf Madinah
         if (ayatAwal) {
-          var halAwal = hitungHalamanDariAyat(surah, ayatAwal);
-          if (halAwal) {
-            halAwalInput.value = halAwal;
+          var hA = hitungHalamanDariAyat(surah, ayatAwal);
+          if (hA) {
+            halAwalInput.value = hA;
             halAwalInput.style.color = '#0d9488';
+            halAwalInput.title = 'Halaman Mushaf Madinah (604 halaman)';
           }
         }
         if (ayatAkhir) {
-          var halAkhir = hitungHalamanDariAyat(surah, ayatAkhir);
-          if (halAkhir) {
-            halAkhirInput.value = halAkhir;
+          var hZ = hitungHalamanDariAyat(surah, ayatAkhir);
+          if (hZ) {
+            halAkhirInput.value = hZ;
             halAkhirInput.style.color = '#0d9488';
+            halAkhirInput.title = 'Halaman Mushaf Madinah (604 halaman)';
           }
         }
-        // Kalau halaman awal dan akhir sama, biarkan saja (1 halaman)
-        // Kalau tidak ada surah yang cocok, biarkan input kosong untuk diisi manual
-        // surah dipilih dari select -- selalu valid
+        var nota = row.querySelector('.notaHalaman');
+        if (!nota) {
+          nota = document.createElement('div');
+          nota.className = 'notaHalaman';
+          nota.style.cssText = 'font-size:10.5px;margin-top:2px';
+          if (halAkhirInput && halAkhirInput.parentNode) halAkhirInput.parentNode.appendChild(nota);
+        }
+        nota.innerHTML = '<span style="color:#0d9488">&#10003; Juz &amp; halaman terisi otomatis (Mushaf Madinah 604 hal).</span>';
       }
 
       wrap.querySelectorAll('.santriRowHafalan').forEach(function(row){
@@ -3628,7 +3795,60 @@
     modal.querySelector('#ehJenis').onchange = togglePanel;
     modal.querySelector('#ehMode').onchange = togglePanel;
     togglePanel();
-  }
+
+    // Auto-isi Juz dan Halaman saat surah/ayat diubah di mode Per Ayat
+    function autoIsiEditModal(){
+      var surah = modal.querySelector('#ehSurah').value.trim();
+      var ayatAwal = modal.querySelector('#ehAyatAwal').value;
+      var ayatAkhir = modal.querySelector('#ehAyatAkhir').value;
+      if (!surah) return;
+      // Juz otomatis dari ayat awal
+      if (ayatAwal) {
+        var juz = hitungJuzDariAyat(surah, Number(ayatAwal));
+        if (juz) {
+          modal.querySelector('#ehJuz').value = juz;
+        }
+      }
+      // Halaman dari otomatis -- tabel eksak 604 halaman Mushaf Madinah
+      if (ayatAwal) {
+        var hA = hitungHalamanDariAyat(surah, Number(ayatAwal));
+        if (hA) {
+          var el = modal.querySelector('#ehHalAwal');
+          el.value = hA;
+          el.style.color = '#0d9488';
+          el.title = 'Halaman Mushaf Madinah (604 halaman)';
+        }
+      }
+      // Halaman sampai otomatis
+      if (ayatAkhir) {
+        var hZ = hitungHalamanDariAyat(surah, Number(ayatAkhir));
+        if (hZ) {
+          var el2 = modal.querySelector('#ehHalAkhir');
+          el2.value = hZ;
+          el2.style.color = '#0d9488';
+          el2.title = 'Halaman Mushaf Madinah (604 halaman)';
+        }
+      }
+      // Nota kecil di bawah kolom halaman
+      var nota = modal.querySelector('#ehNotaHalaman');
+      if (!nota) {
+        nota = document.createElement('div');
+        nota.id = 'ehNotaHalaman';
+        nota.style.cssText = 'font-size:10.5px;margin-top:3px';
+        var panel = modal.querySelector('#ehPanelAyat');
+        if (panel) panel.appendChild(nota);
+      }
+      nota.innerHTML = '<span style="color:#0d9488">&#10003; Juz &amp; halaman terisi otomatis (Mushaf Madinah 604 hal).</span>';
+    }
+    // Pasang listener ke surah, ayat dari, ayat sampai
+    var ehSurahEl = modal.querySelector('#ehSurah');
+    var ehAyatAwalEl = modal.querySelector('#ehAyatAwal');
+    var ehAyatAkhirEl = modal.querySelector('#ehAyatAkhir');
+    if (ehSurahEl)   ehSurahEl.addEventListener('input', autoIsiEditModal);
+    if (ehSurahEl)   ehSurahEl.addEventListener('change', autoIsiEditModal);
+    if (ehAyatAwalEl) ehAyatAwalEl.addEventListener('input', autoIsiEditModal);
+    if (ehAyatAkhirEl) ehAyatAkhirEl.addEventListener('input', autoIsiEditModal);
+  } // end bukaEditHafalan
 
   // ---- Rekap Absensi per Santri (dilihat Guru) ----
   function guruRekapAbsensi(){
@@ -4108,39 +4328,177 @@
     Promise.all([api('getMapelGuru', {pengampu: STATE.user.nama}), api('getSemuaSantri', {})]).then(function(hasil){
       var daftarMapel = hasil[0].ok ? hasil[0].data.map(function(m){return m.mapel;}) : [];
       var daftarSantri = hasil[1].ok ? hasil[1].data : [];
-      c.innerHTML = '<div class="card"><div class="grid2">' +
+      c.innerHTML = '<div class="card"><h3>&#128203; Riwayat Nilai</h3>' +
+        '<div class="grid2">' +
         '<div>' + fieldAutocomplete('filMapelN','Filter Mapel', daftarMapel, '', 'kosongkan utk semua') + '</div>' +
         '<div>' + fieldAutocomplete('filNisnN','Filter Santri', daftarSantri.map(labelSantri), '', 'kosongkan utk semua') + '</div></div>' +
-        '<button id="btnCariRiwayatN">Cari</button><div id="riwayatNTable"></div></div>';
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">' +
+        '<button id="btnCariRiwayatN">Cari</button>' +
+        '<button class="secondary" id="btnModeList">Mode List</button>' +
+        '<button class="secondary" id="btnExcelRN">📄 Export Excel</button>' +
+        '</div>' +
+        '<div id="riwayatNTable" style="margin-top:12px"></div></div>';
+
+      var lastData = [];
+      var modeTampilan = 'pivot'; // 'pivot' | 'list'
+
       function cari(){
         if (!setHtmlSafe('riwayatNTable', 'Memuat...')) return;
         var rawNisn = document.getElementById('filNisnN') ? document.getElementById('filNisnN').value : '';
         var nisnResolved = rawNisn ? (resolveSantriNisn(rawNisn, daftarSantri) || rawNisn) : '';
-        api('getRiwayatNilai', {pengajar: STATE.user.nama, mapel: document.getElementById('filMapelN') ? document.getElementById('filMapelN').value : '', nisn: nisnResolved})
+        var mapelFilter = document.getElementById('filMapelN') ? document.getElementById('filMapelN').value : '';
+        api('getRiwayatNilai', {pengajar: STATE.user.nama, mapel: mapelFilter, nisn: nisnResolved})
           .then(function(res){
             if (!document.getElementById('riwayatNTable')) return;
             if(!res.ok){ setHtmlSafe('riwayatNTable', errBox(res.error)); return; }
             if(!res.data.length){ setHtmlSafe('riwayatNTable', '<p class="muted">Belum ada data.</p>'); return; }
-            var html = '<table><tr><th>Tanggal</th><th>Mapel</th><th>Kelas</th><th>Nama</th><th>Jenis</th><th>Nilai</th><th>Aksi</th></tr>';
-            res.data.forEach(function(r){
-              html += '<tr><td>'+esc(r.tanggal)+'</td><td>'+esc(r.mapel)+'</td><td>'+esc(r.kelas)+'</td><td>'+esc(r.nama)+'</td><td>'+esc(r.jenisNilai)+'</td><td>'+esc(r.nilai)+'</td>' +
-                '<td><button class="small btnEditN" data-row="'+r.rowIndex+'" data-nilai="'+esc(r.nilai)+'">Edit</button> <button class="small danger btnHapusN" data-row="'+r.rowIndex+'">Hapus</button></td></tr>';
-            });
-            html += '</table>';
-            if (!setHtmlSafe('riwayatNTable', html)) return;
-            document.querySelectorAll('.btnEditN').forEach(function(btn){
-              btn.onclick = function(){
-                openModal('Edit Nilai', fieldText('editNilai','Nilai', btn.dataset.nilai), function(modal){
-                  return api('updateNilai', {rowIndex:Number(btn.dataset.row), nilai: modal.querySelector('#editNilai').value}).then(cari);
-                });
-              };
-            });
-            document.querySelectorAll('.btnHapusN').forEach(function(btn){
-              btn.onclick = function(){ if(!confirm('Hapus data nilai ini?')) return; api('deleteNilai', {rowIndex:Number(btn.dataset.row)}).then(cari); };
-            });
+            lastData = res.data;
+            renderTable();
           });
       }
+
+      function renderTable(){
+        if (modeTampilan === 'list') renderModeList();
+        else renderModePivot();
+      }
+
+      // Format tabel berbaris: setiap baris = 1 nilai (untuk edit/hapus per baris)
+      function renderModeList(){
+        var html = '<div style="overflow-x:auto"><table><tr>' +
+          '<th>Tanggal</th><th>Mapel</th><th>Kelas</th><th>Nama</th><th>Jenis</th><th>Nilai</th><th>Aksi</th></tr>';
+        lastData.forEach(function(r){
+          html += '<tr><td>'+esc(r.tanggal)+'</td><td>'+esc(r.mapel)+'</td><td>'+esc(r.kelas)+'</td>' +
+            '<td>'+esc(r.nama)+'</td><td>'+esc(r.jenisNilai)+'</td><td><b>'+esc(r.nilai)+'</b></td>' +
+            '<td><button class="small btnEditN" data-row="'+r.rowIndex+'" data-nilai="'+esc(r.nilai)+'">Edit</button> ' +
+            '<button class="small danger btnHapusN" data-row="'+r.rowIndex+'">Hapus</button></td></tr>';
+        });
+        html += '</table></div>';
+        if (!setHtmlSafe('riwayatNTable', html)) return;
+        bindEditHapus();
+      }
+
+      // Format pivot: baris per santri per mapel, kolom Tugas 1, Tugas 2, ...
+      function renderModePivot(){
+        // Kelompokkan: key = mapel+kelas+nisn
+        var group = {};
+        lastData.forEach(function(r){
+          var key = r.mapel + '|' + r.kelas + '|' + r.nisn;
+          if (!group[key]) {
+            group[key] = {mapel:r.mapel, kelas:r.kelas, nisn:r.nisn, nama:r.nama,
+                          tugas:[], keterampilan:[], uts:'', uas:''};
+          }
+          var g = group[key];
+          if (r.jenisNilai === 'Tugas') g.tugas.push({nilai:r.nilai, rowIndex:r.rowIndex, tanggal:r.tanggal});
+          else if (r.jenisNilai === 'Keterampilan') g.keterampilan.push({nilai:r.nilai, rowIndex:r.rowIndex, tanggal:r.tanggal});
+          else if (r.jenisNilai === 'UTS') g.uts = {nilai:r.nilai, rowIndex:r.rowIndex};
+          else if (r.jenisNilai === 'UAS') g.uas = {nilai:r.nilai, rowIndex:r.rowIndex};
+        });
+        // Urutkan tugas & keterampilan per tanggal (paling lama = Tugas 1)
+        Object.values(group).forEach(function(g){
+          g.tugas.sort(function(a,b){return String(a.tanggal).localeCompare(String(b.tanggal));});
+          g.keterampilan.sort(function(a,b){return String(a.tanggal).localeCompare(String(b.tanggal));});
+        });
+
+        // Kelompokkan per mapel+kelas (tabel terpisah per mapel+kelas)
+        var perMapel = {};
+        Object.values(group).forEach(function(g){
+          var mk = g.mapel + ' — ' + g.kelas;
+          if (!perMapel[mk]) perMapel[mk] = [];
+          perMapel[mk].push(g);
+        });
+
+        var htmlAll = '';
+        Object.keys(perMapel).sort().forEach(function(mk){
+          var rows = perMapel[mk].sort(function(a,b){return a.nama.localeCompare(b.nama,'id');});
+          var maxT = Math.max.apply(null, rows.map(function(r){return r.tugas.length;}).concat([0]));
+          var maxK = Math.max.apply(null, rows.map(function(r){return r.keterampilan.length;}).concat([0]));
+
+          htmlAll += '<div style="margin-bottom:20px">' +
+            '<h4 style="margin:8px 0;color:#0d9488">'+esc(mk)+'</h4>' +
+            '<div style="overflow-x:auto"><table style="font-size:12px;border-collapse:collapse;min-width:600px">' +
+            '<thead><tr style="background:#0d9488;color:#fff">' +
+            '<th style="padding:6px 8px;text-align:center;width:36px">No</th>' +
+            '<th style="padding:6px 8px;text-align:left">Nama Santri</th>';
+          for (var i=1; i<=maxT; i++) htmlAll += '<th style="padding:6px 8px;text-align:center">Tugas '+i+'</th>';
+          htmlAll += '<th style="padding:6px 8px;text-align:center;background:#0f766e">Rata Tugas</th>';
+          htmlAll += '<th style="padding:6px 8px;text-align:center">UTS</th>';
+          htmlAll += '<th style="padding:6px 8px;text-align:center">UAS</th>';
+          for (var i=1; i<=maxK; i++) htmlAll += '<th style="padding:6px 8px;text-align:center">Ket '+i+'</th>';
+          htmlAll += '<th style="padding:6px 8px;text-align:center;background:#0f766e">Rata Ket</th>';
+          htmlAll += '</tr></thead><tbody>';
+
+          rows.forEach(function(r, idx){
+            var rataT = r.tugas.length ? Math.round(r.tugas.reduce(function(a,b){return a+Number(b.nilai||0);},0)/r.tugas.length) : '';
+            var rataK = r.keterampilan.length ? Math.round(r.keterampilan.reduce(function(a,b){return a+Number(b.nilai||0);},0)/r.keterampilan.length) : '';
+            htmlAll += '<tr style="background:'+(idx%2===0?'#fff':'#f8fafc')+'">' +
+              '<td style="padding:5px 8px;text-align:center;color:#94a3b8">'+(idx+1)+'</td>' +
+              '<td style="padding:5px 8px;font-weight:600">'+esc(r.nama)+'</td>';
+            for (var i=0; i<maxT; i++) {
+              var t = r.tugas[i];
+              htmlAll += '<td style="padding:5px 8px;text-align:center">'+
+                (t ? '<span class="editableNilai" data-row="'+t.rowIndex+'" data-nilai="'+esc(t.nilai)+'" style="cursor:pointer;color:#0d9488" title="Klik untuk edit">'+esc(t.nilai)+'</span>' : '-')+
+                '</td>';
+            }
+            htmlAll += '<td style="padding:5px 8px;text-align:center;font-weight:700;background:#f0fdfa;color:#0f766e">'+(rataT||'-')+'</td>';
+            htmlAll += '<td style="padding:5px 8px;text-align:center">'+(r.uts ? '<span class="editableNilai" data-row="'+r.uts.rowIndex+'" data-nilai="'+esc(r.uts.nilai)+'" style="cursor:pointer;color:#0d9488">'+esc(r.uts.nilai)+'</span>' : '-')+'</td>';
+            htmlAll += '<td style="padding:5px 8px;text-align:center">'+(r.uas ? '<span class="editableNilai" data-row="'+r.uas.rowIndex+'" data-nilai="'+esc(r.uas.nilai)+'" style="cursor:pointer;color:#0d9488">'+esc(r.uas.nilai)+'</span>' : '-')+'</td>';
+            for (var i=0; i<maxK; i++) {
+              var k = r.keterampilan[i];
+              htmlAll += '<td style="padding:5px 8px;text-align:center">'+
+                (k ? '<span class="editableNilai" data-row="'+k.rowIndex+'" data-nilai="'+esc(k.nilai)+'" style="cursor:pointer;color:#0d9488" title="Klik untuk edit">'+esc(k.nilai)+'</span>' : '-')+
+                '</td>';
+            }
+            htmlAll += '<td style="padding:5px 8px;text-align:center;font-weight:700;background:#f0fdfa;color:#0f766e">'+(rataK||'-')+'</td>';
+            htmlAll += '</tr>';
+          });
+          htmlAll += '</tbody></table></div></div>';
+        });
+
+        htmlAll += '<p class="faded" style="font-size:11px">💡 Klik nilai berwarna hijau untuk mengeditnya. Klik <b>Mode List</b> untuk melihat riwayat berbaris + tombol hapus.</p>';
+        if (!setHtmlSafe('riwayatNTable', htmlAll)) return;
+
+        // Bind click untuk edit inline
+        document.querySelectorAll('.editableNilai').forEach(function(el){
+          el.onclick = function(){
+            openModal('Edit Nilai', fieldText('editNilai','Nilai', el.dataset.nilai), function(modal){
+              return api('updateNilai', {rowIndex:Number(el.dataset.row), nilai: modal.querySelector('#editNilai').value}).then(cari);
+            });
+          };
+        });
+      }
+
+      function bindEditHapus(){
+        document.querySelectorAll('.btnEditN').forEach(function(btn){
+          btn.onclick = function(){
+            openModal('Edit Nilai', fieldText('editNilai','Nilai', btn.dataset.nilai), function(modal){
+              return api('updateNilai', {rowIndex:Number(btn.dataset.row), nilai: modal.querySelector('#editNilai').value}).then(cari);
+            });
+          };
+        });
+        document.querySelectorAll('.btnHapusN').forEach(function(btn){
+          btn.onclick = function(){ if(!confirm('Hapus data nilai ini?')) return; api('deleteNilai', {rowIndex:Number(btn.dataset.row)}).then(cari); };
+        });
+      }
+
       document.getElementById('btnCariRiwayatN').onclick = cari;
+      document.getElementById('btnModeList').onclick = function(){
+        modeTampilan = (modeTampilan === 'list') ? 'pivot' : 'list';
+        this.textContent = modeTampilan === 'list' ? 'Mode Pivot' : 'Mode List';
+        renderTable();
+      };
+      document.getElementById('btnExcelRN').onclick = function(){
+        if (!lastData.length) { alert('Tidak ada data untuk diekspor.'); return; }
+        var bom = '\uFEFF';
+        var header = ['Tanggal','Mapel','Kelas','NISN','Nama','Jenis Nilai','Nilai'];
+        var rows = lastData.map(function(r){return [r.tanggal, r.mapel, r.kelas, r.nisn, r.nama, r.jenisNilai, r.nilai];});
+        var csv = bom + [header].concat(rows).map(function(r){
+          return r.map(function(v){ var s=String(v||''); return s.includes(',')?'"'+s+'"':s; }).join(',');
+        }).join('\n');
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+        a.download = 'Riwayat_Nilai_'+todayStr()+'.csv';
+        a.click();
+      };
       cari();
     });
   }
@@ -4920,26 +5278,59 @@
         return;
       }
 
-      var thead = '<tr><th style="position:sticky;left:0;background:#f1f5f9">Nama</th>';
-      for (var m=1; m<=36; m++) thead += '<th>B'+m+'</th>';
+      // Header: 2 baris — baris atas kelompok "Tahun ke-1/2/3", baris bawah B1..B36 dengan tooltip bulan-tahun
+      // Karena setiap santri punya "B1" berbeda (tergantung tahun masuknya), header pakai label RELATIF.
+      var thead =
+        '<tr>'+
+          '<th rowspan="2" style="position:sticky;left:0;background:#f1f5f9;z-index:2;text-align:left;padding:6px 8px">Nama</th>'+
+          '<th rowspan="2" style="position:sticky;left:120px;background:#f1f5f9;z-index:2;padding:6px 8px;font-size:11px">Th. Masuk</th>'+
+          '<th colspan="12" style="background:#dbeafe;color:#1e40af;padding:4px;text-align:center">Tahun ke-1 (Juli - Juni)</th>'+
+          '<th colspan="12" style="background:#dcfce7;color:#166534;padding:4px;text-align:center">Tahun ke-2 (Juli - Juni)</th>'+
+          '<th colspan="12" style="background:#fef3c7;color:#854d0e;padding:4px;text-align:center">Tahun ke-3 (Juli - Juni)</th>'+
+        '</tr>'+
+        '<tr>';
+      // Baris kedua: label bulan singkat (Jul, Ags, ..., Jun) diulang 3x
+      var bulanUrut = ['Jul','Agu','Sep','Okt','Nov','Des','Jan','Feb','Mar','Apr','Mei','Jun'];
+      for (var t=0; t<3; t++) {
+        var bgTh = t===0?'#eff6ff':t===1?'#f0fdf4':'#fffbeb';
+        for (var bIdx=0; bIdx<12; bIdx++) {
+          var borderKanan = (bIdx===11 && t<2) ? ';border-right:2px solid #94a3b8' : '';
+          thead += '<th style="background:'+bgTh+';padding:4px 3px;font-size:11px;font-weight:600;color:#475569'+borderKanan+'">'+bulanUrut[bIdx]+'</th>';
+        }
+      }
       thead += '</tr>';
 
       var tbody = data.map(function(s){
         var due = bulanJatuhTempoSppFE(s.tahunMasuk);
-        var row = '<td style="position:sticky;left:0;background:#fff;text-align:left;white-space:nowrap;font-weight:600">'+esc(s.nama)+'</td>';
+        var row = '<td style="position:sticky;left:0;background:#fff;text-align:left;white-space:nowrap;font-weight:600;padding:6px 8px">'+esc(s.nama)+'</td>'+
+                  '<td style="position:sticky;left:120px;background:#fff;text-align:center;padding:6px 8px;font-size:11px;color:#64748b">'+esc(s.tahunMasuk)+'</td>';
         for (var m=1; m<=36; m++){
           var isFuture = m > due;
           var paid = !!s.months[m-1];
           var warna = isFuture ? '#94a3b8' : (paid ? '#16a34a' : '#d97706');
           var bg = isFuture ? '#f8fafc' : (paid ? '#eafaf0' : '#fff7ed');
-          var label = paid ? 'L' : (isFuture ? '-' : '&middot;');
+          var label = paid ? '✓' : (isFuture ? '·' : '○');
+          var borderKanan = ((m===12 || m===24) ? ';border-right:2px solid #94a3b8' : ';border:1px solid #e2e8f0');
           var clickAttr = isFuture ? '' : ' class="sppCell" data-nisn="'+esc(s.nisn)+'" data-bulan="'+m+'"';
-          row += '<td'+clickAttr+' style="cursor:'+(isFuture?'default':'pointer')+';color:'+warna+';background:'+bg+';font-weight:700;text-align:center;padding:6px 4px;border:1px solid #e2e8f0" title="'+esc(labelBulanSingkatSpp(m,s.tahunMasuk))+'">'+label+'</td>';
+          // Tooltip: nama santri + bulan konkret + status
+          var tooltipBulan = labelBulanSingkatSpp(m, s.tahunMasuk);
+          var tooltipStatus = paid ? 'LUNAS' : (isFuture ? 'Belum jatuh tempo' : 'BELUM BAYAR — klik untuk tandai lunas');
+          var tooltip = s.nama + ' — ' + tooltipBulan + '\n' + tooltipStatus;
+          row += '<td'+clickAttr+' style="cursor:'+(isFuture?'default':'pointer')+';color:'+warna+';background:'+bg+';font-weight:700;text-align:center;padding:6px 4px'+borderKanan+'" title="'+esc(tooltip)+'">'+label+'</td>';
         }
         return '<tr>'+row+'</tr>';
       }).join('');
 
-      document.getElementById('sppTableWrap').innerHTML = '<table style="border-collapse:collapse;font-size:12px"><thead>'+thead+'</thead><tbody>'+tbody+'</tbody></table>';
+      document.getElementById('sppTableWrap').innerHTML =
+        '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:8px;font-size:12px">'+
+          '<b>💡 Cara baca:</b> Setiap santri punya "Tahun ke-1" mulai dari <b>Juli tahun masuknya</b> (bukan Januari). '+
+          'Contoh santri masuk 2024 → Tahun ke-1 = Juli 2024 - Juni 2025, Tahun ke-2 = Juli 2025 - Juni 2026, dst. '+
+          '<b>Hover</b> di setiap kotak untuk lihat bulan konkret. '+
+          '<span style="color:#16a34a;font-weight:700">✓</span> = LUNAS, '+
+          '<span style="color:#d97706;font-weight:700">○</span> = belum bayar, '+
+          '<span style="color:#94a3b8;font-weight:700">·</span> = belum jatuh tempo.'+
+        '</div>'+
+        '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:12px;min-width:900px"><thead>'+thead+'</thead><tbody>'+tbody+'</tbody></table></div>';
 
       document.querySelectorAll('.sppCell').forEach(function(td){
         td.onclick = function(){
@@ -5026,7 +5417,9 @@
     var navItems = [
       {key:'dasbor',       label:'Dasbor Keuangan',      icon:'&#128200;'},
       {key:'transaksi',    label:'Catat Transaksi',       icon:'&#128221;'},
+      {key:'tambahsaldo',  label:'Tambah Saldo Santri',   icon:'&#128176;'},
       {key:'tarikkasir',   label:'Tarik Saldo Santri',    icon:'&#128717;'},
+      {key:'riwayatmutasi',label:'Riwayat Tarik/Tambah',  icon:'&#128337;'},
       {key:'bku',          label:'Buku Kas Umum',         icon:'&#128218;'},
       {key:'laporan',      label:'Laporan Bulanan',       icon:'&#128202;'},
       {key:'pendapatan',   label:'Pendapatan Pondok',     icon:'&#128180;'},
@@ -5038,7 +5431,10 @@
       {key:'kategori',     label:'Kelola Kategori',       icon:'&#127991;'}
     ];
     var map = {
-      dasbor:bendDasbor, transaksi:bendTransaksi, tarikkasir:bendTarikSaldoSantri,
+      dasbor:bendDasbor, transaksi:bendTransaksi,
+      tambahsaldo:bendTambahSaldoSantri,
+      tarikkasir:bendTarikSaldoSantri,
+      riwayatmutasi:bendRiwayatMutasiSaldo,
       bku:bendBKU, laporan:bendLaporan, pendapatan:bendPendapatanPondok,
       anggaran:bendAnggaran,
       spp:function(){ renderSppSantri('db-content'); },
@@ -5129,6 +5525,166 @@
   }
 
   // ---- PENDAPATAN PONDOK DARI KANTIN ----
+  // ---- TAMBAH SALDO SANTRI LANGSUNG (oleh Bendahara, tanpa pengajuan) ----
+  // ---- Bendahara: Riwayat Tarik & Tambah Saldo Semua Santri ----
+  function bendRiwayatMutasiSaldo(){
+    var c = getContentEl();
+    c.innerHTML = '<div class="card"><h3>💰 Riwayat Tarik & Tambah Saldo Santri</h3>' +
+      warnBox('Menampilkan semua transaksi penambahan dan penarikan saldo, dari semua santri.') +
+      '<div class="grid2" style="margin-bottom:8px">' +
+      '<div><label class="muted">Dari Tanggal</label><input type="date" id="bmsDari"></div>' +
+      '<div><label class="muted">Sampai Tanggal</label><input type="date" id="bmsSampai"></div></div>' +
+      '<div style="margin-bottom:8px"><label class="muted">Filter Santri (nama/NISN, kosongkan = semua)</label>' +
+      '<input id="bmsNama" placeholder="Nama santri..." style="width:100%"></div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">' +
+      '<button id="btnCariBMS">🔍 Cari</button>' +
+      '<button class="secondary" id="btnExportBMS">📄 Export Excel</button></div>' +
+      '<div id="bmsTable">Silakan klik Cari untuk menampilkan data.</div></div>';
+
+    var lastData = [];
+
+    function muat(){
+      document.getElementById('bmsTable').innerHTML = 'Memuat...';
+      var tglMulai = document.getElementById('bmsDari').value;
+      var tglAkhir = document.getElementById('bmsSampai').value;
+      var namaFilter = document.getElementById('bmsNama').value.trim().toLowerCase();
+
+      // Ambil dari TransaksiKantin langsung via getAllTransaksiSantri dengan filter kategori
+      api('getRiwayatMutasiSaldoAdmin', {tglMulai:tglMulai, tglAkhir:tglAkhir}).then(function(res){
+        if (!document.getElementById('bmsTable')) return;
+        if (!res.ok){ document.getElementById('bmsTable').innerHTML = errBox(res.error); return; }
+        var data = res.data;
+        if (namaFilter) data = data.filter(function(r){ return r.namaSantri.toLowerCase().indexOf(namaFilter) !== -1 || r.nisn.indexOf(namaFilter) !== -1; });
+        lastData = data;
+        if (!data.length){ document.getElementById('bmsTable').innerHTML = '<p class="muted">Tidak ada data pada filter ini.</p>'; return; }
+
+        var totalTambah = data.filter(function(r){return r.kategori==='Top Up Saldo';}).reduce(function(a,r){return a+r.nominal;},0);
+        var totalTarik  = data.filter(function(r){return r.kategori==='Penarikan';}).reduce(function(a,r){return a+r.nominal;},0);
+
+        var html = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">' +
+          '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 14px;font-size:13px;flex:1">💰 Total Tambah: <b style="color:#16a34a">+'+rupiah(totalTambah)+'</b></div>' +
+          '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 14px;font-size:13px;flex:1">🏧 Total Tarik: <b style="color:#dc2626">-'+rupiah(totalTarik)+'</b></div>' +
+          '</div>' +
+          '<div style="overflow-x:auto"><table style="font-size:12px">' +
+          '<tr><th>Tanggal</th><th>Santri</th><th>Jenis</th><th>Keterangan</th><th>Dicatat Oleh</th>' +
+          '<th style="text-align:right">Nominal</th><th style="text-align:right">Saldo Sebelum</th>' +
+          '<th style="text-align:right;background:#f0fdf4">Sisa Saldo</th></tr>';
+        data.forEach(function(r){
+          var isTopUp = r.kategori==='Top Up Saldo';
+          var warna = isTopUp ? '#16a34a' : '#dc2626';
+          var prefix = isTopUp ? '+' : '-';
+          var ikon = isTopUp ? '💰' : '🏧';
+          html += '<tr>' +
+            '<td style="white-space:nowrap">'+esc(r.tanggal)+'<br><span class="muted" style="font-size:10px">'+esc(r.waktu)+'</span></td>' +
+            '<td><b>'+esc(r.namaSantri)+'</b><br><span class="muted" style="font-size:10px">'+esc(r.nisn)+'</span></td>' +
+            '<td style="color:'+warna+';font-weight:600;white-space:nowrap">'+ikon+' '+(isTopUp?'Tambah':'Tarik')+'</td>' +
+            '<td style="font-size:11px;color:#475569">'+esc(r.keterangan||'-')+'</td>' +
+            '<td style="font-size:11px;color:#94a3b8">'+esc(r.dicatatOleh||'-')+'</td>' +
+            '<td style="color:'+warna+';font-weight:700;text-align:right;white-space:nowrap">'+prefix+rupiah(r.nominal)+'</td>' +
+            '<td style="text-align:right;color:#64748b;white-space:nowrap">'+rupiah(r.saldoSebelum)+'</td>' +
+            '<td style="text-align:right;font-weight:800;color:#0f766e;background:#f0fdf4;white-space:nowrap">'+rupiah(r.saldoSekarang)+'</td>' +
+            '</tr>';
+        });
+        html += '</table></div>';
+        document.getElementById('bmsTable').innerHTML = html;
+      });
+    }
+
+    document.getElementById('btnCariBMS').onclick = muat;
+    document.getElementById('btnExportBMS').onclick = function(){
+      if (!lastData.length){ alert('Tidak ada data.'); return; }
+      var bom = '\uFEFF';
+      var header = ['Tanggal','Waktu','NISN','Nama Santri','Jenis','Keterangan','Dicatat Oleh','Nominal','Saldo Sebelum','Sisa Saldo'];
+      var rows = lastData.map(function(r){
+        return [r.tanggal, r.waktu, r.nisn, r.namaSantri,
+                r.kategori==='Top Up Saldo'?'Tambah Saldo':'Tarik Saldo',
+                r.keterangan||'', r.dicatatOleh||'', r.nominal, r.saldoSebelum, r.saldoSekarang];
+      });
+      var csv = bom+[header].concat(rows).map(function(r){
+        return r.map(function(v){var s=String(v||'');return s.includes(',')?'"'+s+'"':s;}).join(',');
+      }).join('\n');
+      var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+      a.download='RiwayatMutasiSaldo_'+todayStr()+'.csv'; a.click();
+    };
+  }
+
+  function bendTambahSaldoSantri(){
+    var c = getContentEl();
+    c.innerHTML = '<p>Memuat...</p>';
+    api('getSantriUntukTransaksiKantin', {}).then(function(res){
+      if (!res.ok){ c.innerHTML = errBox(res.error); return; }
+      var daftar = res.data;
+      c.innerHTML = '<div class="card"><h3>&#128176; Tambah Saldo Santri</h3>' +
+        warnBox('Bendahara dapat langsung menambah saldo santri tanpa perlu menunggu pengajuan dari orang tua. Notifikasi WA otomatis terkirim ke orang tua setelah saldo ditambahkan.') +
+        fieldAutocomplete('tsaNama','Nama Santri', daftar.map(function(s){return s.nisn+' - '+s.nama;}), '', 'Ketik nama/NISN santri...') +
+        '<div id="tsaInfoSaldo" style="margin:6px 0;padding:8px 12px;background:#f0fdf4;border-radius:8px;font-size:13px;display:none"></div>' +
+        fieldText('tsaNominal','Nominal Tambah Saldo (Rp)', '') +
+        '<label>Keterangan</label>' +
+        '<select id="tsaKetDropdown">' +
+        '<option value="Top-Up Saldo Kantin">Top-Up Saldo Kantin</option>' +
+        '<option value="Kiriman Orang Tua">Kiriman Orang Tua</option>' +
+        '<option value="Beasiswa / Bantuan Pondok">Beasiswa / Bantuan Pondok</option>' +
+        '<option value="Koreksi Saldo">Koreksi Saldo</option>' +
+        '<option value="Lainnya">Tulis Sendiri...</option>' +
+        '</select>' +
+        '<input id="tsaKetTulis" placeholder="Tulis keterangan..." style="display:none;margin-top:6px">' +
+        '<button id="btnTambahSaldaBend" style="margin-top:12px">&#128176; Tambah Saldo</button>' +
+        '<div id="pesanTambahSaldo"></div></div>';
+
+      document.getElementById('tsaKetDropdown').onchange = function(){
+        document.getElementById('tsaKetTulis').style.display = this.value === 'Lainnya' ? 'block' : 'none';
+      };
+
+      // Tampil saldo saat santri dipilih
+      document.getElementById('tsaNama').oninput = function(){
+        var raw = this.value.trim();
+        var found = daftar.find(function(s){return (s.nisn+' - '+s.nama) === raw;});
+        var info = document.getElementById('tsaInfoSaldo');
+        if (found){
+          api('getSaldoSantriKantin', {nisn: found.nisn}).then(function(r){
+            if (!document.getElementById('tsaInfoSaldo')) return;
+            info.style.display = 'block';
+            info.innerHTML = r.ok ?
+              '&#128176; Saldo saat ini: <b>'+rupiah(r.data.saldo)+'</b>' +
+              (r.data.limit>0 ? ' &nbsp;|&nbsp; Limit harian: '+rupiah(r.data.limit) : '') :
+              '<span class="muted">Gagal memuat saldo</span>';
+          });
+        } else {
+          info.style.display = 'none';
+          info.innerHTML = '';
+        }
+      };
+
+      document.getElementById('btnTambahSaldaBend').onclick = function(){
+        var raw = document.getElementById('tsaNama').value.trim();
+        var found = daftar.find(function(s){return (s.nisn+' - '+s.nama) === raw;});
+        if (!found){ document.getElementById('pesanTambahSaldo').innerHTML = errBox('Pilih santri dari daftar saran.'); return; }
+        var nominal = document.getElementById('tsaNominal').value.trim();
+        if (!nominal || Number(nominal) <= 0){ document.getElementById('pesanTambahSaldo').innerHTML = errBox('Isi nominal yang valid.'); return; }
+        var ketDropdown = document.getElementById('tsaKetDropdown').value;
+        var ket = ketDropdown === 'Lainnya' ? (document.getElementById('tsaKetTulis').value.trim() || 'Top-Up Manual') : ketDropdown;
+        var btn = document.getElementById('btnTambahSaldaBend');
+        loadingBtn(btn, 'Menyimpan...');
+        api('tambahSaldoSantriManual', {nisn: found.nisn, nominal: Number(nominal), keterangan: ket, oleh: STATE.user.nama}).then(function(r){
+          resetBtn(btn, '&#128176; Tambah Saldo');
+          if (!r.ok){ document.getElementById('pesanTambahSaldo').innerHTML = errBox(r.error); return; }
+          document.getElementById('pesanTambahSaldo').innerHTML =
+            '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;font-size:13px;color:#16a34a">' +
+            '&#10003; Saldo <b>'+esc(r.nama)+'</b> berhasil ditambah <b>'+rupiah(Number(nominal))+'</b>.<br>' +
+            'Saldo sebelum: '+rupiah(r.saldoSebelum)+' &nbsp;→&nbsp; Saldo baru: <b>'+rupiah(r.saldoBaru)+'</b>' +
+            (r.waKirim ? '<br><span style="font-size:11px;opacity:.8">&#10003; Notifikasi WA terkirim ke orang tua</span>' : '') +
+            '</div>';
+          // Reset form
+          document.getElementById('tsaNominal').value = '';
+          document.getElementById('tsaInfoSaldo').innerHTML = '&#128176; Saldo baru: <b>'+rupiah(r.saldoBaru)+'</b>';
+        }).catch(function(){
+          resetBtn(btn, '&#128176; Tambah Saldo');
+          document.getElementById('pesanTambahSaldo').innerHTML = errBox('Gagal menyimpan. Coba lagi.');
+        });
+      };
+    });
+  }
+
   function bendPendapatanPondok(){
     var c=getContentEl();
     var bt=bulanTahunSaatIni();
@@ -5863,14 +6419,30 @@
 
     document.getElementById('as-ganti-pin').innerHTML = '<div class="card"><h3>Ganti PIN Transaksi Saya</h3>' +
       warnBox('PIN ini terpisah dari PIN login akun orang tua -- hanya dipakai untuk konfirmasi belanja/cek akun di kantin.') +
+      '<label>PIN Transaksi Lama</label><input type="password" id="pinLamaSantri" placeholder="PIN yang sekarang dipakai">' +
       '<label>PIN Transaksi Baru</label><input type="password" id="pinBaruSantri" placeholder="PIN baru">' +
-      '<button id="btnSimpanPinSantri">Simpan PIN</button><div id="pesanPinSantri"></div></div>';
+      '<label>Ulangi PIN Baru</label><input type="password" id="pinUlangSantri" placeholder="Ketik PIN baru sekali lagi">' +
+      '<button id="btnSimpanPinSantri">Simpan PIN Baru</button><div id="pesanPinSantri"></div></div>';
     document.getElementById('btnSimpanPinSantri').onclick = function(){
-      var pinBaru = document.getElementById('pinBaruSantri').value.trim();
-      if (!pinBaru) { document.getElementById('pesanPinSantri').innerHTML = errBox('Isi PIN baru.'); return; }
-      api('gantiPinTransaksiSantri', {nisn:nisn, pinBaru:pinBaru}).then(function(res){
-        document.getElementById('pesanPinSantri').innerHTML = res.ok ? '<p class="muted">PIN berhasil diganti.</p>' : errBox(res.error);
-        document.getElementById('pinBaruSantri').value = '';
+      var pinLama  = document.getElementById('pinLamaSantri').value.trim();
+      var pinBaru  = document.getElementById('pinBaruSantri').value.trim();
+      var pinUlang = document.getElementById('pinUlangSantri').value.trim();
+      var pesan    = document.getElementById('pesanPinSantri');
+      if (!pinLama)  { pesan.innerHTML = errBox('Isi PIN lama terlebih dahulu.'); return; }
+      if (!pinBaru)  { pesan.innerHTML = errBox('Isi PIN baru.'); return; }
+      if (pinBaru !== pinUlang) { pesan.innerHTML = errBox('PIN baru dan ulangi PIN tidak sama.'); return; }
+      if (pinBaru === pinLama)  { pesan.innerHTML = errBox('PIN baru tidak boleh sama dengan PIN lama.'); return; }
+      // Validasi PIN lama dulu ke backend sebelum ganti
+      api('validasiPinTransaksiSantri', {nisn: nisn, pin: pinLama}).then(function(res){
+        if (!res.ok) { pesan.innerHTML = errBox('PIN lama salah: ' + res.error); return; }
+        api('gantiPinTransaksiSantri', {nisn: nisn, pinBaru: pinBaru}).then(function(res2){
+          if (res2.ok) {
+            pesan.innerHTML = '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px;color:#16a34a">&#10003; PIN berhasil diganti. Gunakan PIN baru saat belanja berikutnya.</div>';
+            document.getElementById('pinLamaSantri').value = '';
+            document.getElementById('pinBaruSantri').value = '';
+            document.getElementById('pinUlangSantri').value = '';
+          } else { pesan.innerHTML = errBox(res2.error); }
+        });
       });
     };
 
@@ -6040,7 +6612,10 @@
     });
   }
 
-  function muatKantinWali(nisn){
+  function muatKantinWali(nisn, opts){
+    opts = opts || {};
+    var izinTopUp = opts.izinTopUp !== false;
+    var izinGantiLimit = opts.izinGantiLimit !== false;
     var wrap = document.getElementById('dw-kantin');
     wrap.innerHTML = '<div class="card"><h3>Saldo Kantin</h3><p>Memuat...</p></div>';
     Promise.all([
@@ -6055,11 +6630,14 @@
       var html = '<div class="card"><h3>Saldo Kantin</h3>' +
         '<p style="font-size:28px;font-weight:800;color:#0d9488;margin:6px 0">'+rupiah(saldo)+'</p>' +
         (limit>0?'<p class="muted" style="font-size:12.5px">Limit harian: '+rupiah(limit)+'</p>':'')+
-        '<button id="btnTambahSaldoWali">+ Tambah Saldo</button><div id="pesanTambahSaldo"></div></div>' +
-        '<div class="card"><h3>Limit Belanja Harian</h3>' +
-        warnBox('Batasi berapa banyak anak Anda boleh belanja di kantin per hari. Isi 0 untuk tanpa batas.') +
-        '<label>Limit Harian (Rp)</label><input type="number" id="limitHarianWali" value="'+(limit>0?limit:'')+'" placeholder="0 = tanpa batas">' +
-        '<button id="btnSimpanLimit">Simpan Limit</button><div id="pesanLimit"></div></div>' +
+        (izinTopUp ? '<button id="btnTambahSaldoWali">+ Tambah Saldo</button><div id="pesanTambahSaldo"></div>' : '') +
+        '</div>' +
+        (izinGantiLimit ?
+          '<div class="card"><h3>Limit Belanja Harian</h3>' +
+          warnBox('Batasi berapa banyak anak Anda boleh belanja di kantin per hari. Isi 0 untuk tanpa batas.') +
+          '<label>Limit Harian (Rp)</label><input type="number" id="limitHarianWali" value="'+(limit>0?limit:'')+'" placeholder="0 = tanpa batas">' +
+          '<button id="btnSimpanLimit">Simpan Limit</button><div id="pesanLimit"></div></div>'
+          : '') +
         '<div class="card"><h3>5 Transaksi Terbaru</h3>' +
         (res5.ok && res5.data.length ?
           renderTabelTransaksiWali(res5.data) +
@@ -6069,12 +6647,15 @@
 
       wrap.innerHTML = html;
 
-      document.getElementById('btnSimpanLimit').onclick = function(){
-        var nilai = document.getElementById('limitHarianWali').value.trim();
-        api('setLimitHarianSantri', {nisn:nisn, limit: nilai||0}).then(function(res){
-          document.getElementById('pesanLimit').innerHTML = res.ok ? '<p class="muted">Tersimpan.</p>' : errBox(res.error);
-        });
-      };
+      var btnLimit = document.getElementById('btnSimpanLimit');
+      if (btnLimit) {
+        btnLimit.onclick = function(){
+          var nilai = document.getElementById('limitHarianWali').value.trim();
+          api('setLimitHarianSantri', {nisn:nisn, limit: nilai||0}).then(function(res){
+            document.getElementById('pesanLimit').innerHTML = res.ok ? '<p class="muted">Tersimpan.</p>' : errBox(res.error);
+          });
+        };
+      }
 
       var btnSemuaTrx = document.getElementById('btnLihatSemuaTrx');
       if (btnSemuaTrx) {
@@ -6118,19 +6699,85 @@
   }
 
   function renderTabelTransaksiWali(data){
-    return '<div style="overflow-x:auto"><table><tr><th>Tanggal</th><th>Keterangan</th><th>Nominal</th><th>Saldo</th></tr>' +
+    return '<div style="overflow-x:auto"><table>' +
+      '<tr><th>Tanggal</th><th>Keterangan</th><th style="text-align:right">Nominal</th><th style="text-align:right">Sisa Saldo</th></tr>' +
       data.map(function(r){
         var isTopUp = r.kategori==='Top Up Saldo';
         var isPenarikan = r.kategori==='Penarikan';
+        var isBelanja = !isTopUp && !isPenarikan;
         var warna = isTopUp ? '#16a34a' : '#dc2626';
         var prefix = isTopUp ? '+' : '-';
-        var label = isTopUp ? 'Top Up Saldo' : (isPenarikan ? r.keterangan : 'Belanja: '+r.keterangan);
+        var label = isTopUp
+          ? '💰 Tambah Saldo' + (r.keterangan ? ' — '+r.keterangan : '')
+          : isPenarikan
+          ? '🏧 Tarik Saldo' + (r.keterangan ? ' — '+r.keterangan : '')
+          : '🛒 ' + esc(r.keterangan||'Belanja');
+        var bgSaldo = isBelanja ? '#fff7ed' : (isTopUp ? '#f0fdf4' : '#fef2f2');
         return '<tr>' +
-          '<td style="font-size:11.5px;white-space:nowrap">'+esc(r.tanggal)+'<br><span class="muted">'+esc(r.waktu)+'</span></td>' +
-          '<td>'+esc(label)+'</td>' +
-          '<td style="color:'+warna+';font-weight:600;white-space:nowrap">'+prefix+rupiah(r.nominal)+'</td>' +
-          '<td style="white-space:nowrap">'+rupiah(r.saldoSekarang)+'</td></tr>';
+          '<td style="font-size:11.5px;white-space:nowrap;padding:6px 8px">' +
+            esc(r.tanggal)+'<br><span class="muted" style="font-size:10px">'+esc(r.waktu)+'</span>' +
+          '</td>' +
+          '<td style="padding:6px 8px">'+label+'</td>' +
+          '<td style="color:'+warna+';font-weight:700;text-align:right;white-space:nowrap;padding:6px 8px">'+prefix+rupiah(r.nominal)+'</td>' +
+          '<td style="text-align:right;white-space:nowrap;padding:6px 8px;background:'+bgSaldo+';font-weight:700;font-size:13px;color:#0f766e">'+rupiah(r.saldoSekarang)+'</td>' +
+          '</tr>';
       }).join('') + '</table></div>';
+  }
+
+  // ---- Riwayat Mutasi Saldo (Tarik & Tambah) di tab terpisah ----
+  function renderRiwayatMutasiSaldo(nisn, containerId){
+    var wrap = document.getElementById(containerId);
+    if (!wrap) return;
+    wrap.innerHTML = '<div class="card"><h3>💰 Riwayat Tarik & Tambah Saldo</h3><p class="muted">Semua transaksi penambahan dan penarikan saldo.</p><div id="mutasiSaldoTable">Memuat...</div></div>';
+
+    function muat(tglMulai, tglAkhir){
+      document.getElementById('mutasiSaldoTable').innerHTML = 'Memuat...';
+      api('getRiwayatMutasiSaldoSantri', {nisn: nisn, tglMulai: tglMulai||'', tglAkhir: tglAkhir||''}).then(function(res){
+        if (!document.getElementById('mutasiSaldoTable')) return;
+        if (!res.ok){ document.getElementById('mutasiSaldoTable').innerHTML = errBox(res.error); return; }
+        if (!res.data.length){
+          document.getElementById('mutasiSaldoTable').innerHTML = '<p class="muted">Belum ada riwayat tarik/tambah saldo.</p>'; return;
+        }
+        var html = '<div style="overflow-x:auto"><table>' +
+          '<tr><th>Tanggal</th><th>Jenis</th><th>Keterangan</th><th>Dicatat Oleh</th><th style="text-align:right">Nominal</th><th style="text-align:right">Saldo Sebelum</th><th style="text-align:right;background:#f0fdf4">Sisa Saldo</th></tr>';
+        res.data.forEach(function(r){
+          var isTopUp = r.kategori === 'Top Up Saldo';
+          var warna = isTopUp ? '#16a34a' : '#dc2626';
+          var prefix = isTopUp ? '+' : '-';
+          var ikon = isTopUp ? '💰' : '🏧';
+          var label = isTopUp ? 'Tambah Saldo' : 'Tarik Saldo';
+          html += '<tr>' +
+            '<td style="font-size:11.5px;white-space:nowrap">'+esc(r.tanggal)+'<br><span class="muted" style="font-size:10px">'+esc(r.waktu)+'</span></td>' +
+            '<td><span style="color:'+warna+';font-weight:600">'+ikon+' '+esc(label)+'</span></td>' +
+            '<td style="font-size:12px;color:#475569">'+esc(r.keterangan||'-')+'</td>' +
+            '<td style="font-size:11px;color:#94a3b8">'+esc(r.dicatatOleh||'-')+'</td>' +
+            '<td style="color:'+warna+';font-weight:700;text-align:right;white-space:nowrap">'+prefix+rupiah(r.nominal)+'</td>' +
+            '<td style="text-align:right;color:#64748b;font-size:12px;white-space:nowrap">'+rupiah(r.saldoSebelum)+'</td>' +
+            '<td style="text-align:right;font-weight:800;font-size:13px;color:#0f766e;background:#f0fdf4;white-space:nowrap">'+rupiah(r.saldoSekarang)+'</td>' +
+            '</tr>';
+        });
+        html += '</table></div>';
+        // Ringkasan
+        var totalTambah = res.data.filter(function(r){return r.kategori==='Top Up Saldo';}).reduce(function(a,r){return a+r.nominal;},0);
+        var totalTarik = res.data.filter(function(r){return r.kategori==='Penarikan';}).reduce(function(a,r){return a+r.nominal;},0);
+        html = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">' +
+          '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 14px;font-size:13px;flex:1">💰 Total Tambah: <b style="color:#16a34a">+'+rupiah(totalTambah)+'</b></div>' +
+          '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 14px;font-size:13px;flex:1">🏧 Total Tarik: <b style="color:#dc2626">-'+rupiah(totalTarik)+'</b></div>' +
+          '</div>' + html;
+        document.getElementById('mutasiSaldoTable').innerHTML = html;
+      });
+    }
+
+    // Tambah filter tanggal
+    var filterHtml = '<div class="grid2" style="margin-bottom:10px">' +
+      '<div><label class="muted">Dari Tanggal</label><input type="date" id="mutasiDari"></div>' +
+      '<div><label class="muted">Sampai Tanggal</label><input type="date" id="mutasiSampai"></div></div>' +
+      '<button id="btnCariMutasi" class="secondary" style="margin-bottom:10px">Cari</button>';
+    document.getElementById('mutasiSaldoTable').insertAdjacentHTML('beforebegin', filterHtml);
+    document.getElementById('btnCariMutasi').onclick = function(){
+      muat(document.getElementById('mutasiDari').value, document.getElementById('mutasiSampai').value);
+    };
+    muat();
   }
 
 
@@ -6921,6 +7568,7 @@
                  roles.indexOf('PembinaPutri')!==-1 ? 'Putri' : '';
     var labelG = gender==='Putra'?'Putra':gender==='Putri'?'Putri':'';
     var navItems = [
+      {key:'tugasharian',      label:'Tugas Harian',                        icon:'&#9989;'},
       {key:'absen_harian',     label:'Absen Harian'+(labelG?' '+labelG:''), icon:'&#128203;'},
       {key:'rekap_harian',     label:'Rekap Kehadiran',                     icon:'&#128202;'},
       {key:'perizinan',        label:'Perizinan Santri',                    icon:'&#128196;'},
@@ -6928,15 +7576,33 @@
       {key:'profilsaya',       label:'Profil Saya',                         icon:'&#128100;'}
     ];
     var map = {
+      tugasharian:  function(){ pembinaTugasHarian(); },
       absen_harian: function(){ pembinaAbsenHarian(gender); },
       rekap_harian: function(){ pembinaRekapHarian(gender); },
       perizinan:    function(){ pembinaPerizinan(gender); },
       catatpelanggaran: function(){ renderFormCatatPelanggaran('dpb-content'); },
       profilsaya:   guruProfilSaya,
     };
-    activeKey = activeKey && map[activeKey] ? activeKey : 'absen_harian';
+    activeKey = activeKey && map[activeKey] ? activeKey : 'tugasharian';
     renderSidebarShell({title:'Dashboard Pembina'+(labelG?' '+labelG:''), navItems:navItems, activeKey:activeKey, contentId:'dpb-content', onSelect:function(key){ map[key](); }});
     map[activeKey]();
+    // Widget progress tugas di sidebar (badge mini)
+    setTimeout(function(){
+      api('getTugasHariIni', {pembina: STATE.user.nama, tanggal: todayStr()}).then(function(res){
+        if (!res.ok || !res.total) return;
+        var badge = document.querySelector('[data-key="tugasharian"] .nav-badge');
+        if (!badge) {
+          var el = document.querySelector('[data-key="tugasharian"]');
+          if (el) {
+            var b = document.createElement('span');
+            b.className = 'nav-badge';
+            b.style.cssText = 'margin-left:auto;background:'+(res.persen===100?'#16a34a':'#f59e0b')+';color:#fff;border-radius:99px;padding:1px 7px;font-size:10px;font-weight:700';
+            b.textContent = res.selesai+'/'+res.total;
+            el.appendChild(b);
+          }
+        }
+      });
+    }, 600);
   }
 
   // ============================================================
@@ -7346,38 +8012,117 @@
   // REKAP HALAQOH DI ADMIN/MUDIR
   // ============================================================
 
-  function dashboardWali(){
-    render('<div id="dw-top"></div><div id="slideBarWrap"></div><div id="dw-ringkasan"></div><div id="dw-notif" class="card">Memuat notifikasi...</div><div id="dw-jadwal"></div><div id="dw-rekap"></div><div id="dw-hafalan"></div><div id="dw-rapor"></div><div id="dw-izin"></div><div id="dw-pelanggaran"></div><div id="dw-kantin"></div><div id="dw-kontak"></div>');
+  // Daftar NISN anak untuk akun wali ini. nisnAnakList (array, akun baru/diedit ulang)
+  // diutamakan; kalau belum ada (sesi lama sebelum fitur ini / belum login ulang),
+  // fallback ke nisnAnak tunggal supaya akun lama tidak error.
+  function daftarNisnAnakWali(){
+    if (STATE.user.nisnAnakList && STATE.user.nisnAnakList.length) return STATE.user.nisnAnakList;
+    return STATE.user.nisnAnak ? [STATE.user.nisnAnak] : [];
+  }
+
+  function dashboardWali(activeNisn){
+    var listAnak = daftarNisnAnakWali();
+    if (!activeNisn) activeNisn = STATE._activeAnakNisn || listAnak[0];
+    STATE._activeAnakNisn = activeNisn;
+
+    render('<div id="dw-top"></div><div id="dw-pilihanak"></div><div id="slideBarWrap"></div><div id="dw-ringkasan"></div><div id="dw-notif" class="card">Memuat notifikasi...</div><div id="dw-jadwal"></div><div id="dw-rekap"></div><div id="dw-hafalan"></div><div id="dw-rapor"></div><div id="dw-izin"></div><div id="dw-pelanggaran"></div><div id="dw-kantin"></div><div id="dw-mutasi-saldo"></div><div id="dw-kontak"></div>');
     document.getElementById('dw-top').innerHTML = topbar('Dashboard Wali Santri'); bindLogout();
     renderSlideBar('slideBarWrap');
-    var nisn = STATE.user.nisnAnak;
+
+    // Tab pilih anak -- hanya tampil kalau akun ini punya lebih dari 1 anak.
+    // Akun dengan 1 anak (mayoritas kasus saat ini) tampilannya identik seperti sebelumnya.
+    if (listAnak.length > 1) {
+      document.getElementById('dw-pilihanak').innerHTML = '<div class="card"><p class="muted">Memuat daftar anak...</p></div>';
+      api('getMasterData', {sheet:'Santri'}).then(function(resNama){
+        var namaMap = {};
+        if (resNama.ok) resNama.data.data.forEach(function(s){ namaMap[String(s.NISN)] = s.Nama; });
+        document.getElementById('dw-pilihanak').innerHTML =
+          '<div class="card" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+          '<b style="margin-right:4px">Pilih Anak:</b>' +
+          listAnak.map(function(n){
+            var aktifBtn = (n === activeNisn);
+            var nm = namaMap[String(n)] || n;
+            return '<button class="anakTabBtn" data-nisn="'+esc(n)+'" style="padding:8px 14px;border-radius:20px;cursor:pointer;font-weight:600;font-size:13px;border:1px solid '+(aktifBtn?'#0d9488':'#e2e8f0')+';background:'+(aktifBtn?'#0d9488':'#fff')+';color:'+(aktifBtn?'#fff':'#475569')+'">'+esc(nm)+'</button>';
+          }).join('') +
+          '</div>';
+        document.querySelectorAll('.anakTabBtn').forEach(function(btn){
+          btn.onclick = function(){ dashboardWali(btn.dataset.nisn); };
+        });
+      });
+    } else {
+      document.getElementById('dw-pilihanak').innerHTML = '';
+    }
+
+    var nisn = activeNisn;
     if(!nisn){ document.getElementById('dw-notif').innerHTML = warnBox('Akun ini belum terhubung ke data santri (NISN Anak kosong di RoleAkses).'); return; }
-    muatRingkasanWali(nisn);
-    muatRiwayatPelanggaranWali(nisn);
-    muatKantinWali(nisn);
-    renderIzinWaliSantri(nisn, 'dw-izin'); // tampilkan riwayat izin anak
-    renderProgressHafalanWali(nisn, 'dw-hafalan'); // tampilkan progress hafalan anak
 
-    api('getNotifikasiMingguan', {nisn:nisn}).then(function(res){
-      if(!res.ok){ document.getElementById('dw-notif').innerHTML = errBox(res.error); return; }
-      var d = res.data;
-      document.getElementById('dw-notif').innerHTML = '<h3>Rekap 7 Hari Terakhir ('+esc(d.periode)+')</h3>' +
-        '<p>Hadir: <b>'+(d.rekap.Hadir||0)+'</b> | Sakit: '+(d.rekap.Sakit||0)+' | Izin: '+(d.rekap.Izin||0)+' | Alpa: '+(d.rekap.Alpa||0)+'</p>';
-    });
+    // Baca pengaturan visibilitas dulu, lalu render hanya section yang diizinkan
+    var WALI_KEYS = ['WaliTampilRingkasan','WaliTampilJadwal','WaliTampilNotifAbsen','WaliTampilRekap',
+      'WaliTampilHafalan','WaliTampilRapor','WaliTampilIzin','WaliTampilPelanggaran',
+      'WaliTampilKantin','WaliTampilMutasiSaldo','WaliTampilKontak',
+      'WaliIzinAjukanTopUp','WaliIzinLihatNilai','WaliIzinGantiLimit'];
+    api('getPengaturanBatch', {keys: WALI_KEYS}).then(function(pwRes){
+      var pw = pwRes.ok ? pwRes.data : {};
+      function boleh(k){ return pw[k] !== false; }
 
-    document.getElementById('dw-jadwal').innerHTML = '<p>Memuat data anak...</p>';
-    api('getJadwalSantri', {nisn:nisn}).then(function(res){
-      if(!res.ok || res.data.error){ document.getElementById('dw-jadwal').innerHTML = errBox(res.data ? res.data.error : res.error); return; }
-      var d = res.data;
-      var infoRombel = d.belumMasukRombel ? warnBox('Santri ini belum dimasukkan ke rombel manapun oleh Admin.') : '';
-      var jadwalHtml = d.jadwal.length ? ('<table><tr><th>Hari</th><th>Jam</th><th>Mapel</th><th>Pengampu</th></tr>' +
-        d.jadwal.map(function(j){return '<tr><td>'+esc(j.hari)+'</td><td>'+esc(j.jamKe)+'</td><td>'+esc(j.mapel)+'</td><td>'+esc(j.pengampu)+'</td></tr>';}).join('') + '</table>') : '<p class="muted">Belum ada jadwal.</p>';
-      document.getElementById('dw-jadwal').innerHTML = '<div class="card"><h3>'+esc(d.nama)+' - Kelas: '+esc(d.kelas)+(d.halaqoh?(' | Halaqoh: '+esc(d.halaqoh)):'')+'</h3>' + infoRombel + '<h4>Jadwal Pelajaran</h4>'+jadwalHtml+'</div>';
+      if (boleh('WaliTampilRingkasan')) muatRingkasanWali(nisn);
+      else document.getElementById('dw-ringkasan').style.display='none';
 
-      renderRekapLengkapSantri('dw-rekap', nisn, {showSaldo:false});
-      renderRaporCard('dw-rapor', nisn, d.nama);
+      if (boleh('WaliTampilPelanggaran')) muatRiwayatPelanggaranWali(nisn);
+      else document.getElementById('dw-pelanggaran').style.display='none';
 
-      document.getElementById('dw-kontak').innerHTML = '<div class="card"><h3>Edit Data Santri</h3><p>Memuat...</p></div>';
+      if (boleh('WaliTampilKantin')) muatKantinWali(nisn, {izinTopUp:boleh('WaliIzinAjukanTopUp'), izinGantiLimit:boleh('WaliIzinGantiLimit')});
+      else document.getElementById('dw-kantin').style.display='none';
+
+      if (boleh('WaliTampilIzin')) renderIzinWaliSantri(nisn, 'dw-izin');
+      else document.getElementById('dw-izin').style.display='none';
+
+      if (boleh('WaliTampilHafalan')) renderProgressHafalanWali(nisn, 'dw-hafalan');
+      else document.getElementById('dw-hafalan').style.display='none';
+
+      if (boleh('WaliTampilMutasiSaldo')) renderRiwayatMutasiSaldo(nisn, 'dw-mutasi-saldo');
+      else document.getElementById('dw-mutasi-saldo').style.display='none';
+
+      if (boleh('WaliTampilNotifAbsen')) {
+        api('getNotifikasiMingguan', {nisn:nisn}).then(function(res){
+          if(!res.ok){ document.getElementById('dw-notif').innerHTML=errBox(res.error); return; }
+          var d=res.data, r=d.rekap;
+          // Tile Ringkasan di atas sudah menampilkan persentase kehadiran 7 hari, jadi
+          // di sini TIDAK mengulang angka Hadir yang sama -- kartu ini fokus jadi
+          // notifikasi (cuma bicara kalau ada yang perlu diperhatikan: sakit/izin/alpa).
+          var catatan = [];
+          if (r.Alpa>0) catatan.push(r.Alpa+' hari Alpa');
+          if (r.Izin>0) catatan.push(r.Izin+' hari Izin');
+          if (r.Sakit>0) catatan.push(r.Sakit+' hari Sakit');
+          var html = catatan.length
+            ? '<h3>&#128276; Perlu Diperhatikan ('+esc(d.periode)+')</h3><p>'+catatan.join(', ')+' dalam 7 hari terakhir.</p>'
+            : '<h3>&#128276; Notifikasi ('+esc(d.periode)+')</h3><p class="muted">&#9989; Tidak ada sakit/izin/alpa dalam 7 hari terakhir.</p>';
+          document.getElementById('dw-notif').innerHTML = html;
+        });
+      } else document.getElementById('dw-notif').style.display='none';
+
+      if (boleh('WaliTampilJadwal')||boleh('WaliTampilRekap')||boleh('WaliTampilRapor')) {
+        document.getElementById('dw-jadwal').innerHTML='<p>Memuat data anak...</p>';
+        api('getJadwalSantri',{nisn:nisn}).then(function(res){
+          if(!res.ok||res.data.error){ document.getElementById('dw-jadwal').innerHTML=errBox(res.data?res.data.error:res.error); return; }
+          var d=res.data;
+          if (boleh('WaliTampilJadwal')) {
+            var infoRombel=d.belumMasukRombel?warnBox('Santri ini belum dimasukkan ke rombel manapun oleh Admin.'):'';
+            var jadwalHtml=d.jadwal.length?('<table><tr><th>Hari</th><th>Jam</th><th>Mapel</th><th>Pengampu</th></tr>'+
+              d.jadwal.map(function(j){return '<tr><td>'+esc(j.hari)+'</td><td>'+esc(j.jamKe)+'</td><td>'+esc(j.mapel)+'</td><td>'+esc(j.pengampu)+'</td></tr>';}).join('')+'</table>'):'<p class="muted">Belum ada jadwal.</p>';
+            document.getElementById('dw-jadwal').innerHTML='<div class="card"><h3>'+esc(d.nama)+' - Kelas: '+esc(d.kelas)+(d.halaqoh?(' | Halaqoh: '+esc(d.halaqoh)):'')+'</h3>'+infoRombel+'<h4>Jadwal Pelajaran</h4>'+jadwalHtml+'</div>';
+          } else document.getElementById('dw-jadwal').style.display='none';
+
+          if (boleh('WaliTampilRekap')) renderRekapLengkapSantri('dw-rekap', nisn, {showSaldo:false, izinLihatNilai:boleh('WaliIzinLihatNilai'), sudahAdaKartuHafalan: boleh('WaliTampilHafalan')});
+          else document.getElementById('dw-rekap').style.display='none';
+
+          if (boleh('WaliTampilRapor')) renderRaporCard('dw-rapor', nisn, d.nama);
+          else document.getElementById('dw-rapor').style.display='none';
+        }); // end api getJadwalSantri
+      } // end if WaliTampilJadwal||Rekap||Rapor
+
+      if (boleh('WaliTampilKontak')) {
+        document.getElementById('dw-kontak').innerHTML = '<div class="card"><h3>Edit Data Santri</h3><p>Memuat...</p></div>';
       api('getMasterData', {sheet:'Santri'}).then(function(resAll){
         if(!resAll.ok){ document.getElementById('dw-kontak').innerHTML = '<div class="card">'+errBox(resAll.error)+'</div>'; return; }
         var s = resAll.data.data.find(function(x){ return String(x.NISN)===String(nisn); });
@@ -7397,8 +8142,9 @@
             document.getElementById('pesanKontak').innerHTML = res4.ok ? '<p class="muted">Tersimpan.</p>' : errBox(res4.error);
           });
         };
-      });
-    });
+      }); // end getMasterData
+      } // end if WaliTampilKontak
+    }); // end getPengaturanBatch
   }
 
   // =====================================================================
@@ -7430,6 +8176,8 @@
       {key:'spp', label:'SPP Santri', icon:'&#128179;'},
       {key:'modulajar', label:'Modul Ajar & RPP', icon:'&#128218;'},
       {key:'rekapjurnal', label:'Rekap Jurnal Guru', icon:'&#128221;'},
+      {key:'kelolatugas', label:'Tugas Pembina', icon:'&#9989;'},
+      {key:'rekaptugas', label:'Rekap Tugas Pembina', icon:'&#128202;'},
       {key:'rekaphalaqoh', label:'Rekap Halaqoh', icon:'&#128218;'},
       {key:'raporkelas', label:'Rapor Santri', icon:'&#128203;'},
       {key:'kelompokpapel', label:'Kelompok Mata Pelajaran', icon:'&#128204;'},
@@ -7438,7 +8186,8 @@
       {key:'website', label:'Info Website', icon:'&#127760;'},
       {key:'progresshafalan', label:'Progres Hafalan', icon:'&#128218;'},
       {key:'spreadsheet', label:'File Spreadsheet', icon:'&#128196;'},
-      {key:'tampilan', label:'Tampilan / Logo', icon:'&#127912;'}
+      {key:'tampilan', label:'Tampilan / Logo', icon:'&#127912;'},
+      {key:'pengaturanwali', label:'Pengaturan Akun Wali', icon:'&#128100;'}
     ];
     var map = {ringkasan:adminRingkasan, tahun:adminTahunAjaran, rombel:adminRombel, halaqoh:adminHalaqoh, santri:adminDataSantri,
       data:adminDataMaster, pengganti:adminPenggantian, rekapguru:adminRekapGuru, rekapsantri:adminRekapSantri, rapor:adminRaporSantri,
@@ -7449,6 +8198,9 @@
       raporkelas:adminRaporKelas, kelompokpapel:adminKelompokMapel, sop:adminSOP, defaultjurnal:adminDefaultJurnal,
       website:adminInfoWebsite, spreadsheet:adminSpreadsheet,
       progresshafalan: function(){ renderRekapProgressHafalan(''); },
+      kelolatugas: adminKelolaTugasPembina,
+      rekaptugas: adminRekapTugasPembina,
+      pengaturanwali: adminPengaturanWali,
       tampilan:adminTampilan};
     activeKey = activeKey && map[activeKey] ? activeKey : 'ringkasan';
     renderSidebarShell({title:'Dashboard '+STATE.user.level, navItems:navItems, activeKey:activeKey, contentId:'da-content',
@@ -8111,7 +8863,7 @@
                   DAFTAR_ROLE.map(function(r){ return '<label style="display:inline-flex;align-items:center;gap:5px;font-weight:400;margin-right:12px;margin-bottom:4px"><input type="checkbox" class="roleChk" value="'+r.value+'" style="width:auto;margin:0" '+(rolesTerpilih.indexOf(r.value)!==-1?'checked':'')+'> '+esc(r.label)+'</label>'; }).join('') +
                   '</div>';
               }
-              if(sheet==='RoleAkses' && h==='NISN Anak') return fieldAutocomplete('f_'+h,h,daftarSantri.map(labelSantri), existing?existing[h]:'', 'Ketik NISN/nama santri (khusus WaliSantri, kosongkan jika bukan)');
+              if(sheet==='RoleAkses' && h==='NISN Anak') return fieldMultiSantri('f_'+h,h+' (khusus WaliSantri, boleh lebih dari satu untuk wali dengan >1 anak)',daftarSantri, existing?existing[h]:'', 'Ketik NISN/nama santri lalu klik + Tambah Anak...');
               if(sheet==='JamPelajaran' && h==='Jenis') return fieldSelect('f_'+h,h,['Halaqoh','Mapel'], existing?existing[h]:'Halaqoh');
               if(sheet==='JamPelajaran' && h==='Nama') return fieldText('f_'+h,'Nama (untuk Halaqoh isi nama Waktu: Subuh/Duha/Maghrib dst; untuk Mapel isi nama mata pelajaran)', existing?existing[h]:'');
               if(sheet==='JamPelajaran' && h==='Jumlah Jam') return fieldText('f_'+h,h, existing?existing[h]:'');
@@ -8137,19 +8889,22 @@
                   if (!pengampuValid) { gagal = 'Nama guru pada Pengampu tidak dikenali. Pilih salah satu saran yang muncul saat mengetik.'; return; }
                   values[h] = pengampuValid;
                 } else if (sheet==='RoleAkses' && h==='NISN Anak') {
-                  // NISN Anak hanya wajib valid kalau role WaliSantri
+                  // NISN Anak hanya wajib valid kalau role WaliSantri. raw di sini adalah
+                  // CSV NISN dari widget chip (fieldMultiSantri) -- 1 atau lebih anak.
                   var rolesYangDipilih = Array.prototype.map.call(modal.querySelectorAll('.roleChk:checked'), function(el){return el.value;});
                   var isWali = rolesYangDipilih.indexOf('WaliSantri') !== -1;
                   if (!raw) {
                     values[h] = '';
                   } else if (isWali) {
-                    // Wali Santri: NISN harus valid
-                    var nisnValid = resolveSantriNisn(raw, daftarSantri);
-                    if (!nisnValid && daftarSantri.length > 0) {
-                      gagal = 'Santri pada NISN Anak tidak ditemukan. Pilih dari saran atau kosongkan.';
-                      return;
+                    var tokenNisn = raw.split(',').map(function(t){return t.trim();}).filter(Boolean);
+                    if (daftarSantri.length > 0) {
+                      var tidakValid = tokenNisn.filter(function(t){ return !daftarSantri.some(function(s){ return String(s.nisn)===String(t); }); });
+                      if (tidakValid.length) {
+                        gagal = 'Santri dengan NISN ' + tidakValid.join(', ') + ' tidak ditemukan. Hapus chip yang bermasalah lalu pilih ulang dari saran.';
+                        return;
+                      }
                     }
-                    values[h] = nisnValid || raw;
+                    values[h] = tokenNisn.join(',');
                   } else {
                     // Bukan WaliSantri: simpan apa adanya, tidak perlu validasi
                     values[h] = raw;
@@ -8162,6 +8917,7 @@
                 else muat();
               });
             });
+            if (sheet==='RoleAkses') bindTambahMultiSantri('f_NISN_Anak', daftarSantri);
           }
           document.getElementById('btnTambahRow').onclick = function(){ bukaForm(null); };
           document.querySelectorAll('.btnEditM').forEach(function(btn){ btn.onclick = function(){ bukaForm(res.data.data.find(function(r){return r.rowIndex===Number(btn.dataset.row);})); }; });
@@ -8937,6 +9693,396 @@
   }
 
   // ============ ADMIN: REKAP JURNAL MENGAJAR ============
+  // ============================================================
+  // TUGAS HARIAN PEMBINA
+  // ============================================================
+
+  // ---- UI PEMBINA: Checklist harian ----
+  function pembinaTugasHarian(){
+    var c = getContentEl();
+    c.innerHTML = '<p>Memuat...</p>';
+    var namaPembina = STATE.user.nama;
+    var tanggalHariIni = todayStr();
+
+    function muat(tanggal){
+      api('getTugasHariIni', {pembina: namaPembina, tanggal: tanggal}).then(function(res){
+        if (!res.ok){ c.innerHTML = errBox(res.error); return; }
+        var d = res;
+        var persen = d.persen;
+        var warnaBar = persen===100?'#16a34a':persen>=60?'#f59e0b':'#ef4444';
+
+        var html = '<div class="card">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
+          '<h3 style="margin:0">&#9989; Tugas Harian — '+esc(d.hari)+', '+esc(tanggal)+'</h3>' +
+          (STATE.pengaturan.IzinkanGantiTanggal ?
+            '<input type="date" id="tgTanggal" value="'+esc(tanggal)+'" style="padding:5px 8px;border-radius:6px;border:1px solid #e2e8f0">' : '') +
+          '</div>' +
+          // Progress bar
+          '<div style="margin:12px 0">' +
+          '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">' +
+          '<span>Progress: <b>'+d.selesai+'/'+d.total+'</b> tugas selesai</span>' +
+          '<span style="font-weight:700;color:'+warnaBar+'">'+persen+'%</span></div>' +
+          '<div style="height:10px;background:#e2e8f0;border-radius:99px;overflow:hidden">' +
+          '<div style="height:100%;width:'+persen+'%;background:'+warnaBar+';border-radius:99px;transition:.3s"></div></div></div>';
+
+        if (!d.data.length){
+          html += warnBox('Tidak ada tugas yang ditetapkan untuk hari '+d.hari+'. Hubungi Admin/Mudir untuk menambahkan tugas.');
+        } else {
+          html += '<div id="tugasChecklist">';
+          // Kelompokkan per kategori
+          var kategoriMap = {};
+          d.data.forEach(function(t){
+            var kat = t.kategori || 'Umum';
+            if (!kategoriMap[kat]) kategoriMap[kat] = [];
+            kategoriMap[kat].push(t);
+          });
+          Object.keys(kategoriMap).sort().forEach(function(kat){
+            html += '<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">'+esc(kat)+'</div>';
+            kategoriMap[kat].forEach(function(t){
+              var done = t.selesai;
+              var borderKiri = done ? '4px solid #16a34a' : '4px solid #e2e8f0';
+              var bg = done ? '#f0fdf4' : '#fff';
+              html += '<div class="tugasItem" data-id="'+esc(t.id)+'" data-done="'+(done?'1':'0')+'" data-wajib-foto="'+(t.wajibFoto?'1':'0')+'" data-foto-url="'+esc(t.fotoUrl||'')+'" data-ri-real="'+(t.rowIndexReal||0)+'"'+
+                ' style="border:1px solid #e2e8f0;border-left:'+borderKiri+';background:'+bg+';border-radius:8px;padding:10px 14px;margin-bottom:6px;cursor:pointer;transition:.2s">' +
+                '<div style="display:flex;align-items:center;gap:10px">' +
+                '<div class="tugasCekBulat" style="width:24px;height:24px;border-radius:50%;border:2px solid '+(done?'#16a34a':'#cbd5e1')+';background:'+(done?'#16a34a':'transparent')+';display:flex;align-items:center;justify-content:center;flex-shrink:0">' +
+                (done?'<span style="color:#fff;font-size:14px">&#10003;</span>':'') +
+                '</div>' +
+                '<div style="flex:1">' +
+                '<div style="display:flex;align-items:center;gap:6px">' +
+                '<span style="font-weight:600;'+(done?'text-decoration:line-through;color:#94a3b8':'')+'">' + esc(t.nama) + '</span>' +
+                (t.wajibFoto ? '<span style="font-size:10px;background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:99px;white-space:nowrap">📷 Wajib Foto</span>' : '') +
+                '</div>' +
+                (t.berlaku !== 'Setiap Hari' ? '<div style="font-size:10px;color:#64748b">'+esc(t.berlaku)+'</div>' : '') +
+                (t.waktu ? '<div style="font-size:11px;color:#16a34a">&#10003; Selesai pukul '+esc(t.waktu)+'</div>' : '') +
+                '</div>' +
+                '<div style="font-size:11px;color:#94a3b8">' + (done ? '&#9989;' : '&#9898;') + '</div>' +
+                '</div>' +
+                // Catatan
+                '<div class="tugasCatatanWrap" style="display:'+(done?'block':'none')+';margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0">' +
+                '<input class="tugasCatatan" placeholder="Catatan (opsional)..." value="'+esc(t.catatan)+'" style="width:100%;padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px">' +
+                '</div>' +
+                // Foto (hanya kalau wajib foto)
+                (t.wajibFoto ? (
+                  '<div class="tugasFotoWrap" style="display:'+(done?'block':'none')+';margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0">' +
+                  (t.fotoUrl ?
+                    '<div style="font-size:12px;color:#16a34a">&#10003; Foto sudah diupload &nbsp;' +
+                    '<a href="'+esc(t.fotoUrl)+'" target="_blank" style="color:#0d9488">Lihat Foto</a>' +
+                    '<span style="font-size:10px;color:#94a3b8"> (otomatis dihapus setelah 5 hari)</span></div>' :
+                    '<label class="tugasFotoBtn" style="display:inline-flex;align-items:center;gap:6px;background:#0d9488;color:#fff;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:13px">'+
+                    '&#128247; Upload Foto Bukti'+
+                    '<input type="file" class="tugasFotoInput" accept="image/*" capture="environment" style="display:none">'+
+                    '</label>' +
+                    '<div class="tugasFotoProgress" style="display:none;font-size:12px;color:#64748b;margin-top:4px">&#9203; Mengupload foto...</div>'
+                  ) +
+                  '</div>'
+                ) : '') +
+                '</div>';
+            });
+            html += '</div>';
+          });
+          html += '</div>';
+        }
+        html += '</div>';
+        if (!setHtmlSafe(c.id||'main-content', html)) { c.innerHTML = html; }
+        if (STATE.pengaturan.IzinkanGantiTanggal) {
+          var inp = document.getElementById('tgTanggal');
+          if (inp) inp.onchange = function(){ muat(this.value); };
+        }
+
+        // Event: klik item tugas → toggle centang
+        document.querySelectorAll('.tugasItem').forEach(function(item){
+          item.onclick = function(e){
+            if (e.target.classList.contains('tugasCatatan')) return;
+            if (e.target.classList.contains('tugasFotoInput')) return;
+            if (e.target.closest('.tugasFotoWrap')) return;
+            var id = item.dataset.id;
+            var done = item.dataset.done === '1';
+            var wajibFoto = item.dataset.wajibFoto === '1';
+            var catWrap = item.querySelector('.tugasCatatanWrap');
+            var catInput = item.querySelector('.tugasCatatan');
+            var fotoWrap = item.querySelector('.tugasFotoWrap');
+
+            if (!done) {
+              // Tandai selesai
+              if (catWrap) catWrap.style.display = 'block';
+              if (wajibFoto && fotoWrap) {
+                fotoWrap.style.display = 'block';
+                // Jika wajib foto dan belum ada foto, minta upload dulu
+                var fotoInput = item.querySelector('.tugasFotoInput');
+                var sudahAdaFoto = item.dataset.fotoUrl && item.dataset.fotoUrl.length > 0;
+                if (!sudahAdaFoto) {
+                  fotoInput.click();
+                  return; // Tunggu foto diupload dulu
+                }
+              }
+            }
+            var catatan = catInput ? catInput.value.trim() : '';
+            api('centangTugas', {idTugas:id, pembina:namaPembina, tanggal:tanggal,
+                                  selesai: !done, catatan: catatan}).then(function(r){
+              if (!r.ok){ alert(r.error); return; }
+              muat(tanggal);
+            });
+          };
+
+          // Catatan: stop propagation
+          var catInput = item.querySelector('.tugasCatatan');
+          if (catInput) {
+            catInput.addEventListener('click', function(e){ e.stopPropagation(); });
+            catInput.addEventListener('change', function(){
+              var id = item.dataset.id;
+              if (item.dataset.done === '1') {
+                api('centangTugas', {idTugas:id, pembina:namaPembina, tanggal:tanggal,
+                                      selesai:true, catatan: this.value.trim()}).then(function(){});
+              }
+            });
+          }
+
+          // Foto: input file change
+          var fotoInput = item.querySelector('.tugasFotoInput');
+          if (fotoInput) {
+            fotoInput.addEventListener('click', function(e){ e.stopPropagation(); });
+            fotoInput.addEventListener('change', function(){
+              var file = this.files[0];
+              if (!file) return;
+              if (file.size > 5*1024*1024) { alert('Ukuran foto maksimal 5 MB.'); this.value=''; return; }
+              var reader = new FileReader();
+              var btn = item.querySelector('.tugasFotoBtn');
+              var progress = item.querySelector('.tugasFotoProgress');
+              if (progress) progress.style.display = 'block';
+              if (btn) btn.textContent = '⏳ Mengupload...';
+              reader.onload = function(ev){
+                var base64 = ev.target.result.split(',')[1];
+                var mime = file.type || 'image/jpeg';
+                var ri = item.dataset.riReal || '0';
+                // Centang dulu, lalu upload foto
+                var id = item.dataset.id;
+                var catInput2 = item.querySelector('.tugasCatatan');
+                var catatan = catInput2 ? catInput2.value.trim() : '';
+                api('centangTugas', {idTugas:id, pembina:namaPembina, tanggal:tanggal,
+                                      selesai:true, catatan: catatan}).then(function(r2){
+                  if (!r2.ok){ alert(r2.error); return; }
+                  api('uploadFotoTugas', {imageBase64:base64, mimeType:mime,
+                    namaFile:'Tugas_'+namaPembina+'_'+tanggal+'_'+id+'.jpg',
+                    idTugas:id, pembina:namaPembina, tanggal:tanggal,
+                    rowIndexReal: Number(ri)}).then(function(ru){
+                    if (progress) progress.style.display = 'none';
+                    if (btn) btn.textContent = '📷 Foto Terkirim ✓';
+                    if (!ru.ok){ alert('Foto gagal upload: '+ru.error+'\nTugas tetap ditandai selesai.'); }
+                    muat(tanggal);
+                  });
+                });
+              };
+              reader.readAsDataURL(file);
+            });
+          }
+        });
+      });
+    }
+    muat(tanggalHariIni);
+  }
+
+  // ---- UI ADMIN/MUDIR: Kelola Daftar Tugas ----
+  function adminKelolaTugasPembina(){
+    var c = getContentEl();
+    c.innerHTML = '<p>Memuat...</p>';
+    var BERLAKU_OPT = ['Setiap Hari','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu','Minggu','Insidental'];
+    var KAT_OPT = ['Umum','Asrama','Sholat','Belajar','Keamanan','Kebersihan','Lainnya'];
+
+    function muat(){
+      api('getDaftarTugasPembina', {termasukNonaktif: true}).then(function(res){
+        if (!res.ok){ c.innerHTML = errBox(res.error); return; }
+        var data = res.data;
+        var html = '<div class="card"><h3>&#9989; Kelola Tugas Harian Pembina</h3>' +
+          '<button id="btnTambahTugas">&#43; Tambah Tugas Baru</button>' +
+          '<div id="pesanKelola" style="margin-top:8px"></div>' +
+          '<div style="overflow-x:auto;margin-top:12px">' +
+          '<table style="font-size:13px"><tr><th>No</th><th>Nama Tugas</th><th>Kategori</th>' +
+          '<th>Berlaku</th><th>Urutan</th><th>Wajib Foto</th><th>Status</th><th>Aksi</th></tr>';
+        if (!data.length) html += '<tr><td colspan="8" class="muted">Belum ada tugas. Klik tombol di atas untuk menambah.</td></tr>';
+        data.forEach(function(t, i){
+          var aktifBadge = t.aktif ?
+            '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:99px;font-size:11px">Aktif</span>' :
+            '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:99px;font-size:11px">Nonaktif</span>';
+          var fotoBadge = t.wajibFoto ?
+            '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:99px;font-size:11px">&#128247; Ya</span>' :
+            '<span style="color:#94a3b8;font-size:11px">-</span>';
+          html += '<tr>' +
+            '<td class="center">'+(i+1)+'</td>' +
+            '<td><b>'+esc(t.nama)+'</b></td>' +
+            '<td>'+esc(t.kategori)+'</td>' +
+            '<td>'+esc(t.berlaku)+'</td>' +
+            '<td class="center">'+t.urutan+'</td>' +
+            '<td class="center">'+fotoBadge+'</td>' +
+            '<td class="center">'+aktifBadge+'</td>' +
+            '<td style="white-space:nowrap">' +
+            '<button class="small btnEditTugas" data-row="'+t.rowIndex+'" data-nama="'+esc(t.nama)+'" data-kat="'+esc(t.kategori)+'" data-berlaku="'+esc(t.berlaku)+'" data-urutan="'+t.urutan+'" data-wajib-foto="'+(t.wajibFoto?'1':'0')+'">Edit</button> ' +
+            '<button class="small '+(t.aktif?'secondary':'primary')+' btnToggleTugas" data-row="'+t.rowIndex+'" data-aktif="'+(t.aktif?'1':'0')+'">'+
+            (t.aktif?'Nonaktifkan':'Aktifkan')+'</button> ' +
+            '<button class="small danger btnHapusTugas" data-row="'+t.rowIndex+'">Hapus</button>' +
+            '</td></tr>';
+        });
+        html += '</table></div></div>';
+        c.innerHTML = html;
+
+        document.getElementById('btnTambahTugas').onclick = function(){
+          openModal('Tambah Tugas Baru',
+            fieldText('tgNama','Nama Tugas','') +
+            '<label>Kategori</label><select id="tgKat">'+KAT_OPT.map(function(k){return '<option>'+k+'</option>';}).join('')+'</select>'+
+            '<label>Berlaku</label><select id="tgBerlaku">'+BERLAKU_OPT.map(function(b){return '<option>'+b+'</option>';}).join('')+'</select>'+
+            fieldText('tgUrutan','Urutan (angka kecil tampil duluan)','0')+
+            '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:6px">'+
+            '<input type="checkbox" id="tgWajibFoto"> <span>📷 Wajib Upload Foto Bukti saat selesai</span></label>',
+            function(m){
+              var nama = m.querySelector('#tgNama').value.trim();
+              if (!nama){ alert('Nama tugas wajib diisi.'); return false; }
+              return api('simpanTugasPembina',{nama:nama, kategori:m.querySelector('#tgKat').value,
+                berlaku:m.querySelector('#tgBerlaku').value,
+                urutan:m.querySelector('#tgUrutan').value||0,
+                wajibFoto: m.querySelector('#tgWajibFoto').checked,
+                oleh:STATE.user.nama}).then(function(r){
+                if(!r.ok){ alert(r.error); throw new Error(r.error); }
+                muat();
+              });
+            });
+        };
+
+        document.querySelectorAll('.btnEditTugas').forEach(function(btn){
+          btn.onclick = function(){
+            openModal('Edit Tugas',
+              fieldText('tgNama','Nama Tugas', btn.dataset.nama) +
+              '<label>Kategori</label><select id="tgKat">'+KAT_OPT.map(function(k){return '<option'+(k===btn.dataset.kat?' selected':'')+'>'+k+'</option>';}).join('')+'</select>'+
+              '<label>Berlaku</label><select id="tgBerlaku">'+BERLAKU_OPT.map(function(b){return '<option'+(b===btn.dataset.berlaku?' selected':'')+'>'+b+'</option>';}).join('')+'</select>'+
+              fieldText('tgUrutan','Urutan', btn.dataset.urutan||'0')+
+              '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:6px">'+
+              '<input type="checkbox" id="tgWajibFoto"'+(btn.dataset.wajibFoto==='1'?' checked':'')+'>'+
+              ' <span>📷 Wajib Upload Foto Bukti saat selesai</span></label>',
+              function(m){
+                var nama = m.querySelector('#tgNama').value.trim();
+                if (!nama){ alert('Nama tugas wajib diisi.'); return false; }
+                return api('simpanTugasPembina',{rowIndex:Number(btn.dataset.row), nama:nama,
+                  kategori:m.querySelector('#tgKat').value, berlaku:m.querySelector('#tgBerlaku').value,
+                  urutan:m.querySelector('#tgUrutan').value||0,
+                  wajibFoto: m.querySelector('#tgWajibFoto').checked}).then(function(r){
+                  if(!r.ok){ alert(r.error); throw new Error(r.error); } muat();
+                });
+              });
+          };
+        });
+
+        document.querySelectorAll('.btnToggleTugas').forEach(function(btn){
+          btn.onclick = function(){
+            api('toggleAktifTugas',{rowIndex:Number(btn.dataset.row), aktif:btn.dataset.aktif==='0'}).then(function(r){
+              if(!r.ok){ alert(r.error); return; } muat();
+            });
+          };
+        });
+
+        document.querySelectorAll('.btnHapusTugas').forEach(function(btn){
+          btn.onclick = function(){
+            if(!confirm('Hapus tugas ini? Data realisasi yang sudah ada tidak ikut terhapus.')) return;
+            api('hapusTugasPembina',{rowIndex:Number(btn.dataset.row)}).then(function(r){
+              if(!r.ok){ alert(r.error); return; } muat();
+            });
+          };
+        });
+      });
+    }
+    muat();
+  }
+
+  // ---- UI MUDIR: Rekap + History Tugas Semua Pembina ----
+  function adminRekapTugasPembina(){
+    var c = getContentEl();
+    c.innerHTML = '<p>Memuat...</p>';
+
+    function muatRekap(tanggal){
+      api('getRekapTugasPembina', {tanggal: tanggal}).then(function(res){
+        if (!res.ok){ document.getElementById('rekapTugasWrap').innerHTML = errBox(res.error); return; }
+        var d = res;
+        var html = '<div style="margin-bottom:16px"><b>'+esc(d.hari)+', '+esc(d.tanggal)+'</b> — '+d.totalTugas+' tugas aktif hari ini</div>';
+        if (!d.data.length){
+          html += '<p class="muted">Belum ada data Pembina.</p>';
+        } else {
+          d.data.forEach(function(pb){
+            var warna = pb.persen===100?'#16a34a':pb.persen>=60?'#f59e0b':'#ef4444';
+            html += '<div style="margin-bottom:10px;padding:12px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:10px">' +
+              '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+              '<b>'+esc(pb.pembina)+'</b>' +
+              '<span style="font-weight:700;font-size:15px;color:'+warna+'">'+pb.persen+'%</span></div>' +
+              '<div style="height:8px;background:#e2e8f0;border-radius:99px;overflow:hidden">' +
+              '<div style="height:100%;width:'+pb.persen+'%;background:'+warna+';border-radius:99px;transition:.3s"></div></div>' +
+              '<div style="font-size:12px;color:#64748b;margin-top:4px">'+pb.selesai+'/'+pb.total+' tugas selesai</div>' +
+              '</div>';
+          });
+        }
+        document.getElementById('rekapTugasWrap').innerHTML = html;
+      });
+    }
+
+    function muatHistory(){
+      var tglMulai = document.getElementById('htMulai') ? document.getElementById('htMulai').value : '';
+      var tglAkhir = document.getElementById('htAkhir') ? document.getElementById('htAkhir').value : '';
+      var pembinaF = document.getElementById('htPembina') ? document.getElementById('htPembina').value.trim() : '';
+      document.getElementById('historyTugasWrap').innerHTML = 'Memuat...';
+      api('getHistoryTugasPembina',{tglMulai:tglMulai, tglAkhir:tglAkhir, pembina:pembinaF}).then(function(res){
+        if (!res.ok){ document.getElementById('historyTugasWrap').innerHTML = errBox(res.error); return; }
+        var data = res.data;
+        if (!data.length){ document.getElementById('historyTugasWrap').innerHTML = '<p class="muted">Tidak ada data pada rentang ini.</p>'; return; }
+        // Pivot: baris = tanggal+pembina, kolom = status per tugas
+        var html = '<div style="overflow-x:auto"><table style="font-size:12px"><tr>' +
+          '<th>Tanggal</th><th>Pembina</th><th>Tugas</th><th>Status</th><th>Catatan</th><th>Waktu</th></tr>';
+        data.forEach(function(r){
+          var badge = r.status==='Selesai' ?
+            '<span style="color:#16a34a;font-weight:700">&#9989; Selesai</span>' :
+            '<span style="color:#94a3b8">&#9898; Belum</span>';
+          html += '<tr><td>'+esc(r.tanggal)+'</td><td>'+esc(r.pembina)+'</td><td>'+esc(r.namaTugas)+'</td>' +
+            '<td>'+badge+'</td><td>'+esc(r.catatan||'-')+'</td><td>'+esc(r.waktu||'-')+'</td></tr>';
+        });
+        html += '</table></div>';
+        // Export Excel
+        html += '<button id="btnExportHistory" class="secondary" style="margin-top:10px">&#128196; Export Excel</button>';
+        document.getElementById('historyTugasWrap').innerHTML = html;
+        document.getElementById('btnExportHistory').onclick = function(){
+          var bom = '\uFEFF';
+          var header = ['Tanggal','Pembina','Tugas','Status','Catatan','Waktu'];
+          var rows = data.map(function(r){return [r.tanggal,r.pembina,r.namaTugas,r.status,r.catatan||'',r.waktu||''];});
+          var csv = bom+[header].concat(rows).map(function(r){
+            return r.map(function(v){var s=String(v||'');return s.includes(',')?'"'+s+'"':s;}).join(',');
+          }).join('\n');
+          var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+          a.download='HistoryTugasPembina_'+todayStr()+'.csv'; a.click();
+        };
+      });
+    }
+
+    var now = new Date();
+    var tglHariIni = todayStr();
+    var tgl7Lalu = new Date(now - 7*24*3600*1000);
+    var tgl7LaluStr = tgl7Lalu.getFullYear()+'-'+String(tgl7Lalu.getMonth()+1).padStart(2,'0')+'-'+String(tgl7Lalu.getDate()).padStart(2,'0');
+
+    c.innerHTML = '<div class="card"><h3>&#128202; Rekap Tugas Harian Pembina</h3>' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">' +
+      '<input type="date" id="rekapTanggal" value="'+tglHariIni+'" style="padding:5px 8px;border-radius:6px;border:1px solid #e2e8f0">' +
+      '<button id="btnMuatRekap">Tampilkan</button></div>' +
+      '<div id="rekapTugasWrap">Memuat...</div></div>' +
+      '<div class="card" style="margin-top:12px"><h3>&#128203; History Lengkap</h3>' +
+      '<div class="grid2" style="margin-bottom:8px">' +
+      '<div><label class="muted">Dari Tanggal</label><input type="date" id="htMulai" value="'+tgl7LaluStr+'"></div>' +
+      '<div><label class="muted">Sampai Tanggal</label><input type="date" id="htAkhir" value="'+tglHariIni+'"></div></div>' +
+      '<div style="margin-bottom:8px"><label class="muted">Filter Pembina (kosongkan = semua)</label>' +
+      '<input id="htPembina" placeholder="Nama pembina..." style="width:100%"></div>' +
+      '<button id="btnCariHistory">Cari History</button>' +
+      '<div id="historyTugasWrap" style="margin-top:12px"></div></div>';
+
+    muatRekap(tglHariIni);
+    document.getElementById('btnMuatRekap').onclick = function(){
+      muatRekap(document.getElementById('rekapTanggal').value || tglHariIni);
+    };
+    document.getElementById('btnCariHistory').onclick = muatHistory;
+    muatHistory();
+  }
+
   function adminRekapJurnal(){
     var c = getContentEl();
     c.innerHTML = '<div class="card"><h3>Rekap Jurnal Mengajar Guru</h3>' +
@@ -9506,6 +10652,127 @@
 
       c.innerHTML = html;
     });
+  }
+
+  // ============================================================
+  // PENGATURAN AKUN WALI — kontrol visibilitas section dashboard
+  // ============================================================
+
+  // Daftar semua section dashboard wali yang bisa dikontrol
+  var WALI_SECTIONS = [
+    {key:'WaliTampilRingkasan',    label:'Ringkasan & Info Santri',    ikon:'📊', deskripsi:'Foto, nama, kelas, rekap cepat kehadiran & nilai'},
+    {key:'WaliTampilJadwal',       label:'Jadwal Pelajaran',           ikon:'📅', deskripsi:'Tabel jadwal harian santri per mapel'},
+    {key:'WaliTampilNotifAbsen',   label:'Notifikasi Absensi Mingguan',ikon:'🔔', deskripsi:'Rekap hadir/sakit/izin/alpa 7 hari terakhir'},
+    {key:'WaliTampilRekap',        label:'Rekap Akademik Lengkap',     ikon:'📋', deskripsi:'Nilai, hafalan, absensi detail per mapel'},
+    {key:'WaliTampilHafalan',      label:'Progres Hafalan Al-Qur\'an', ikon:'📿', deskripsi:'Grid 30 juz dan progres hafalan santri'},
+    {key:'WaliTampilRapor',        label:'Rapor / Nilai Akhir',        ikon:'📝', deskripsi:'Nilai rapor per mapel, sikap, kehadiran'},
+    {key:'WaliTampilIzin',         label:'Perizinan Santri',           ikon:'🚪', deskripsi:'Riwayat dan status pengajuan izin pulang'},
+    {key:'WaliTampilPelanggaran',  label:'Pelanggaran & Poin',         ikon:'⚠️',  deskripsi:'Catatan pelanggaran dan poin sanksi'},
+    {key:'WaliTampilKantin',       label:'Saldo & Belanja Kantin',     ikon:'🛒', deskripsi:'Saldo, limit harian, 5 transaksi terbaru, top-up'},
+    {key:'WaliTampilMutasiSaldo',  label:'Riwayat Tarik/Tambah Saldo',ikon:'💰', deskripsi:'Histori penambahan dan penarikan saldo'},
+    {key:'WaliTampilKontak',       label:'Kontak Pesantren',           ikon:'📞', deskripsi:'Nomor telepon, email, dan info kontak pondok'},
+    {key:'WaliIzinAjukanTopUp',    label:'Tombol Ajukan Top-Up Saldo', ikon:'💳', deskripsi:'Orang tua bisa mengajukan tambah saldo sendiri'},
+    {key:'WaliIzinLihatNilai',     label:'Lihat Detail Nilai Tugas',   ikon:'📊', deskripsi:'Nilai tugas 1, 2, 3, dst di rekap akademik'},
+    {key:'WaliIzinGantiLimit',     label:'Ubah Limit Harian Kantin',   ikon:'🔧', deskripsi:'Orang tua bisa mengatur batas belanja harian'},
+  ];
+
+  function adminPengaturanWali(){
+    var c = getContentEl();
+    c.innerHTML = '<p>Memuat...</p>';
+    api('getPengaturanBatch', {keys: WALI_SECTIONS.map(function(s){return s.key;})}).then(function(res){
+      var nilai = res.ok ? res.data : {};
+      // Default: semua ditampilkan (true) kalau belum pernah diatur
+      WALI_SECTIONS.forEach(function(s){ if (nilai[s.key] === undefined) nilai[s.key] = true; });
+
+      var html = '<div class="card">' +
+        '<h3>&#128100; Pengaturan Akun Wali Santri</h3>' +
+        warnBox('Pengaturan ini mengontrol apa yang dapat dilihat orang tua di akun mereka. Perubahan berlaku setelah orang tua memuat ulang halaman (refresh).') +
+        '<div id="pesanPengWali" style="margin-bottom:8px"></div>';
+
+      // Kelompokkan: Tampilan Section vs Izin Aksi
+      html += '<h4 style="margin:16px 0 8px;color:#0d9488;border-bottom:2px solid #0d9488;padding-bottom:4px">🖥️ Tampilan Section (apa yang muncul di dashboard orang tua)</h4>';
+      WALI_SECTIONS.filter(function(s){return s.key.startsWith('WaliTampil');}).forEach(function(s){
+        var aktif = nilai[s.key] !== false;
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;margin-bottom:6px;background:'+(aktif?'#f0fdf4':'#f8fafc')+';border:1px solid '+(aktif?'#bbf7d0':'#e2e8f0')+';border-radius:10px">' +
+          '<div style="flex:1">' +
+          '<div style="font-weight:600">'+s.ikon+' '+esc(s.label)+'</div>' +
+          '<div style="font-size:11px;color:#64748b;margin-top:2px">'+esc(s.deskripsi)+'</div></div>' +
+          '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex-shrink:0;margin-left:12px">' +
+          '<div class="toggleSwitch" data-key="'+esc(s.key)+'" data-aktif="'+(aktif?'1':'0')+'" style="'+toggleSwitchStyle(aktif)+'">' +
+          '<div style="'+toggleKnobStyle(aktif)+'"></div></div>' +
+          '<span style="font-size:12px;font-weight:600;color:'+(aktif?'#16a34a':'#94a3b8')+'">'+(aktif?'Tampil':'Disembunyikan')+'</span>' +
+          '</label></div>';
+      });
+
+      html += '<h4 style="margin:16px 0 8px;color:#0d9488;border-bottom:2px solid #0d9488;padding-bottom:4px">🔐 Izin Aksi (fitur interaktif yang boleh dipakai orang tua)</h4>';
+      WALI_SECTIONS.filter(function(s){return s.key.startsWith('WaliIzin');}).forEach(function(s){
+        var aktif = nilai[s.key] !== false;
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;margin-bottom:6px;background:'+(aktif?'#f0fdf4':'#f8fafc')+';border:1px solid '+(aktif?'#bbf7d0':'#e2e8f0')+';border-radius:10px">' +
+          '<div style="flex:1">' +
+          '<div style="font-weight:600">'+s.ikon+' '+esc(s.label)+'</div>' +
+          '<div style="font-size:11px;color:#64748b;margin-top:2px">'+esc(s.deskripsi)+'</div></div>' +
+          '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex-shrink:0;margin-left:12px">' +
+          '<div class="toggleSwitch" data-key="'+esc(s.key)+'" data-aktif="'+(aktif?'1':'0')+'" style="'+toggleSwitchStyle(aktif)+'">' +
+          '<div style="'+toggleKnobStyle(aktif)+'"></div></div>' +
+          '<span style="font-size:12px;font-weight:600;color:'+(aktif?'#16a34a':'#94a3b8')+'">'+(aktif?'Diizinkan':'Diblokir')+'</span>' +
+          '</label></div>';
+      });
+
+      html += '<div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">' +
+        '<button id="btnSimpanPengWali">💾 Simpan Semua Perubahan</button>' +
+        '<button class="secondary" id="btnResetPengWali">↺ Reset ke Default (semua tampil)</button>' +
+        '</div></div>';
+
+      c.innerHTML = html;
+
+      // Toggle switch interaktif
+      document.querySelectorAll('.toggleSwitch').forEach(function(sw){
+        sw.onclick = function(){
+          var aktif = sw.dataset.aktif !== '1';
+          sw.dataset.aktif = aktif ? '1' : '0';
+          sw.style.cssText = toggleSwitchStyle(aktif);
+          sw.children[0].style.cssText = toggleKnobStyle(aktif);
+          var label = sw.nextElementSibling;
+          if (label) { label.textContent = aktif ? (sw.dataset.key.startsWith('WaliIzin')?'Diizinkan':'Tampil') : (sw.dataset.key.startsWith('WaliIzin')?'Diblokir':'Disembunyikan'); label.style.color = aktif?'#16a34a':'#94a3b8'; }
+          // Update background row
+          var row = sw.closest('div[style*="padding:10px"]');
+          if (row) { row.style.background = aktif?'#f0fdf4':'#f8fafc'; row.style.borderColor = aktif?'#bbf7d0':'#e2e8f0'; }
+        };
+      });
+
+      document.getElementById('btnSimpanPengWali').onclick = function(){
+        var btn = this;
+        var payload = {};
+        document.querySelectorAll('.toggleSwitch').forEach(function(sw){
+          payload[sw.dataset.key] = sw.dataset.aktif === '1';
+        });
+        loadingBtn(btn, 'Menyimpan...');
+        api('simpanPengaturanBatch', {data: payload}).then(function(r){
+          resetBtn(btn, '💾 Simpan Semua Perubahan');
+          document.getElementById('pesanPengWali').innerHTML = r.ok ?
+            '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 12px;color:#16a34a;font-size:13px">✅ Pengaturan berhasil disimpan. Berlaku saat orang tua memuat ulang halaman.</div>' :
+            errBox(r.error);
+        });
+      };
+
+      document.getElementById('btnResetPengWali').onclick = function(){
+        if (!confirm('Reset semua pengaturan ke default? Semua section akan ditampilkan kembali.')) return;
+        var payload = {};
+        WALI_SECTIONS.forEach(function(s){ payload[s.key] = true; });
+        api('simpanPengaturanBatch', {data: payload}).then(function(r){
+          if (r.ok) adminPengaturanWali();
+        });
+      };
+    });
+  }
+
+  function toggleSwitchStyle(aktif){
+    return 'position:relative;width:44px;height:24px;border-radius:99px;background:'+(aktif?'#0d9488':'#cbd5e1')+
+      ';cursor:pointer;transition:.25s;flex-shrink:0';
+  }
+  function toggleKnobStyle(aktif){
+    return 'position:absolute;width:18px;height:18px;border-radius:50%;background:#fff;'+
+      'top:3px;left:'+(aktif?'23px':'3px')+';transition:.25s;box-shadow:0 1px 3px rgba(0,0,0,.3)';
   }
 
   function adminTampilan(){

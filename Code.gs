@@ -148,7 +148,9 @@ function route(action, p) {
     case 'migrasiSkemaLama': return apiMigrasiSkemaLama();
 
     case 'getPengaturan': return {ok:true, data: getPengaturan()};
-    case 'simpanPengaturan': return apiSimpanPengaturan(p);
+    case 'simpanPengaturan':       return apiSimpanPengaturan(p);
+    case 'getPengaturanBatch':     return apiGetPengaturanBatch(p);
+    case 'simpanPengaturanBatch':  return apiSimpanPengaturanBatch(p);
     case 'getSlideList': return {ok:true, data: getSlideList()};
     case 'getSlideAktif': return {ok:true, data: getSlideAktifUntukRole(p.level)};
     case 'saveSlide': return apiSaveSlide(p);
@@ -183,6 +185,8 @@ function route(action, p) {
     case 'getRekapPendapatanPondok': return {ok:true, data: getRekapPendapatanPondok(p.tglMulai, p.tglAkhir, p.jenis)};
     case 'get5TransaksiTerbaruSantri': return {ok:true, data: get5TransaksiTerbaruSantri(p.nisn)};
     case 'getAllTransaksiSantri': return {ok:true, data: getAllTransaksiSantri(p.nisn, p.tglMulai, p.tglAkhir)};
+    case 'getRiwayatMutasiSaldoSantri': return {ok:true, data: getRiwayatMutasiSaldoSantri(p.nisn, p.tglMulai, p.tglAkhir)};
+    case 'getRiwayatMutasiSaldoAdmin':  return {ok:true, data: getRiwayatMutasiSaldoAdmin(p.tglMulai, p.tglAkhir)};
     case 'getNotifBadge': return {ok:true, data: getNotifBadge()};
     // Keuangan Bendahara
     case 'getDashboardKeuangan': return {ok:true, data: getDashboardKeuangan(p.bulan, p.tahun)};
@@ -356,6 +360,16 @@ function route(action, p) {
     case 'konfirmasiKembali':   return apiKonfirmasiKembali(p);
     case 'getIzinSantriSaya':   return apiGetIzinSantriSaya(p);
     case 'catatPelanggaranPembina': return apiCatatPelanggaranPembina(p);
+    // Tugas Harian Pembina
+    case 'getDaftarTugasPembina':   return apiGetDaftarTugasPembina(p);
+    case 'simpanTugasPembina':      return apiSimpanTugasPembina(p);
+    case 'toggleAktifTugas':        return apiToggleAktifTugas(p);
+    case 'hapusTugasPembina':       return apiHapusTugasPembina(p);
+    case 'getTugasHariIni':         return apiGetTugasHariIni(p);
+    case 'centangTugas':            return apiCentangTugas(p);
+    case 'uploadFotoTugas':         return apiUploadFotoTugas(p);
+    case 'getRekapTugasPembina':    return apiGetRekapTugasPembina(p);
+    case 'getHistoryTugasPembina':  return apiGetHistoryTugasPembina(p);
     case 'getRaporSantri': return {ok:true, data: getRaporSantri(p.nisn, p.tahunAjaranId)};
     case 'refreshRekapNilai': return apiRefreshRekapNilai();
 
@@ -1681,6 +1695,40 @@ function apiSimpanPengaturan(p) {
   return {ok:true};
 }
 
+// Ambil banyak key sekaligus
+function apiGetPengaturanBatch(p) {
+  const sh = getMasterSS().getSheetByName(SHEET_PENGATURAN);
+  const rows = sh.getDataRange().getValues(); rows.shift();
+  const obj = {}; rows.forEach(r => obj[r[0]] = r[1]);
+  const keys = p.keys || [];
+  const hasil = {};
+  keys.forEach(function(k){
+    var v = obj[k];
+    // Boolean: "true"/"false"/true/false → boolean
+    if (v === true || v === 'TRUE' || v === 'true' || v === '1') hasil[k] = true;
+    else if (v === false || v === 'FALSE' || v === 'false' || v === '0') hasil[k] = false;
+    else if (v === undefined || v === '') hasil[k] = undefined;
+    else hasil[k] = v;
+  });
+  return {ok:true, data: hasil};
+}
+
+// Simpan banyak key sekaligus
+function apiSimpanPengaturanBatch(p) {
+  const sh = getMasterSS().getSheetByName(SHEET_PENGATURAN);
+  const rows = sh.getDataRange().getValues();
+  const data = p.data || {};
+  Object.keys(data).forEach(function(key) {
+    var val = data[key];
+    var found = false;
+    for (var i=1;i<rows.length;i++) {
+      if (rows[i][0] === key) { sh.getRange(i+1,2).setValue(String(val)); rows[i][1] = String(val); found = true; break; }
+    }
+    if (!found) { sh.appendRow([key, String(val)]); rows.push([key, String(val)]); }
+  });
+  return {ok:true};
+}
+
 // ============ SLIDE PENGUMUMAN (tampil di bagian atas aplikasi, disimpan di Master) ============
 // Disimpan di Master (bukan per tahun ajaran) karena pengumuman sifatnya berlaku umum
 // saat ini, bukan riwayat historis per tahun ajaran.
@@ -2202,8 +2250,55 @@ function getAllTransaksiSantri(nisn, tglMulai, tglAkhir) {
   })).sort((a,b) => (b.tanggal+b.waktu).localeCompare(a.tanggal+a.waktu));
 }
 
+// ---- Riwayat MUTASI SALDO (Tarik + Tambah saja, bukan belanja) ----
+function getRiwayatMutasiSaldoSantri(nisn, tglMulai, tglAkhir) {
+  nisn = norm(nisn);
+  const sh = getAktifKantinSS().getSheetByName(SHEET_TRANSAKSI_KANTIN);
+  if (!sh) return [];
+  const rows = sh.getDataRange().getValues(); rows.shift();
+  const tz = Session.getScriptTimeZone();
+  const KATEGORI_MUTASI = ['Top Up Saldo','Penarikan'];
+  return rows.filter(r => {
+    if (norm(r[2]) !== nisn) return false;
+    if (KATEGORI_MUTASI.indexOf(norm(r[5])) === -1) return false;
+    const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
+    if (tglMulai && tgl < tglMulai) return false;
+    if (tglAkhir && tgl > tglAkhir) return false;
+    return true;
+  }).map(r => ({
+    tanggal: r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]),
+    waktu: norm(r[1]), nominal: Number(r[4])||0,
+    kategori: norm(r[5]), keterangan: norm(r[6]),
+    dicatatOleh: norm(r[9]),
+    saldoSebelum: Number(r[11])||0, saldoSekarang: Number(r[12])||0
+  })).sort((a,b) => (b.tanggal+b.waktu).localeCompare(a.tanggal+a.waktu));
+}
+
+// ---- Riwayat MUTASI SALDO semua santri (untuk Bendahara/Admin) ----
+function getRiwayatMutasiSaldoAdmin(tglMulai, tglAkhir) {
+  const sh = getAktifKantinSS().getSheetByName(SHEET_TRANSAKSI_KANTIN);
+  if (!sh) return [];
+  const rows = sh.getDataRange().getValues(); rows.shift();
+  const tz = Session.getScriptTimeZone();
+  const KATEGORI_MUTASI = ['Top Up Saldo','Penarikan'];
+  return rows.filter(r => {
+    if (KATEGORI_MUTASI.indexOf(norm(r[5])) === -1) return false;
+    const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
+    if (tglMulai && tgl < tglMulai) return false;
+    if (tglAkhir && tgl > tglAkhir) return false;
+    return true;
+  }).map(r => ({
+    tanggal: r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]),
+    waktu: norm(r[1]), nisn: norm(r[2]), namaSantri: norm(r[3]),
+    nominal: Number(r[4])||0, kategori: norm(r[5]), keterangan: norm(r[6]),
+    dicatatOleh: norm(r[9]),
+    saldoSebelum: Number(r[11])||0, saldoSekarang: Number(r[12])||0
+  })).sort((a,b) => (b.tanggal+b.waktu).localeCompare(a.tanggal+a.waktu));
+}
+
 function apiTambahSaldoSantriManual(p) {
   const nisn = norm(p.nisn), nominal = Number(p.nominal)||0, oleh = norm(p.oleh);
+  const keterangan = norm(p.keterangan) || 'Top-Up Saldo Kantin';
   if (!nisn || nominal <= 0) return {ok:false, error:'NISN dan nominal wajib diisi'};
   const lock = LockService.getScriptLock();
   try { lock.waitLock(10000); } catch(e) { return {ok:false, error:'Sistem sibuk, coba lagi'}; }
@@ -2213,21 +2308,38 @@ function apiTambahSaldoSantriManual(p) {
     const rows = shSantri.getDataRange().getValues();
     const header = rows[0];
     const iSaldo = header.indexOf('Saldo Kantin');
+    const iNoWa = header.indexOf('No WA Ortu') > -1 ? header.indexOf('No WA Ortu') : 4;
     for (let i=1;i<rows.length;i++) {
       if (norm(rows[i][0]) === nisn) {
+        const nama = norm(rows[i][1]);
         const saldoSebelum = Number(rows[i][iSaldo])||0;
         const saldoBaru = saldoSebelum + nominal;
         shSantri.getRange(i+1, iSaldo+1).setValue(saldoBaru);
         // Catat ke TransaksiKantin
         const tz = Session.getScriptTimeZone();
+        const tgl = Utilities.formatDate(new Date(),tz,'yyyy-MM-dd');
+        const wkt = Utilities.formatDate(new Date(),tz,'HH:mm:ss');
         const shTK = getAktifKantinSS().getSheetByName(SHEET_TRANSAKSI_KANTIN);
-        shTK.appendRow([
-          Utilities.formatDate(new Date(),tz,'yyyy-MM-dd'),
-          Utilities.formatDate(new Date(),tz,'HH:mm:ss'),
-          nisn, norm(rows[i][1]), nominal, 'Top Up Saldo',
-          'Top Up Manual oleh '+oleh, 1, 0, '', 0, saldoSebelum, saldoBaru
-        ]);
-        return {ok:true, saldoBaru:saldoBaru, nama:norm(rows[i][1])};
+        shTK.appendRow([tgl, wkt, nisn, nama, nominal, 'Top Up Saldo',
+          keterangan + ' (oleh ' + oleh + ')', 1, 0, '', 0, saldoSebelum, saldoBaru]);
+        // Kirim notifikasi WA ke orang tua
+        let waKirim = false;
+        const noWa = norm(rows[i][iNoWa]);
+        if (noWa) {
+          try {
+            const pesan = 'Assalamualaikum Wr. Wb.\n\nYth. Orang Tua/Wali Santri *' + nama + '*\n\n' +
+              'Informasi penambahan saldo kantin:\n' +
+              'Keterangan: *' + keterangan + '*\n' +
+              'Nominal: *Rp' + nominal.toLocaleString('id-ID') + '*\n' +
+              'Saldo sebelum: Rp' + saldoSebelum.toLocaleString('id-ID') + '\n' +
+              'Saldo sekarang: *Rp' + saldoBaru.toLocaleString('id-ID') + '*\n\n' +
+              'Dicatat oleh: ' + oleh + '\n' +
+              'Waktu: ' + tgl + ' ' + wkt + '\n\nJazakumullah khairan.';
+            kirimWAFonnteUmum(noWa, pesan);
+            waKirim = true;
+          } catch(e) { Logger.log('Gagal kirim WA: ' + e.message); }
+        }
+        return {ok:true, saldoBaru:saldoBaru, saldoSebelum:saldoSebelum, nama:nama, waKirim:waKirim};
       }
     }
     return {ok:false, error:'Santri tidak ditemukan'};
@@ -4076,10 +4188,17 @@ function apiLogin(loginId, pin) {
     }
   } catch(e) {}
 
+  // NISN Anak boleh berisi lebih dari satu NISN dipisah koma (mendukung 1 akun wali
+  // untuk >1 anak). nisnAnak (tunggal, string mentah) tetap dipertahankan apa adanya
+  // supaya bagian kode lama yang mungkin masih membacanya langsung tidak berubah
+  // perilakunya. nisnAnakList adalah pecahannya sebagai array, dipakai fitur ganti anak.
+  const nisnAnakList = norm(found[4]).split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+
   return {ok:true, user: {
     nama: norm(found[0]), noWa: norm(found[1]),
     roles: roles, level: roles[0],
     nisnAnak: norm(found[4]),
+    nisnAnakList: nisnAnakList,
     waliKelas: waliKelas  // kelas yang ditangani sebagai Wali Kelas
   }};
 }
@@ -4430,8 +4549,8 @@ function getRekapAbsensiHalaqoh(namaHalaqoh, waktuHalaqoh, tglMulai, tglAkhir, g
     perSantri[nisn].total++;
     if (status==='Hadir') perSantri[nisn].hadir++;
     else if (status==='Sakit') perSantri[nisn].sakit++;
-    else if (status==='Izin') perSantri[nisn].izin++;
-    else perSantri[nisn].alpa++;
+    else if (status==='Izin' || status==='Izin Pulang') perSantri[nisn].izin++;
+    else if (status==='Alpa') perSantri[nisn].alpa++;
   });
 
   // Filter gender kalau diminta
@@ -4580,7 +4699,7 @@ function getRekapAbsensiGuru(pengampu, mapel, tglMulai, tglAkhir) {
     perSantri[nisn].total++;
     if (status==='Hadir') perSantri[nisn].hadir++;
     else if (status==='Sakit') perSantri[nisn].sakit++;
-    else if (status==='Izin') perSantri[nisn].izin++;
+    else if (status==='Izin' || status==='Izin Pulang') perSantri[nisn].izin++;
     else if (status==='Alpa') perSantri[nisn].alpa++;
   });
 
@@ -4734,8 +4853,10 @@ function getRekapSantri(nisn, tahunAjaranId) {
   const rows = getRiwayatAbsensi({nisn: nisn, tahunAjaranId: tahunAjaranId});
   const perMapel = {};
   rows.forEach(r => {
+    // Normalize "Izin Pulang" → dihitung sebagai "Izin" di rekap absensi
+    const statusRekap = r.status === 'Izin Pulang' ? 'Izin' : r.status;
     if (!perMapel[r.mapel]) perMapel[r.mapel] = {Hadir:0,Sakit:0,Izin:0,Alpa:0,total:0,totalSikap:0,jmlSikap:0};
-    perMapel[r.mapel][r.status] = (perMapel[r.mapel][r.status]||0) + 1;
+    perMapel[r.mapel][statusRekap] = (perMapel[r.mapel][statusRekap]||0) + 1;
     perMapel[r.mapel].total++;
     if (r.nilaiSikap !== '' && r.nilaiSikap != null) { perMapel[r.mapel].totalSikap += Number(r.nilaiSikap); perMapel[r.mapel].jmlSikap++; }
   });
@@ -5818,8 +5939,8 @@ if (!sh) return [];
     perSantri[nisn].total++;
     if (status==='Hadir') perSantri[nisn].hadir++;
     else if (status==='Sakit') perSantri[nisn].sakit++;
-    else if (status==='Izin') perSantri[nisn].izin++;
-    else perSantri[nisn].alpa++;
+    else if (status==='Izin' || status==='Izin Pulang') perSantri[nisn].izin++;
+    else if (status==='Alpa') perSantri[nisn].alpa++;
   });
   return Object.values(perSantri).map(s => ({
     ...s, persenHadir: s.total>0?Math.round(s.hadir/s.total*100):0
@@ -5911,7 +6032,8 @@ function apiCekSesiAktif(p) {
       }
     }
   } catch(e) {}
-  return {ok:true, user:{nama:norm(found[0]), noWa:norm(found[1]), roles:roles, level:roles[0], nisnAnak:norm(found[4]), waliKelas:waliKelas}};
+  const nisnAnakListSesi = norm(found[4]).split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+  return {ok:true, user:{nama:norm(found[0]), noWa:norm(found[1]), roles:roles, level:roles[0], nisnAnak:norm(found[4]), nisnAnakList:nisnAnakListSesi, waliKelas:waliKelas}};
 }
 
 // Kumpulkan semua spreadsheet yang dipakai sistem untuk ditampilkan ke Admin/Mudir
@@ -6348,6 +6470,7 @@ function refreshRekapNilaiSheet() {
     list.forEach(r => {
       if (!perMapel[r.mapel]) perMapel[r.mapel] = {Hadir:0,total:0,totalSikap:0,jmlSikap:0};
       if (r.status === 'Hadir') perMapel[r.mapel].Hadir++;
+      // Izin Pulang tetap dihitung total (bukan Hadir), sehingga persen hadir turun
       perMapel[r.mapel].total++;
       if (r.nilaiSikap !== '' && r.nilaiSikap != null && !isNaN(Number(r.nilaiSikap))) { perMapel[r.mapel].totalSikap += Number(r.nilaiSikap); perMapel[r.mapel].jmlSikap++; }
     });
@@ -6689,10 +6812,13 @@ function apiHapusProgresAwal(p) {
  * Juz 30: 582-604 (An-Naba' s/d An-Nas)
  */
 function getRentangJuz() {
-  // Halaman awal setiap juz — data akurat dari Mushaf Madinah
+  // Halaman awal setiap juz — Mushaf Utsmani/Madinah 604 halaman.
+  // Diverifikasi terhadap daftar juz aplikasi Qur'an (Sept 2026).
+  // Catatan: juz TIDAK selalu pas 20 halaman. Juz 6 dan juz 10 hanya
+  // 19 halaman, sedangkan juz 7 dan juz 11 mulai 1 halaman lebih awal.
   const juzAwal = {
-    1:1,   2:22,  3:42,  4:62,  5:82,   6:102, 7:122, 8:142, 9:162, 10:182,
-    11:202,12:222,13:242,14:262,15:282, 16:302,17:322,18:342,19:362,20:382,
+    1:1,   2:22,  3:42,  4:62,  5:82,   6:102, 7:121, 8:142, 9:162, 10:182,
+    11:201,12:222,13:242,14:262,15:282, 16:302,17:322,18:342,19:362,20:382,
     21:402,22:422,23:442,24:462,25:482, 26:502,27:522,28:542,29:562,30:582
   };
   const range = {};
@@ -7185,6 +7311,8 @@ function apiGetIzinSantriSaya(p) {
 
 const SHEET_ABSENSI_HARIAN = 'AbsensiHarian';
 const SHEET_PERIZINAN      = 'Perizinan'; // sistem perizinan santri
+const SHEET_TUGAS_PEMBINA  = 'TugasPembina';   // master daftar tugas (dibuat Mudir/Admin)
+const SHEET_REALISASI_TUGAS = 'RealisasiTugas'; // centangan harian per Pembina
 
 // Ambil semua santri sesuai gender pembina
 function apiGetSantriHarian(p) {
@@ -7330,7 +7458,7 @@ function apiGetRekapAbsensiHarian(p) {
     perSantri[nisn].total++;
     if (s==='Hadir') perSantri[nisn].hadir++;
     else if (s==='Sakit') perSantri[nisn].sakit++;
-    else if (s==='Izin') perSantri[nisn].izin++;
+    else if (s==='Izin' || s==='Izin Pulang') perSantri[nisn].izin++;
     else perSantri[nisn].alpa++;
   });
 
@@ -7524,4 +7652,423 @@ function apiGetStatusPondok(p) {
 // Catat pelanggaran (dipakai oleh Pembina)
 function apiCatatPelanggaranPembina(p) {
   return apiCatatPelanggaran(p); // pakai fungsi yang sudah ada
+}
+
+// ============================================================
+// TUGAS HARIAN PEMBINA
+// Sheet TugasPembina  : master tugas (dibuat Mudir/Admin)
+// Sheet RealisasiTugas: centangan harian per Pembina
+// ============================================================
+
+function headerTugasPembina(){ return ['ID','NamaTugas','Kategori','Berlaku','Urutan','Aktif','WajibFoto','DibuatOleh','Waktu']; }
+function headerRealisasiTugas(){ return ['Tanggal','IDTugas','NamaTugas','Pembina','Status','Catatan','WaktuCentang','FotoUrl','FotoId','TanggalHapusFoto']; }
+
+function getOrCreateSheetTugas(ss) {
+  var sh = ss.getSheetByName(SHEET_TUGAS_PEMBINA);
+  if (!sh) {
+    sh = ss.insertSheet(SHEET_TUGAS_PEMBINA);
+    sh.appendRow(headerTugasPembina());
+    sh.setFrozenRows(1);
+    // Sisipkan data dummy langsung
+    inisialisasiDummyTugas(sh);
+  }
+  return sh;
+}
+function getOrCreateSheetRealisasi(ss) {
+  var sh = ss.getSheetByName(SHEET_REALISASI_TUGAS);
+  if (!sh) { sh = ss.insertSheet(SHEET_REALISASI_TUGAS); sh.appendRow(headerRealisasiTugas()); sh.setFrozenRows(1); }
+  return sh;
+}
+
+// ---- MASTER TUGAS (Mudir/Admin) ----
+
+function apiGetDaftarTugasPembina(p) {
+  const ss = getAktifSS();
+  const sh = getOrCreateSheetTugas(ss);
+  const rows = sh.getDataRange().getValues(); rows.shift();
+  // Header: ID(0),NamaTugas(1),Kategori(2),Berlaku(3),Urutan(4),Aktif(5),WajibFoto(6),DibuatOleh(7),Waktu(8)
+  const data = rows.map(function(r, i) {
+    return {rowIndex: i+2, id: norm(r[0]), nama: norm(r[1]), kategori: norm(r[2]),
+            berlaku: norm(r[3]), urutan: Number(r[4])||0,
+            aktif: r[5]===true||norm(r[5])==='TRUE'||norm(r[5])==='true'||norm(r[5])==='1',
+            wajibFoto: r[6]===true||norm(r[6])==='TRUE'||norm(r[6])==='true'||norm(r[6])==='1',
+            dibuatOleh: norm(r[7]), waktu: r[8] instanceof Date ? Utilities.formatDate(r[8], Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm') : norm(r[8])};
+  }).filter(function(r){ return r.id; });
+  if (!p || !p.termasukNonaktif) return {ok:true, data: data.filter(function(r){return r.aktif;})};
+  return {ok:true, data: data};
+}
+
+function apiSimpanTugasPembina(p) {
+  const ss = getAktifSS();
+  const sh = getOrCreateSheetTugas(ss);
+  const nama = norm(p.nama); if (!nama) return {ok:false, error:'Nama tugas wajib diisi'};
+  const berlakuValid = ['Setiap Hari','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu','Minggu','Insidental'];
+  const berlaku = norm(p.berlaku)||'Setiap Hari';
+  if (berlakuValid.indexOf(berlaku) === -1) return {ok:false, error:'Nilai "Berlaku" tidak valid'};
+  const wajibFoto = p.wajibFoto === true || p.wajibFoto === 'true' || p.wajibFoto === '1';
+  const tz = Session.getScriptTimeZone();
+  const now = new Date();
+
+  if (p.rowIndex) {
+    // Edit — kolom: NamaTugas(2), Kategori(3), Berlaku(4), Urutan(5), Aktif(6), WajibFoto(7)
+    const ri = Number(p.rowIndex);
+    sh.getRange(ri, 2, 1, 6).setValues([[nama, norm(p.kategori)||'Umum', berlaku, Number(p.urutan)||0, true, wajibFoto]]);
+    return {ok:true, mode:'update'};
+  } else {
+    const id = 'TGS-' + Utilities.formatDate(now, tz, 'yyyyMMddHHmmss');
+    // Header: ID(1),NamaTugas(2),Kategori(3),Berlaku(4),Urutan(5),Aktif(6),WajibFoto(7),DibuatOleh(8),Waktu(9)
+    sh.appendRow([id, nama, norm(p.kategori)||'Umum', berlaku, Number(p.urutan)||0, true, wajibFoto, norm(p.oleh)||'Admin', now]);
+    return {ok:true, id: id};
+  }
+}
+
+function apiToggleAktifTugas(p) {
+  const ss = getAktifSS();
+  const sh = getOrCreateSheetTugas(ss);
+  const ri = Number(p.rowIndex); if (!ri || ri < 2) return {ok:false, error:'Baris tidak valid'};
+  const aktif = p.aktif === true || p.aktif === 'true';
+  sh.getRange(ri, 6).setValue(aktif);
+  return {ok:true};
+}
+
+function apiHapusTugasPembina(p) {
+  const ss = getAktifSS();
+  const sh = getOrCreateSheetTugas(ss);
+  const ri = Number(p.rowIndex); if (!ri || ri < 2) return {ok:false, error:'Baris tidak valid'};
+  sh.deleteRow(ri);
+  return {ok:true};
+}
+
+// ---- REALISASI (Pembina centang) ----
+
+// Ambil tugas yang berlaku hari ini + status centang untuk Pembina tertentu
+function apiGetTugasHariIni(p) {
+  const ss = getAktifSS();
+  const tz = Session.getScriptTimeZone();
+  const tanggal = norm(p.tanggal) || Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  const pembina = norm(p.pembina);
+  const hariIdx = new Date(tanggal + 'T00:00:00').getDay(); // 0=Minggu
+  const namaHari = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'][hariIdx];
+
+  // Ambil master tugas yang berlaku hari ini
+  const shTugas = getOrCreateSheetTugas(ss);
+  const tugasRows = shTugas.getDataRange().getValues(); tugasRows.shift();
+  const tugasBerlaku = tugasRows.filter(function(r) {
+    const aktif = r[5]===true||norm(r[5])==='TRUE'||norm(r[5])==='true'||norm(r[5])==='1';
+    if (!aktif) return false;
+    const berlaku = norm(r[3]);
+    return berlaku === 'Setiap Hari' || berlaku === namaHari || berlaku === 'Insidental';
+  }).sort(function(a,b){ return (Number(a[4])||0) - (Number(b[4])||0); });
+
+  // Ambil realisasi hari ini untuk pembina ini
+  const shReal = getOrCreateSheetRealisasi(ss);
+  const realRows = shReal.getDataRange().getValues(); realRows.shift();
+  // Header realisasi: Tanggal(0),IDTugas(1),NamaTugas(2),Pembina(3),Status(4),Catatan(5),WaktuCentang(6),FotoUrl(7),FotoId(8),TanggalHapusFoto(9)
+  const realisasiHariIni = {};
+  realRows.forEach(function(r, i) {
+    const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0], tz, 'yyyy-MM-dd') : norm(r[0]);
+    if (tgl === tanggal && norm(r[3]) === pembina) {
+      realisasiHariIni[norm(r[1])] = {rowIndex: i+2, status: norm(r[4]), catatan: norm(r[5]),
+        waktu: r[6] instanceof Date ? Utilities.formatDate(r[6], tz, 'HH:mm') : norm(r[6]),
+        fotoUrl: norm(r[7]), fotoId: norm(r[8])};
+    }
+  });
+
+  // Header tugas: ID(0),NamaTugas(1),Kategori(2),Berlaku(3),Urutan(4),Aktif(5),WajibFoto(6)
+  const data = tugasBerlaku.map(function(r, i) {
+    const id = norm(r[0]);
+    const real = realisasiHariIni[id] || {};
+    const wajibFoto = r[6]===true||norm(r[6])==='TRUE'||norm(r[6])==='true'||norm(r[6])==='1';
+    return {id: id, nama: norm(r[1]), kategori: norm(r[2]), berlaku: norm(r[3]),
+            urutan: Number(r[4])||0, wajibFoto: wajibFoto,
+            selesai: real.status === 'Selesai',
+            catatan: real.catatan || '', waktu: real.waktu || '',
+            fotoUrl: real.fotoUrl || '', fotoId: real.fotoId || '',
+            rowIndexReal: real.rowIndex || null};
+  });
+
+  const total = data.length, selesai = data.filter(function(d){return d.selesai;}).length;
+  return {ok:true, data: data, tanggal: tanggal, hari: namaHari,
+          total: total, selesai: selesai,
+          persen: total > 0 ? Math.round(selesai/total*100) : 0};
+}
+
+// Centang/batalkan satu tugas
+function apiCentangTugas(p) {
+  const ss = getAktifSS();
+  const tz = Session.getScriptTimeZone();
+  const tanggal = norm(p.tanggal) || Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  const idTugas = norm(p.idTugas), pembina = norm(p.pembina);
+  const selesai = p.selesai === true || p.selesai === 'true';
+  const catatan = norm(p.catatan) || '';
+  if (!idTugas || !pembina) return {ok:false, error:'IDTugas dan Pembina wajib diisi'};
+
+  // Ambil nama tugas dari master
+  const shTugas = getOrCreateSheetTugas(ss);
+  const tugasRows = shTugas.getDataRange().getValues(); tugasRows.shift();
+  const tugas = tugasRows.find(function(r){ return norm(r[0]) === idTugas; });
+  const namaTugas = tugas ? norm(tugas[1]) : idTugas;
+
+  const shReal = getOrCreateSheetRealisasi(ss);
+  const rows = shReal.getDataRange().getValues(); rows.shift();
+  const now = new Date();
+  const status = selesai ? 'Selesai' : 'Belum';
+
+  // Cari baris existing untuk update
+  let found = -1;
+  for (let i=0; i<rows.length; i++) {
+    const tgl = rows[i][0] instanceof Date ? Utilities.formatDate(rows[i][0], tz, 'yyyy-MM-dd') : norm(rows[i][0]);
+    if (tgl === tanggal && norm(rows[i][1]) === idTugas && norm(rows[i][3]) === pembina) { found = i+2; break; }
+  }
+  if (found > 0) {
+    shReal.getRange(found, 5, 1, 3).setValues([[status, catatan, now]]);
+  } else {
+    shReal.appendRow([tanggal, idTugas, namaTugas, pembina, status, catatan, now]);
+  }
+  return {ok:true, status: status};
+}
+
+// Rekap semua Pembina untuk satu hari (dashboard Mudir)
+function apiGetRekapTugasPembina(p) {
+  const ss = getAktifSS();
+  const tz = Session.getScriptTimeZone();
+  const tanggal = norm(p.tanggal) || Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  const hariIdx = new Date(tanggal + 'T00:00:00').getDay();
+  const namaHari = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'][hariIdx];
+
+  // Master tugas berlaku hari ini
+  const shTugas = getOrCreateSheetTugas(ss);
+  const tugasRows = shTugas.getDataRange().getValues(); tugasRows.shift();
+  const tugasBerlaku = tugasRows.filter(function(r) {
+    const aktif = r[5]===true||norm(r[5])==='TRUE'||norm(r[5])==='true'||norm(r[5])==='1';
+    if (!aktif) return false;
+    const berlaku = norm(r[3]);
+    return berlaku === 'Setiap Hari' || berlaku === namaHari || berlaku === 'Insidental';
+  });
+  const totalTugas = tugasBerlaku.length;
+
+  // Ambil semua Pembina dari RoleAkses
+  const shRole = ss.getSheetByName(SHEET_ROLE_AKSES);
+  const pembinaDaftar = [];
+  if (shRole) {
+    shRole.getDataRange().getValues().slice(1).forEach(function(r) {
+      const roleStr = norm(r[2]);
+      if (roleStr.indexOf('Pembina') !== -1) {
+        const nama = norm(r[1]);
+        if (nama && pembinaDaftar.indexOf(nama) === -1) pembinaDaftar.push(nama);
+      }
+    });
+  }
+
+  // Realisasi hari ini
+  const shReal = getOrCreateSheetRealisasi(ss);
+  const realRows = shReal.getDataRange().getValues(); realRows.shift();
+  const realHariIni = realRows.filter(function(r) {
+    const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0], tz, 'yyyy-MM-dd') : norm(r[0]);
+    return tgl === tanggal && norm(r[4]) === 'Selesai';
+  });
+
+  // Hitung selesai per pembina
+  const perPembina = {};
+  pembinaDaftar.forEach(function(pb) { perPembina[pb] = 0; });
+  realHariIni.forEach(function(r) {
+    const pb = norm(r[3]);
+    if (!perPembina[pb]) perPembina[pb] = 0;
+    perPembina[pb]++;
+  });
+
+  const data = pembinaDaftar.map(function(pb) {
+    const sel = perPembina[pb] || 0;
+    return {pembina: pb, selesai: sel, total: totalTugas,
+            persen: totalTugas > 0 ? Math.round(Math.min(sel, totalTugas)/totalTugas*100) : 0};
+  }).sort(function(a,b){ return b.persen - a.persen; });
+
+  return {ok:true, tanggal: tanggal, hari: namaHari, totalTugas: totalTugas, data: data};
+}
+
+// History rekap per rentang tanggal (Mudir export)
+function apiGetHistoryTugasPembina(p) {
+  const ss = getAktifSS();
+  const tz = Session.getScriptTimeZone();
+  const tglMulai = norm(p.tglMulai), tglAkhir = norm(p.tglAkhir);
+  const pembinaFilter = norm(p.pembina) || '';
+
+  const shReal = getOrCreateSheetRealisasi(ss);
+  const rows = shReal.getDataRange().getValues(); rows.shift();
+
+  const data = rows.map(function(r, i) {
+    const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0], tz, 'yyyy-MM-dd') : norm(r[0]);
+    return {tanggal: tgl, idTugas: norm(r[1]), namaTugas: norm(r[2]),
+            pembina: norm(r[3]), status: norm(r[4]), catatan: norm(r[5]),
+            waktu: r[6] instanceof Date ? Utilities.formatDate(r[6], tz, 'HH:mm') : norm(r[6])};
+  }).filter(function(r) {
+    if (!r.tanggal) return false;
+    if (tglMulai && r.tanggal < tglMulai) return false;
+    if (tglAkhir && r.tanggal > tglAkhir) return false;
+    if (pembinaFilter && r.pembina !== pembinaFilter) return false;
+    return true;
+  }).sort(function(a,b){ return b.tanggal.localeCompare(a.tanggal) || a.pembina.localeCompare(b.pembina); });
+
+  return {ok:true, data: data};
+}
+
+// ============================================================
+// DATA DUMMY TUGAS PEMBINA (diisi otomatis saat sheet baru dibuat)
+// ============================================================
+function inisialisasiDummyTugas(sh) {
+  const now = new Date();
+  const dummy = [
+    // ID, NamaTugas, Kategori, Berlaku, Urutan, Aktif, WajibFoto, DibuatOleh, Waktu
+    ['TGS-DUMMY-01','Bangunkan santri untuk Sholat Subuh','Sholat','Setiap Hari',1,true,false,'System',now],
+    ['TGS-DUMMY-02','Dampingi & pantau sholat Subuh berjamaah','Sholat','Setiap Hari',2,true,false,'System',now],
+    ['TGS-DUMMY-03','Cek kondisi kamar dan kebersihan asrama pagi','Kebersihan','Setiap Hari',3,true,true,'System',now],
+    ['TGS-DUMMY-04','Absensi harian santri sesi pagi','Asrama','Setiap Hari',4,true,false,'System',now],
+    ['TGS-DUMMY-05','Dampingi & pantau sholat Dzuhur berjamaah','Sholat','Setiap Hari',5,true,false,'System',now],
+    ['TGS-DUMMY-06','Dampingi & pantau sholat Ashar berjamaah','Sholat','Setiap Hari',6,true,false,'System',now],
+    ['TGS-DUMMY-07','Cek kondisi kamar dan kebersihan asrama sore','Kebersihan','Setiap Hari',7,true,true,'System',now],
+    ['TGS-DUMMY-08','Dampingi & pantau sholat Maghrib berjamaah','Sholat','Setiap Hari',8,true,false,'System',now],
+    ['TGS-DUMMY-09','Pantau halaqoh Al-Qur\'an setelah Maghrib','Belajar','Setiap Hari',9,true,false,'System',now],
+    ['TGS-DUMMY-10','Dampingi & pantau sholat Isya berjamaah','Sholat','Setiap Hari',10,true,false,'System',now],
+    ['TGS-DUMMY-11','Absensi malam santri (pastikan semua ada)','Asrama','Setiap Hari',11,true,false,'System',now],
+    ['TGS-DUMMY-12','Pastikan santri tidur tepat waktu & kondisi asrama aman','Keamanan','Setiap Hari',12,true,true,'System',now],
+    ['TGS-DUMMY-13','Cek kebersihan kamar mandi dan toilet','Kebersihan','Setiap Hari',13,true,true,'System',now],
+    ['TGS-DUMMY-14','Kerja bakti mingguan kebersihan lingkungan pondok','Kebersihan','Jumat',14,true,true,'System',now],
+    ['TGS-DUMMY-15','Pantau kegiatan belajar malam santri','Belajar','Setiap Hari',15,true,false,'System',now],
+    ['TGS-DUMMY-16','Laporan kondisi santri ke Mudir','Laporan','Setiap Hari',16,true,false,'System',now],
+    ['TGS-DUMMY-17','Cek dan catat santri yang sakit','Kesehatan','Setiap Hari',17,true,false,'System',now],
+    ['TGS-DUMMY-18','Rapat koordinasi Pembina mingguan','Umum','Senin',18,true,false,'System',now],
+  ];
+  if (dummy.length > 0) {
+    sh.getRange(2, 1, dummy.length, dummy[0].length).setValues(dummy);
+  }
+}
+
+// ============================================================
+// UPLOAD FOTO TUGAS KE GOOGLE DRIVE
+// ============================================================
+
+// Nama folder di Drive: "WASIAT_FotoTugas" (dibuat otomatis)
+var DRIVE_FOLDER_FOTO_TUGAS = 'WASIAT_FotoTugas';
+
+function getOrCreateFolderFotoTugas() {
+  var folders = DriveApp.getFoldersByName(DRIVE_FOLDER_FOTO_TUGAS);
+  if (folders.hasNext()) return folders.next();
+  return DriveApp.createFolder(DRIVE_FOLDER_FOTO_TUGAS);
+}
+
+// API: Upload foto tugas (dipanggil setelah centang)
+// p.imageBase64 = base64 string dari foto
+// p.mimeType    = 'image/jpeg' atau 'image/png'
+// p.namaFile    = nama file (optional)
+// p.idTugas, p.pembina, p.tanggal, p.rowIndexReal
+function apiUploadFotoTugas(p) {
+  if (!p.imageBase64) return {ok:false, error:'Data foto tidak ditemukan'};
+  const mime = norm(p.mimeType) || 'image/jpeg';
+  const ext = mime === 'image/png' ? '.png' : '.jpg';
+  const tz = Session.getScriptTimeZone();
+  const now = new Date();
+  const namaFile = norm(p.namaFile) ||
+    ('Tugas_' + norm(p.pembina) + '_' + norm(p.tanggal) + '_' + norm(p.idTugas) + ext);
+
+  try {
+    const folder = getOrCreateFolderFotoTugas();
+    const blob = Utilities.newBlob(Utilities.base64Decode(p.imageBase64), mime, namaFile);
+    const file = folder.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    const fotoUrl = 'https://drive.google.com/uc?id=' + file.getId() + '&export=view';
+    const fotoId = file.getId();
+
+    // Tanggal hapus = hari upload + 5 hari
+    const tglHapus = new Date(now.getTime() + 5*24*3600*1000);
+    const tglHapusStr = Utilities.formatDate(tglHapus, tz, 'yyyy-MM-dd');
+
+    // Update baris RealisasiTugas dengan fotoUrl, fotoId, tglHapus
+    const ri = Number(p.rowIndexReal);
+    if (ri >= 2) {
+      const ss = getAktifSS();
+      const sh = getOrCreateSheetRealisasi(ss);
+      // Kolom 8=FotoUrl, 9=FotoId, 10=TanggalHapusFoto
+      sh.getRange(ri, 8, 1, 3).setValues([[fotoUrl, fotoId, tglHapusStr]]);
+    }
+
+    // Pastikan trigger pembersihan terpasang
+    setupTriggerHapusFotoTugas();
+
+    return {ok:true, fotoUrl:fotoUrl, fotoId:fotoId, tglHapus:tglHapusStr};
+  } catch(e) {
+    return {ok:false, error:'Gagal upload foto: ' + e.message};
+  }
+}
+
+// ============================================================
+// AUTO-DELETE FOTO SETELAH 5 HARI
+// ============================================================
+
+function setupTriggerHapusFotoTugas() {
+  // Pasang trigger harian jam 02:00 jika belum ada
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i=0; i<triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'jalankanHapusFotoTugas') return; // sudah ada
+  }
+  ScriptApp.newTrigger('jalankanHapusFotoTugas')
+    .timeBased().everyDays(1).atHour(2).create();
+  Logger.log('Trigger hapus foto tugas dipasang.');
+}
+
+function hapusTriggerHapusFotoTugas() {
+  ScriptApp.getProjectTriggers().forEach(function(t){
+    if (t.getHandlerFunction() === 'jalankanHapusFotoTugas') ScriptApp.deleteTrigger(t);
+  });
+}
+
+// Dijalankan otomatis tiap malam jam 02:00
+function jalankanHapusFotoTugas() {
+  const ss = getAktifSS();
+  const sh = getOrCreateSheetRealisasi(ss);
+  const tz = Session.getScriptTimeZone();
+  const hari_ini = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  const rows = sh.getDataRange().getValues();
+  // Header: Tanggal(0),IDTugas(1),NamaTugas(2),Pembina(3),Status(4),Catatan(5),WaktuCentang(6),FotoUrl(7),FotoId(8),TanggalHapusFoto(9)
+  var jumlahHapus = 0;
+  for (var i=1; i<rows.length; i++) {
+    var fotoId = norm(rows[i][8]);
+    var tglHapus = rows[i][9] instanceof Date ?
+      Utilities.formatDate(rows[i][9], tz, 'yyyy-MM-dd') : norm(rows[i][9]);
+    if (!fotoId || !tglHapus) continue;
+    if (tglHapus > hari_ini) continue; // belum waktunya
+    // Hapus file dari Drive
+    try {
+      DriveApp.getFileById(fotoId).setTrashed(true);
+      // Kosongkan kolom foto di sheet
+      sh.getRange(i+1, 8, 1, 3).setValues([['[Foto dihapus '+tglHapus+']','','']]);
+      jumlahHapus++;
+      Logger.log('Foto dihapus: ' + fotoId + ' (baris ' + (i+1) + ')');
+    } catch(e) {
+      Logger.log('Gagal hapus foto ' + fotoId + ': ' + e.message);
+      // Tetap kosongkan kolom agar tidak dicoba lagi terus
+      sh.getRange(i+1, 9, 1, 2).setValues([['','']]);
+    }
+  }
+  Logger.log('Selesai hapus foto: ' + jumlahHapus + ' file.');
+}
+
+// Preview: lihat foto mana yang akan dihapus hari ini
+function previewHapusFotoTugas() {
+  const ss = getAktifSS();
+  const sh = getOrCreateSheetRealisasi(ss);
+  const tz = Session.getScriptTimeZone();
+  const hari_ini = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  const rows = sh.getDataRange().getValues();
+  var akan_dihapus = [];
+  for (var i=1; i<rows.length; i++) {
+    var fotoId = norm(rows[i][8]);
+    var tglHapus = rows[i][9] instanceof Date ?
+      Utilities.formatDate(rows[i][9], tz, 'yyyy-MM-dd') : norm(rows[i][9]);
+    if (!fotoId || !tglHapus || tglHapus > hari_ini) continue;
+    akan_dihapus.push({baris:i+1, pembina:norm(rows[i][3]), tugas:norm(rows[i][2]),
+                       tanggal:norm(rows[i][0] instanceof Date ? Utilities.formatDate(rows[i][0],tz,'yyyy-MM-dd'):rows[i][0]),
+                       tglHapus:tglHapus, fotoId:fotoId});
+  }
+  Logger.log('Foto yang akan dihapus: ' + JSON.stringify(akan_dihapus));
+  return akan_dihapus;
 }
