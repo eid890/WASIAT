@@ -7313,6 +7313,12 @@ const SHEET_ABSENSI_HARIAN = 'AbsensiHarian';
 const SHEET_PERIZINAN      = 'Perizinan'; // sistem perizinan santri
 const SHEET_TUGAS_PEMBINA  = 'TugasPembina';   // master daftar tugas (dibuat Mudir/Admin)
 const SHEET_REALISASI_TUGAS = 'RealisasiTugas'; // centangan harian per Pembina
+// Daftar tugas pembina (master, BUKAN centangan hariannya) ikut disalin otomatis ke
+// tahun ajaran baru -- sama seperti Guru/MataPelajaran -- supaya Mudir tidak perlu
+// menyusun ulang daftar tugas tiap ganti tahun ajaran. RealisasiTugas sengaja tidak
+// ditambahkan di sini: centangan harian memang harus tetap kosong/fresh tiap tahun
+// ajaran baru, sama seperti data Absensi.
+SHEETS_DISALIN.push(SHEET_TUGAS_PEMBINA);
 
 // Ambil semua santri sesuai gender pembina
 function apiGetSantriHarian(p) {

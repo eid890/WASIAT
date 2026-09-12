@@ -271,7 +271,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbzEuexl9zl477FPFDmTo4z_PkMj1ul6Q1JQzLhsJs-xpjOxIdIqgHcq5rPg7XYaJbIN/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -902,13 +902,34 @@
         IkonJadwalSholat: res.data.IkonJadwalSholat || '', IkonAlQuran: res.data.IkonAlQuran || '', IkonDzikir: res.data.IkonDzikir || '',
         TaglineHero: res.data.TaglineHero || 'Pendidikan Islam Terpadu', IkonWhatsApp: res.data.IkonWhatsApp || '' };
       root.style.setProperty('--tema', STATE.pengaturan.WarnaTema);
+      // PENTING: saat sesi tersimpan langsung dipakai (lihat loadPengaturanLaluTampilkanLogin),
+      // dashboard sudah dirender duluan dengan logo kosong (STATE.pengaturan default) SEBELUM
+      // panggilan getPengaturan ini selesai. Tanpa baris ini, logo yang sudah kadung dirender
+      // kosong itu tidak pernah ter-update walau data logo sebenarnya sudah datang.
+      refreshLogoTampilan();
       return true;
     }
     return false;
   }
+  // Segarkan semua <img class="app-logo-img"> yang sudah terlanjur dirender di layar
+  // (topbar, sidebar) supaya ikut update begitu logoSrc() berubah -- tanpa perlu
+  // me-render ulang seluruh halaman/dashboard (jadi tidak mengganggu apa pun yang
+  // sedang dilihat/diisi user saat itu).
+  function refreshLogoTampilan(){
+    var logo = logoSrc();
+    document.querySelectorAll('.app-logo-img').forEach(function(img){
+      if (logo) { img.src = logo; img.style.display = ''; }
+      else { img.style.display = 'none'; }
+    });
+  }
 
   function loadPengaturanLaluTampilkanLogin(){
-    var sesiTersimpan = ambilSesiTersimpan();
+    // Mode pratinjau: dibuka dari Admin > Website Builder ("Buka Pratinjau Halaman Depan")
+    // supaya Admin bisa melihat tampilan publik yang sebenarnya walau sedang login (sesi
+    // tersimpan biasanya langsung lompat ke dashboard, bukan ke halaman depan). Sama sekali
+    // tidak memengaruhi alur login/sesi normal -- hanya aktif kalau parameter ini ada di URL.
+    var modePratinjau = /[?&]preview=beranda(&|$)/.test(location.search);
+    var sesiTersimpan = modePratinjau ? null : ambilSesiTersimpan();
     if (sesiTersimpan) {
       STATE.user = sesiTersimpan;
       lanjutkanKeDashboard();
@@ -981,6 +1002,7 @@
         '</div>' +
       '</nav>' +
       '<div class="hero'+(p.HeroImageURL?' ada-gambar':'')+'"'+heroStyle+'>' +
+        (p.TaglineHero ? '<p class="hero-samar" style="font-weight:700;letter-spacing:1px;text-transform:uppercase;font-size:13px;margin-bottom:6px;opacity:.9">'+esc(p.TaglineHero)+'</p>' : '') +
         '<h1 class="hero-samar">'+esc(p.NamaPesantren)+'</h1>' +
         '<p>'+esc(p.DeskripsiSingkat||'')+'</p>' +
         '<button class="hero-cta hero-samar" id="btnHeroCta">Jelajahi Lebih Lanjut &#8595;</button>' +
@@ -1341,7 +1363,7 @@
         '<div class="sidebar-overlay" id="sbOverlay"></div>'+
         '<nav class="sidebar" id="sbNav">'+
           '<div class="sidebar-brand">'+
-            (logoSrc()?'<img src="'+esc(logoSrc())+'" style="height:38px;border-radius:8px;margin-right:8px">':'')+
+            (logoSrc()?'<img class="app-logo-img" src="'+esc(logoSrc())+'" style="height:38px;border-radius:8px;margin-right:8px">':'')+
             '<div class="nm">'+esc(STATE.pengaturan.NamaPesantren||'WASIAT')+'</div>'+
           '</div>'+
           (validRoles.length>1?
@@ -1505,7 +1527,7 @@
   }
 
   function topbar(judul){
-    var logo = logoSrc() ? '<img src="'+esc(logoSrc())+'">' : '';
+    var logo = logoSrc() ? '<img class="app-logo-img" src="'+esc(logoSrc())+'">' : '';
     var gantiRole = (STATE.user.roles && STATE.user.roles.length > 1) ? '<button class="secondary small" id="btnGantiRole">Ganti Akses</button> ' : '';
     return '<div class="topbar"><div class="brand">'+logo+'<div><h2 style="margin:0">'+esc(judul)+'</h2>' +
       '<span class="muted">'+esc(STATE.pengaturan.NamaPesantren)+'</span></div></div>' +
@@ -2005,7 +2027,7 @@
   }
 
   function renderSidebarShell(opts){
-    var logo = logoSrc() ? '<img src="'+esc(logoSrc())+'">' : '<div style="width:38px;height:38px;background:#fff;border-radius:8px;flex-shrink:0"></div>';
+    var logo = logoSrc() ? '<img class="app-logo-img" src="'+esc(logoSrc())+'">' : '<div style="width:38px;height:38px;background:#fff;border-radius:8px;flex-shrink:0"></div>';
     var navHtml = opts.navItems.map(function(n){
       return '<div class="nav-item'+(n.key===opts.activeKey?' active':'')+'" data-key="'+n.key+'"><span class="ic">'+n.icon+'</span><span>'+esc(n.label)+'</span></div>';
     }).join('');
@@ -8169,8 +8191,7 @@
       {key:'catatpelanggaran', label:'Catat Pelanggaran', icon:'&#9888;&#65039;'},
       {key:'pelanggaran', label:'Kelola Pelanggaran', icon:'&#128220;'},
       {key:'slide', label:'Kelola Slide', icon:'&#128444;&#65039;'},
-      {key:'artikel', label:'Kelola Artikel/Berita', icon:'&#128240;'},
-      {key:'fiturberanda', label:'Fitur Halaman Depan', icon:'&#128247;'},
+      {key:'websitebuilder', label:'Website Builder', icon:'&#127760;'},
       {key:'barangkantin', label:'Kelola Barang Kantin', icon:'&#127850;'},
       {key:'persetujuansaldo', label:'Persetujuan Saldo Kantin', icon:'&#9989;'},
       {key:'spp', label:'SPP Santri', icon:'&#128179;'},
@@ -8183,7 +8204,6 @@
       {key:'kelompokpapel', label:'Kelompok Mata Pelajaran', icon:'&#128204;'},
       {key:'sop', label:'SOP Guru', icon:'&#128203;'},
       {key:'defaultjurnal', label:'Default Jurnal Mengajar', icon:'&#128221;'},
-      {key:'website', label:'Info Website', icon:'&#127760;'},
       {key:'progresshafalan', label:'Progres Hafalan', icon:'&#128218;'},
       {key:'spreadsheet', label:'File Spreadsheet', icon:'&#128196;'},
       {key:'tampilan', label:'Tampilan / Logo', icon:'&#127912;'},
@@ -8192,7 +8212,7 @@
     var map = {ringkasan:adminRingkasan, tahun:adminTahunAjaran, rombel:adminRombel, halaqoh:adminHalaqoh, santri:adminDataSantri,
       data:adminDataMaster, pengganti:adminPenggantian, rekapguru:adminRekapGuru, rekapsantri:adminRekapSantri, rapor:adminRaporSantri,
       catatpelanggaran:function(){ renderFormCatatPelanggaran('da-content'); }, pelanggaran:adminKelolaPelanggaran,
-      slide:adminSlide, artikel:adminArtikel, fiturberanda:adminFiturBeranda, barangkantin:adminBarangKantin,
+      slide:adminSlide, websitebuilder:adminWebsiteBuilder, artikel:adminArtikel, fiturberanda:adminFiturBeranda, barangkantin:adminBarangKantin,
       persetujuansaldo:function(){ renderPersetujuanSaldo('da-content'); }, spp:function(){ renderSppSantri('da-content'); },
       modulajar:adminModulAjar, rekapjurnal:adminRekapJurnal, rekaphalaqoh:adminRekapHalaqoh,
       raporkelas:adminRaporKelas, kelompokpapel:adminKelompokMapel, sop:adminSOP, defaultjurnal:adminDefaultJurnal,
@@ -9230,6 +9250,212 @@
   }
 
   // ---------------- KELOLA ARTIKEL / BERITA (untuk halaman depan) ----------------
+  // ---------------- WEBSITE BUILDER (satu halaman terpadu untuk atur tampilan depan) ----------------
+  // Menggabungkan pengaturan yang sebelumnya tersebar di beberapa menu (Info Website,
+  // bagian branding di Tampilan/Logo, Kelola Artikel, Fitur Halaman Depan) jadi satu
+  // halaman bertab dengan tombol pratinjau langsung ke halaman depan sungguhan.
+  // Tab "Program & Fasilitas" dan "Berita & Artikel" MEMAKAI ULANG adminFiturBeranda()/
+  // adminArtikel() yang sudah ada (dialihkan lewat STATE._contentId) -- supaya tidak ada
+  // logika CRUD yang diduplikasi/berisiko meleset dari aslinya. Menu lama (Info Website,
+  // Kelola Artikel, Fitur Halaman Depan) sengaja tetap ada di kode (map di dashboardAdmin)
+  // walau tidak lagi ditampilkan di sidebar, supaya tidak ada risiko apa pun yang patah.
+  function adminWebsiteBuilder(sub){
+    STATE._wbTab = sub || STATE._wbTab || 'identitas';
+    var tabs = [
+      {key:'identitas', label:'Identitas & Warna'},
+      {key:'hero', label:'Hero & Tentang'},
+      {key:'ppdbkontak', label:'PPDB & Kontak'},
+      {key:'ikon', label:'Ikon Menu Melayang'},
+      {key:'program', label:'Program & Fasilitas'},
+      {key:'berita', label:'Berita & Artikel'}
+    ];
+    var c = getContentEl();
+    var urlPratinjau = location.origin + location.pathname + '?preview=beranda';
+    c.innerHTML =
+      '<div class="card" style="padding:14px 16px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">' +
+          '<h3 style="margin:0">&#127760; Website Builder &mdash; Atur Halaman Depan</h3>' +
+          '<a href="'+esc(urlPratinjau)+'" target="_blank" rel="noopener" style="text-decoration:none;background:var(--tema);color:#fff;padding:8px 14px;border-radius:8px;font-weight:600;font-size:13px">Buka Pratinjau &#8599;</a>' +
+        '</div>' +
+        '<p class="muted" style="margin-top:6px;margin-bottom:0">Semua perubahan di sini langsung tampil di halaman depan publik setelah disimpan. Klik &quot;Buka Pratinjau&quot; kapan saja untuk melihat hasilnya di tab baru.</p>' +
+      '</div>' +
+      '<div class="card" style="padding:0;overflow:hidden">' +
+        '<div style="display:flex;flex-wrap:wrap;border-bottom:1px solid #e2e8f0">' +
+        tabs.map(function(t){
+          var aktif = t.key === STATE._wbTab;
+          return '<button class="wbTabBtn" data-tab="'+t.key+'" style="flex:1 1 140px;padding:12px 6px;border:none;border-bottom:3px solid '+(aktif?'var(--tema)':'transparent')+';background:'+(aktif?'#f0fdfa':'#fff')+';color:'+(aktif?'var(--tema)':'#475569')+';cursor:pointer;font-weight:700;font-size:12.5px">'+esc(t.label)+'</button>';
+        }).join('') +
+        '</div>' +
+        '<div id="wbTabContent" style="padding:16px">Memuat...</div>' +
+      '</div>';
+    document.querySelectorAll('.wbTabBtn').forEach(function(btn){
+      btn.onclick = function(){ adminWebsiteBuilder(btn.dataset.tab); };
+    });
+
+    // Tab Program&Fasilitas dan Berita cukup dialihkan ke fungsi admin yang sudah ada dan
+    // sudah teruji -- tidak ditulis ulang di sini.
+    if (STATE._wbTab === 'program') { STATE._contentId = 'wbTabContent'; adminFiturBeranda(); STATE._contentId = 'da-content'; return; }
+    if (STATE._wbTab === 'berita')  { STATE._contentId = 'wbTabContent'; adminArtikel();      STATE._contentId = 'da-content'; return; }
+
+    var target = document.getElementById('wbTabContent');
+    api('getPengaturan', {}).then(function(res){
+      var d = res.ok ? res.data : {};
+      if (STATE._wbTab === 'hero') renderWbHero(target, d);
+      else if (STATE._wbTab === 'ppdbkontak') renderWbPpdbKontak(target, d);
+      else if (STATE._wbTab === 'ikon') renderWbIkon(target, d);
+      else renderWbIdentitas(target, d);
+    });
+  }
+
+  // Helper upload gambar generik dipakai semua tab Website Builder -- sama persis polanya
+  // dengan yang sudah dipakai di adminInfoWebsite/adminFiturBeranda (resizeImageFile lalu
+  // uploadSlideImage), supaya perilaku unggah gambar konsisten di seluruh aplikasi.
+  function ikatUploadWb(fileId, statusId, urlId, maxLebar, tampilBulat){
+    var fileEl = document.getElementById(fileId);
+    if (!fileEl) return;
+    fileEl.onchange = function(e){
+      var file = e.target.files[0];
+      if (!file) return;
+      var statusEl = document.getElementById(statusId);
+      var gaya = tampilBulat ? 'height:50px;width:50px;border-radius:50%;object-fit:cover;margin-top:4px;display:block' : 'height:70px;border-radius:6px;margin-top:4px;display:block';
+      statusEl.innerHTML = '<p class="muted">Memproses gambar...</p>';
+      resizeImageFile(file, maxLebar||1200, 0.8).then(function(hasil){
+        statusEl.innerHTML = '<p class="muted">Mengunggah...</p>';
+        api('uploadSlideImage', {base64: hasil.base64, mimeType: hasil.mimeType, fileName: file.name}).then(function(res){
+          if(!res.ok){ statusEl.innerHTML = errBox(res.error); return; }
+          document.getElementById(urlId).value = res.url;
+          statusEl.innerHTML = '<p class="muted">Berhasil diunggah.</p><img src="'+esc(res.url)+'" style="'+gaya+'">';
+        });
+      }).catch(function(){ statusEl.innerHTML = errBox('Gagal memproses gambar. Coba file lain.'); });
+    };
+  }
+
+  function renderWbIdentitas(target, d){
+    target.innerHTML =
+      fieldText('wbNama','Nama Pesantren', STATE.pengaturan.NamaPesantren) +
+      '<label>Logo</label><input type="file" id="wbLogoFile" accept="image/*">' +
+      '<p class="muted" style="margin-top:-6px">Kosongkan URL di bawah untuk pakai logo bawaan.</p>' +
+      fieldText('wbLogoUrl','URL Logo (terisi otomatis setelah unggah, atau isi manual)', STATE.pengaturan.LogoURL) +
+      '<div id="wbLogoStatus">'+(logoSrc()?('<img src="'+esc(logoSrc())+'" style="height:60px;border-radius:6px;margin-top:4px;display:block">'):'')+'</div>' +
+      '<label>Warna Tema</label>' +
+      '<div style="display:flex;gap:8px;align-items:center">' +
+        '<input type="color" id="wbWarnaPicker" value="'+esc(STATE.pengaturan.WarnaTema||'#0d9488')+'" style="width:44px;height:38px;padding:2px;border:1px solid #cbd5e1;border-radius:8px">' +
+        '<input id="wbWarna" value="'+esc(STATE.pengaturan.WarnaTema||'#0d9488')+'" style="flex:1">' +
+      '</div>' +
+      '<button id="btnSimpanWbIdentitas" style="margin-top:12px">Simpan</button><div id="pesanWbIdentitas"></div>';
+    ikatUploadWb('wbLogoFile','wbLogoStatus','wbLogoUrl', 400, false);
+    document.getElementById('wbWarnaPicker').oninput = function(){ document.getElementById('wbWarna').value = this.value; };
+    document.getElementById('btnSimpanWbIdentitas').onclick = function(){
+      var nama = document.getElementById('wbNama').value.trim();
+      var logo = document.getElementById('wbLogoUrl').value.trim();
+      var warna = document.getElementById('wbWarna').value.trim() || '#0d9488';
+      if (!nama) { alert('Nama Pesantren wajib diisi.'); return; }
+      Promise.all([api('simpanPengaturan',{key:'NamaPesantren',value:nama}), api('simpanPengaturan',{key:'LogoURL',value:logo}), api('simpanPengaturan',{key:'WarnaTema',value:warna})])
+        .then(function(hasil){
+          var gagal = hasil.find(function(h){ return !h.ok; });
+          if (gagal) { document.getElementById('pesanWbIdentitas').innerHTML = errBox(gagal.error); return; }
+          STATE.pengaturan.NamaPesantren = nama; STATE.pengaturan.LogoURL = logo; STATE.pengaturan.WarnaTema = warna;
+          root.style.setProperty('--tema', warna);
+          document.getElementById('pesanWbIdentitas').innerHTML = '<p class="muted">Tersimpan. Menyegarkan tampilan...</p>';
+          dashboardAdmin('websitebuilder'); // re-render penuh: nama & logo di sidebar ikut ter-update
+        });
+    };
+  }
+
+  function renderWbHero(target, d){
+    target.innerHTML =
+      fieldText('wbTagline','Label Kecil di Atas Judul Hero (contoh: Pendidikan Islam Terpadu)', d.TaglineHero||'') +
+      '<label>Gambar Latar Hero (opsional)</label><input type="file" id="wbHeroFile" accept="image/*">' +
+      '<p class="muted" style="margin-top:-6px">Foto besar di bagian paling atas halaman depan. Kosongkan untuk pakai warna polos.</p>' +
+      fieldText('wbHeroUrl','URL Gambar Hero (terisi otomatis setelah unggah, atau isi manual)', d.HeroImageURL||'') +
+      '<div id="wbHeroStatus">'+(d.HeroImageURL?('<img src="'+esc(d.HeroImageURL)+'" style="height:70px;border-radius:6px;margin-top:4px;display:block">'):'')+'</div>' +
+      '<label>Deskripsi Singkat Pesantren</label><textarea id="wbDeskripsi" rows="3" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-family:inherit;font-size:14px">'+esc(d.DeskripsiSingkat||'')+'</textarea>' +
+      '<label>Visi</label><textarea id="wbVisi" rows="2" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-family:inherit;font-size:14px">'+esc(d.Visi||'')+'</textarea>' +
+      '<label>Misi</label><textarea id="wbMisi" rows="3" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-family:inherit;font-size:14px">'+esc(d.Misi||'')+'</textarea>' +
+      '<button id="btnSimpanWbHero" style="margin-top:12px">Simpan</button><div id="pesanWbHero"></div>';
+    ikatUploadWb('wbHeroFile','wbHeroStatus','wbHeroUrl', 1600, false);
+    document.getElementById('btnSimpanWbHero').onclick = function(){
+      var data = {
+        TaglineHero: document.getElementById('wbTagline').value.trim(),
+        HeroImageURL: document.getElementById('wbHeroUrl').value.trim(),
+        DeskripsiSingkat: document.getElementById('wbDeskripsi').value.trim(),
+        Visi: document.getElementById('wbVisi').value.trim(),
+        Misi: document.getElementById('wbMisi').value.trim()
+      };
+      Promise.all(Object.keys(data).map(function(k){ return api('simpanPengaturan', {key:k, value:data[k]}); })).then(function(hasil){
+        var gagal = hasil.find(function(h){ return !h.ok; });
+        if (gagal) { document.getElementById('pesanWbHero').innerHTML = errBox(gagal.error); return; }
+        Object.assign(STATE.pengaturan, data);
+        document.getElementById('pesanWbHero').innerHTML = '<p class="muted">Tersimpan.</p>';
+      });
+    };
+  }
+
+  function renderWbPpdbKontak(target, d){
+    target.innerHTML =
+      '<label>Info PPDB (Penerimaan Santri Baru)</label><textarea id="wbPPDB" rows="4" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-family:inherit;font-size:14px">'+esc(d.InfoPPDB||'')+'</textarea>' +
+      fieldText('wbLinkPPDB','Link Pendaftaran PPDB (opsional, misal Google Form)', d.LinkPPDBEksternal||'') +
+      fieldText('wbAlamat','Alamat Pesantren', d.AlamatPesantren||'') +
+      '<div class="grid2">' +
+        '<div>'+fieldText('wbTelp','No Telepon / WhatsApp (contoh: 081234567890)', d.NoTeleponPesantren||'')+'</div>' +
+        '<div>'+fieldText('wbEmail','Email', d.EmailPesantren||'')+'</div>' +
+      '</div>' +
+      '<button id="btnSimpanWbKontak" style="margin-top:12px">Simpan</button><div id="pesanWbKontak"></div>';
+    document.getElementById('btnSimpanWbKontak').onclick = function(){
+      var data = {
+        InfoPPDB: document.getElementById('wbPPDB').value.trim(),
+        LinkPPDBEksternal: document.getElementById('wbLinkPPDB').value.trim(),
+        AlamatPesantren: document.getElementById('wbAlamat').value.trim(),
+        NoTeleponPesantren: document.getElementById('wbTelp').value.trim(),
+        EmailPesantren: document.getElementById('wbEmail').value.trim()
+      };
+      Promise.all(Object.keys(data).map(function(k){ return api('simpanPengaturan', {key:k, value:data[k]}); })).then(function(hasil){
+        var gagal = hasil.find(function(h){ return !h.ok; });
+        if (gagal) { document.getElementById('pesanWbKontak').innerHTML = errBox(gagal.error); return; }
+        Object.assign(STATE.pengaturan, data);
+        document.getElementById('pesanWbKontak').innerHTML = '<p class="muted">Tersimpan.</p>';
+      });
+    };
+  }
+
+  function renderWbIkon(target, d){
+    target.innerHTML =
+      warnBox('Kosongkan untuk pakai ikon bawaan. Gambar akan tampak pudar secara default dan jelas saat disentuh/di-hover, supaya tidak mengganggu tampilan halaman.') +
+      '<div class="grid2">' +
+      '<div><label>Ikon Jadwal Sholat</label><input type="file" id="wbIkonJadwalFile" accept="image/*">' +
+        '<div id="wbIkonJadwalStatus">'+(d.IkonJadwalSholat?('<img src="'+esc(d.IkonJadwalSholat)+'" style="height:50px;width:50px;border-radius:50%;object-fit:cover;margin-top:4px;display:block">'):'')+'</div>' +
+        fieldText('wbIkonJadwalUrl','URL (otomatis terisi)', d.IkonJadwalSholat||'') + '</div>' +
+      '<div><label>Ikon Al-Quran</label><input type="file" id="wbIkonQuranFile" accept="image/*">' +
+        '<div id="wbIkonQuranStatus">'+(d.IkonAlQuran?('<img src="'+esc(d.IkonAlQuran)+'" style="height:50px;width:50px;border-radius:50%;object-fit:cover;margin-top:4px;display:block">'):'')+'</div>' +
+        fieldText('wbIkonQuranUrl','URL (otomatis terisi)', d.IkonAlQuran||'') + '</div>' +
+      '</div>' +
+      '<label>Ikon Dzikir</label><input type="file" id="wbIkonDzikirFile" accept="image/*">' +
+      '<div id="wbIkonDzikirStatus">'+(d.IkonDzikir?('<img src="'+esc(d.IkonDzikir)+'" style="height:50px;width:50px;border-radius:50%;object-fit:cover;margin-top:4px;display:block">'):'')+'</div>' +
+      fieldText('wbIkonDzikirUrl','URL (otomatis terisi)', d.IkonDzikir||'') +
+      '<label>Ikon Hubungi WhatsApp</label><input type="file" id="wbIkonWaFile" accept="image/*">' +
+      '<div id="wbIkonWaStatus">'+(d.IkonWhatsApp?('<img src="'+esc(d.IkonWhatsApp)+'" style="height:50px;width:50px;border-radius:50%;object-fit:cover;margin-top:4px;display:block">'):'')+'</div>' +
+      fieldText('wbIkonWaUrl','URL (otomatis terisi)', d.IkonWhatsApp||'') +
+      '<button id="btnSimpanWbIkon" style="margin-top:12px">Simpan</button><div id="pesanWbIkon"></div>';
+    ikatUploadWb('wbIkonJadwalFile','wbIkonJadwalStatus','wbIkonJadwalUrl', 400, true);
+    ikatUploadWb('wbIkonQuranFile','wbIkonQuranStatus','wbIkonQuranUrl', 400, true);
+    ikatUploadWb('wbIkonDzikirFile','wbIkonDzikirStatus','wbIkonDzikirUrl', 400, true);
+    ikatUploadWb('wbIkonWaFile','wbIkonWaStatus','wbIkonWaUrl', 400, true);
+    document.getElementById('btnSimpanWbIkon').onclick = function(){
+      var data = {
+        IkonJadwalSholat: document.getElementById('wbIkonJadwalUrl').value.trim(),
+        IkonAlQuran: document.getElementById('wbIkonQuranUrl').value.trim(),
+        IkonDzikir: document.getElementById('wbIkonDzikirUrl').value.trim(),
+        IkonWhatsApp: document.getElementById('wbIkonWaUrl').value.trim()
+      };
+      Promise.all(Object.keys(data).map(function(k){ return api('simpanPengaturan', {key:k, value:data[k]}); })).then(function(hasil){
+        var gagal = hasil.find(function(h){ return !h.ok; });
+        if (gagal) { document.getElementById('pesanWbIkon').innerHTML = errBox(gagal.error); return; }
+        Object.assign(STATE.pengaturan, data);
+        document.getElementById('pesanWbIkon').innerHTML = '<p class="muted">Tersimpan.</p>';
+      });
+    };
+  }
+
   function adminArtikel(){
     var c = getContentEl();
     c.innerHTML = '<div class="card"><h3>Artikel / Berita</h3>' +
