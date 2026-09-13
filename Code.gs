@@ -226,6 +226,24 @@ function route(action, p) {
     case 'saveBarang': return apiSaveBarang(p);
     case 'deleteBarang': return apiDeleteBarang(p);
     case 'getBarangSaya': return {ok:true, data: getBarangSaya(p.pemilik)};
+    case 'saveBarangSaya': return apiSaveBarangSaya(p);
+    case 'deleteBarangSaya': return apiDeleteBarangSaya(p);
+    case 'getPersenPotonganKantin': return {ok:true, persen: persenPotonganKantin()};
+    // Kas Kelas (wali kelas)
+    case 'terimaKasKelas':          return apiTerimaKasKelas(p);
+    case 'catatPengeluaranKasKelas': return apiCatatPengeluaranKasKelas(p);
+    case 'getRekapKasKelas':        return apiGetRekapKasKelas(p);
+    case 'hapusKasKelas':           return apiHapusKasKelas(p);
+    // Flyer Tasmi' Hafalan
+    case 'getTemplateFlyer':   return apiGetTemplateFlyer();
+    case 'saveTemplateFlyer':  return apiSaveTemplateFlyer(p);
+    case 'hapusTemplateFlyer': return apiHapusTemplateFlyer(p);
+    case 'gambarKeBase64':     return apiGambarKeBase64(p);
+    case 'getSantriUntukFlyer': return apiGetSantriUntukFlyer(p);
+    // Riwayat Tasmi'
+    case 'simpanRiwayatTasmi': return apiSimpanRiwayatTasmi(p);
+    case 'getRiwayatTasmi':    return apiGetRiwayatTasmi(p);
+    case 'hapusRiwayatTasmi':  return apiHapusRiwayatTasmi(p);
     case 'getSantriUntukTransaksiKantin': return {ok:true, data: getSantriUntukTransaksiKantin()};
     case 'prosesTransaksiKantin': return apiProsesTransaksiKantin(p);
     case 'getRiwayatTransaksiPemilik': return {ok:true, data: getRiwayatTransaksiPemilik(p.pemilik, p.tglMulai, p.tglAkhir)};
@@ -2553,27 +2571,191 @@ function setupTriggerJurnalDefault() {
 }
 
 // ============ KANTIN: MASTER BARANG (satu database yang sama dengan Absensi) ============
+// Kolom "Foto" ditambahkan otomatis di posisi terakhir kalau belum ada, sehingga sheet
+// Barang yang sudah berjalan tidak perlu diubah manual dan kolom lama tidak bergeser.
+function pastikanKolomFotoBarang(sh) {
+  try {
+    const header = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0];
+    if (header.indexOf('Foto') !== -1) return header.indexOf('Foto') + 1;
+    const kolomBaru = header.length + 1;
+    sh.getRange(1, kolomBaru).setValue('Foto');
+    return kolomBaru;
+  } catch (e) {
+    return 6; // posisi default kalau gagal membaca header
+  }
+}
+
 function getBarangList() {
   const sh = getAktifKantinSS().getSheetByName(SHEET_BARANG);
   if (!sh) return [];
   const rows = sh.getDataRange().getValues(); rows.shift();
   return rows.map((r,i) => ({
-    rowIndex: i+2, nama: norm(r[0]), harga: Number(r[1])||0, potongan: Number(r[2])||0, pemilik: norm(r[3]), noWaPemilik: norm(r[4])
+    rowIndex: i+2, nama: norm(r[0]), harga: Number(r[1])||0, potongan: Number(r[2])||0,
+    pemilik: norm(r[3]), noWaPemilik: norm(r[4]), foto: norm(r[5])
   })).filter(x => x.nama);
+}
+
+// Potongan untuk pondok dari tiap barang kantin. Dihitung dari harga bersih yang
+// ingin diterima pemilik: potongan = persen x harga bersih (default 10%, artinya
+// tiap Rp1.000 dipotong Rp100). Santri membayar harga bersih + potongan.
+//
+// Sengaja dihitung DI SERVER, bukan di aplikasi, supaya besarannya seragam untuk
+// semua pemilik dan tidak bisa diubah dari sisi perangkat.
+function persenPotonganKantin() {
+  const p = getPengaturan();
+  const v = Number(p.PersenPotonganKantin);
+  return (v > 0 && v < 100) ? v : 10;
+}
+
+function hitungPotonganKantin(hargaBersih) {
+  const bersih = Number(hargaBersih) || 0;
+  if (bersih <= 0) return 0;
+  return Math.round(bersih * persenPotonganKantin() / 100);
 }
 
 function apiSaveBarang(p) {
   const nama = norm(p.nama);
   if (!nama) return {ok:false, error:'Nama barang wajib diisi'};
-  const harga = Number(p.harga) || 0;
-  if (harga <= 0) return {ok:false, error:'Harga wajib diisi dan lebih dari 0'};
+
+  // hargaBersih = uang yang diterima pemilik. Harga jual ke santri = bersih + potongan.
+  // Cara lama (mengirim 'harga' langsung) tetap didukung supaya pemanggil lama -- kalau
+  // masih ada -- tidak rusak.
+  let hargaBersih = Number(p.hargaBersih);
+  let potongan, hargaJual;
+
+  if (hargaBersih > 0) {
+    // Mode potongan hanya boleh ditentukan Admin/Mudir. Pengecualian: '__warisan__'
+    // adalah penanda internal dari apiSaveBarangSaya yang meneruskan pengaturan yang
+    // SUDAH ditetapkan Admin sebelumnya -- bukan pilihan baru dari pemilik.
+    const bolehAturPotongan = (norm(p.oleh) === '__warisan__') || adminAtauMudir(p.oleh);
+    const mode = bolehAturPotongan ? norm(p.modePotongan) : '';
+
+    if (mode === 'pondok') {
+      // Barang milik pondok: seluruh uang masuk ke pondok, pemilik tidak menerima apa pun.
+      // Di sini hargaBersih diperlakukan sebagai harga jual apa adanya.
+      hargaJual = hargaBersih;
+      potongan = hargaBersih;
+    } else if (mode === 'nol') {
+      hargaJual = hargaBersih;
+      potongan = 0;
+    } else if (mode === 'manual') {
+      potongan = Math.max(0, Number(p.potonganManual) || 0);
+      hargaJual = hargaBersih + potongan;
+    } else {
+      potongan = hitungPotonganKantin(hargaBersih);
+      hargaJual = hargaBersih + potongan;
+    }
+  } else {
+    hargaJual = Number(p.harga) || 0;
+    potongan = Number(p.potongan) || 0;
+  }
+
+  if (hargaJual <= 0) return {ok:false, error:'Harga wajib diisi dan lebih dari 0'};
+  if (potongan > hargaJual) return {ok:false, error:'Potongan tidak boleh lebih besar dari harga jual.'};
+
   const sh = getAktifKantinSS().getSheetByName(SHEET_BARANG);
-  const baris = [nama, harga, Number(p.potongan)||0, norm(p.pemilik), norm(p.noWaPemilik)];
+  pastikanKolomFotoBarang(sh);
+  const baris = [nama, hargaJual, potongan, norm(p.pemilik), norm(p.noWaPemilik), norm(p.foto)];
   if (p.rowIndex && Number(p.rowIndex) > 1) {
-    sh.getRange(Number(p.rowIndex), 1, 1, 5).setValues([baris]);
+    sh.getRange(Number(p.rowIndex), 1, 1, 6).setValues([baris]);
   } else {
     sh.appendRow(baris);
   }
+  return {ok:true, hargaJual: hargaJual, potongan: potongan};
+}
+
+// Verifikasi bahwa nama pengirim benar-benar Admin atau Mudir menurut RoleAkses.
+// Dipakai untuk membatasi pengaturan potongan manual -- pemeriksaannya di server,
+// bukan hanya menyembunyikan pilihan di tampilan.
+function adminAtauMudir(nama) {
+  nama = norm(nama);
+  if (!nama) return false;
+  try {
+    const sh = getAktifSS().getSheetByName(SHEET_ROLE);
+    if (!sh) return false;
+    const rows = sh.getDataRange().getValues(); rows.shift();
+    return rows.some(function(r){
+      if (normNama(norm(r[0])) !== normNama(nama)) return false;
+      const level = norm(r[3]);
+      return level.indexOf('Admin') !== -1 || level.indexOf('Mudir') !== -1;
+    });
+  } catch (e) { return false; }
+}
+
+// ---- Versi khusus Pemilik Barang: hanya boleh mengelola barang miliknya sendiri ----
+// Nama pemilik diverifikasi ke RoleAkses, dan untuk edit/hapus dipastikan barangnya
+// memang miliknya -- supaya seorang pemilik tidak bisa mengubah dagangan pemilik lain.
+function pemilikBarangTerdaftar(nama) {
+  nama = norm(nama);
+  if (!nama) return false;
+  const sh = getAktifSS().getSheetByName(SHEET_ROLE);
+  if (!sh) return false;
+  const rows = sh.getDataRange().getValues(); rows.shift();
+  return rows.some(function(r){
+    return normNama(norm(r[0])) === normNama(nama) && norm(r[3]).indexOf('PemilikBarang') !== -1;
+  });
+}
+
+function barangMilik(rowIndex, pemilik) {
+  const sh = getAktifKantinSS().getSheetByName(SHEET_BARANG);
+  const baris = Number(rowIndex);
+  if (!(baris > 1) || baris > sh.getLastRow()) return false;
+  const nilai = sh.getRange(baris, 1, 1, 5).getValues()[0];
+  return normNama(norm(nilai[3])) === normNama(norm(pemilik));
+}
+
+function apiSaveBarangSaya(p) {
+  const pemilik = norm(p.pemilik);
+  if (!pemilikBarangTerdaftar(pemilik)) {
+    return {ok:false, error:'Akun Anda tidak terdaftar sebagai Pemilik Barang.'};
+  }
+  if (p.rowIndex && Number(p.rowIndex) > 1 && !barangMilik(p.rowIndex, pemilik)) {
+    return {ok:false, error:'Barang ini bukan milik Anda, tidak bisa diubah.'};
+  }
+
+  // Kalau Admin/Mudir sudah menetapkan potongan khusus untuk barang ini (barang milik
+  // pondok, atau dibebaskan dari potongan), pengaturan itu DIPERTAHANKAN saat pemilik
+  // mengedit. Tanpa ini, pemilik yang sekadar mengganti foto akan membuat potongannya
+  // diam-diam kembali ke hitungan otomatis -- dan pemasukan pondok jadi salah.
+  let modeWarisan = '', potonganWarisan = 0;
+  if (p.rowIndex && Number(p.rowIndex) > 1) {
+    try {
+      const shB = getAktifKantinSS().getSheetByName(SHEET_BARANG);
+      const lama = shB.getRange(Number(p.rowIndex), 1, 1, 3).getValues()[0];
+      const hargaLama = Number(lama[1]) || 0;
+      const potLama = Number(lama[2]) || 0;
+      const bersihLama = hargaLama - potLama;
+      if (potLama > 0 && potLama === hargaLama) {
+        modeWarisan = 'pondok';               // seluruhnya milik pondok
+      } else if (potLama === 0) {
+        modeWarisan = 'nol';                  // sengaja dibebaskan dari potongan
+      } else if (potLama !== hitungPotonganKantin(bersihLama)) {
+        modeWarisan = 'manual';               // nominal khusus dari Admin
+        potonganWarisan = potLama;
+      }
+    } catch (e) { /* gagal baca: pakai perhitungan otomatis */ }
+  }
+
+  // Pemilik dipaksa ke namanya sendiri, apa pun yang dikirim aplikasi.
+  // 'oleh' sengaja tidak diisi dari p: pemilik tidak boleh menentukan mode potongan
+  // sendiri, hanya mewarisi yang sudah ditetapkan Admin.
+  return apiSaveBarang({
+    rowIndex: p.rowIndex, nama: p.nama, hargaBersih: p.hargaBersih,
+    pemilik: pemilik, noWaPemilik: p.noWaPemilik, foto: p.foto,
+    modePotongan: modeWarisan, potonganManual: potonganWarisan,
+    oleh: modeWarisan ? '__warisan__' : ''
+  });
+}
+
+function apiDeleteBarangSaya(p) {
+  const pemilik = norm(p.pemilik);
+  if (!pemilikBarangTerdaftar(pemilik)) {
+    return {ok:false, error:'Akun Anda tidak terdaftar sebagai Pemilik Barang.'};
+  }
+  if (!barangMilik(p.rowIndex, pemilik)) {
+    return {ok:false, error:'Barang ini bukan milik Anda, tidak bisa dihapus.'};
+  }
+  getAktifKantinSS().getSheetByName(SHEET_BARANG).deleteRow(Number(p.rowIndex));
   return {ok:true};
 }
 
@@ -8214,18 +8396,46 @@ function previewHapusFotoTugas() {
 
 const NOTIF_TERKIRIM_KEY = 'wasiatNotifTerkirim'; // penanda di Script Properties
 
-// Jam mulai tiap "jam ke-" diambil dari Pengaturan (key: JamPelajaranWaktu),
-// diisi Admin dengan format "1|07:00" satu per baris. Dipakai karena jadwal di
-// aplikasi ini memakai "jam ke-" (jam ke-1, ke-2, dst), bukan jam dinding.
-function getJamPelajaranWaktu() {
+// Jam mulai tiap "jam ke-" diambil dari Pengaturan (key: JamPelajaranWaktu).
+// Dipakai karena jadwal di aplikasi ini memakai "jam ke-" (jam ke-1, ke-2, dst),
+// bukan jam dinding.
+//
+// Format tiap baris: JamKe | JamMulai[-JamSelesai] | [Hari1,Hari2,...]
+//   1|08:00                          -> berlaku semua hari
+//   1|08:00-09:00                    -> jam selesai boleh ditulis, yang dipakai jam mulainya
+//   3|11:16-12:15|Senin,Selasa,Rabu  -> hanya hari yang disebut
+//
+// Bagian hari bersifat opsional supaya pengaturan lama (yang cuma "1|08:00") tetap
+// berjalan tanpa perlu diubah. Kalau satu jam ke- ditulis dua kali dengan hari yang
+// berbeda -- misal jam ke-3 berbeda antara Senin-Jumat dan Sabtu -- yang dipakai
+// adalah baris yang harinya cocok dengan hari ini.
+function getJamPelajaranWaktu(namaHari) {
   const teks = String(getPengaturan().JamPelajaranWaktu || '').trim();
   if (!teks) return {};
   const hasil = {};
+  const cocokHari = {};  // penanda: nilai untuk jam ke- ini sudah dari baris ber-hari
   teks.split('\n').forEach(function(baris){
     const bagian = String(baris).split('|');
     const jamKe = norm(bagian[0]);
-    const waktu = norm(bagian[1]);
-    if (jamKe && /^\d{1,2}:\d{2}$/.test(waktu)) hasil[String(jamKe)] = waktu;
+    const waktuMentah = norm(bagian[1]);
+    const hariMentah = norm(bagian[2]);
+    if (!jamKe || !waktuMentah) return;
+
+    // Ambil jam mulainya saja kalau ditulis sebagai rentang "08:00-09:00"
+    const waktu = waktuMentah.split('-')[0].trim().replace('.', ':');
+    if (!/^\d{1,2}:\d{2}$/.test(waktu)) return;
+
+    if (hariMentah) {
+      // Baris khusus hari tertentu: hanya dipakai kalau harinya cocok
+      if (!namaHari) return;
+      const daftarHari = hariMentah.split(',').map(function(h){ return normNama(norm(h)); });
+      if (daftarHari.indexOf(normNama(namaHari)) === -1) return;
+      hasil[String(jamKe)] = waktu;
+      cocokHari[String(jamKe)] = true;
+    } else {
+      // Baris umum: dipakai hanya kalau belum ada baris khusus hari untuk jam ke- ini
+      if (!cocokHari[String(jamKe)]) hasil[String(jamKe)] = waktu;
+    }
   });
   return hasil;
 }
@@ -8312,13 +8522,15 @@ function cekJadwalKirimNotif() {
     if (norm(p.NotifJadwalAktif) !== 'true') return;
     if (!norm(p.OneSignalAppId) || !norm(p.OneSignalApiKey)) return;
 
-    const jamMap = getJamPelajaranWaktu();
-    if (!Object.keys(jamMap).length) return; // Admin belum mengisi jam pelajaran
-
     const tz = Session.getScriptTimeZone();
     const sekarang = new Date();
     const menitSekarang = sekarang.getHours() * 60 + sekarang.getMinutes();
     const namaHariIni = HARI_LIST[sekarang.getDay()];
+
+    // Jam pelajaran dibaca sesuai HARI INI -- jam Sabtu bisa berbeda dari Senin-Jumat.
+    const jamMap = getJamPelajaranWaktu(namaHariIni);
+    if (!Object.keys(jamMap).length) return; // Admin belum mengisi jam untuk hari ini
+
     // Berapa menit sebelum jam mulai notifikasi dikirim (default 10 menit).
     const jedaMenit = Number(p.NotifJadwalJedaMenit) > 0 ? Number(p.NotifJadwalJedaMenit) : 10;
 
@@ -8536,4 +8748,493 @@ function kirimPushKeWali(nisn, judul, isi) {
 // Format rupiah singkat untuk isi notifikasi
 function rp(n) {
   return 'Rp' + (Number(n) || 0).toLocaleString('id-ID');
+}
+
+
+// ============================================================
+// MODUL KAS KELAS
+//
+// Wali kelas menerima pembayaran santri (uang kas, rihlah, atau keperluan lain)
+// langsung dari saldo santri -- alur dan pengamanannya sama dengan kantin: pilih
+// santri, masukkan nominal, santri memasukkan PIN Transaksinya sendiri.
+//
+// Uang ini TIDAK masuk ke kas pondok maupun ke pemilik barang. Ini kas milik kelas
+// yang dikelola wali kelasnya, jadi dicatat di sheet tersendiri dengan saldo per
+// kelas. Pengeluaran kas juga dicatat di sheet yang sama (kolom Tipe) supaya sisa
+// kasnya selalu bisa dipertanggungjawabkan.
+// ============================================================
+
+const SHEET_KAS_KELAS = 'KasKelas';
+
+function headerKasKelas() {
+  return ['Tanggal','Waktu','Kelas','Tipe','Jenis','NISN','Nama Santri','Nominal','Keterangan','Dicatat Oleh'];
+}
+
+function getOrCreateSheetKasKelas() {
+  const ss = getAktifSS();
+  let sh = ss.getSheetByName(SHEET_KAS_KELAS);
+  if (!sh) {
+    sh = ss.insertSheet(SHEET_KAS_KELAS);
+    sh.appendRow(headerKasKelas());
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+// Pastikan nama yang mengaku wali kelas memang wali kelas dari kelas tersebut.
+// Diperiksa di server supaya seorang guru tidak bisa mencatat transaksi di kelas lain.
+// Sumber datanya kolom 'WaliKelas' di sheet Guru -- sama persis dengan yang dipakai
+// saat login menentukan STATE.user.waliKelas, supaya tidak pernah berbeda hasilnya.
+function waliKelasDari(nama, kelas) {
+  nama = norm(nama); kelas = norm(kelas);
+  if (!nama || !kelas) return false;
+  try {
+    const sh = getAktifSS().getSheetByName(SHEET_GURU);
+    if (!sh) return false;
+    const rows = sh.getDataRange().getValues();
+    const header = rows.shift();
+    const iWali = header.indexOf('WaliKelas');
+    if (iWali === -1) return false;
+    return rows.some(function(r){
+      return normNama(norm(r[0])) === normNama(nama) && norm(r[iWali]) === kelas;
+    });
+  } catch (e) { return false; }
+}
+
+// Terima pembayaran santri ke kas kelas: saldo santri dipotong, lalu dicatat.
+function apiTerimaKasKelas(p) {
+  const nisn = norm(p.nisn), pinInput = norm(p.pin);
+  const kelas = norm(p.kelas), jenis = norm(p.jenis) || 'Uang Kas';
+  const nominal = Number(p.nominal) || 0;
+  const oleh = norm(p.oleh);
+
+  if (!nisn || !pinInput) return {ok:false, error:'Santri dan PIN Transaksi wajib diisi.'};
+  if (nominal <= 0) return {ok:false, error:'Nominal harus lebih dari 0.'};
+  if (!kelas) return {ok:false, error:'Kelas tidak diketahui.'};
+  if (!waliKelasDari(oleh, kelas)) {
+    return {ok:false, error:'Anda bukan wali kelas dari kelas ini, tidak bisa mencatat transaksi.'};
+  }
+
+  // Kunci proses supaya dua transaksi bersamaan tidak saling menimpa saldo.
+  const lock = LockService.getScriptLock();
+  try { lock.waitLock(15000); } catch (e) { return {ok:false, error:'Sistem sedang sibuk, coba lagi.'}; }
+  try {
+    const ss = getAktifSS();
+    const shSantri = ss.getSheetByName(SHEET_SANTRI);
+    const rows = shSantri.getDataRange().getValues();
+    const header = rows[0];
+    const iSaldo = header.indexOf('Saldo Kantin');
+    const iPin = header.indexOf('PIN Transaksi');
+    const iKelas = header.indexOf('Kelas');
+    if (iSaldo === -1 || iPin === -1) return {ok:false, error:'Kolom Saldo/PIN tidak ditemukan di data santri.'};
+
+    let rowIdx = -1;
+    for (let i=1;i<rows.length;i++) { if (norm(rows[i][0]) === nisn) { rowIdx = i+1; break; } }
+    if (rowIdx === -1) return {ok:false, error:'Data santri tidak ditemukan.'};
+
+    const row = rows[rowIdx-1];
+    const namaSantri = norm(row[1]);
+    // Pastikan santrinya memang dari kelas yang ditangani wali kelas ini.
+    if (iKelas !== -1 && norm(row[iKelas]) && norm(row[iKelas]) !== kelas) {
+      return {ok:false, error:namaSantri + ' bukan santri kelas ' + kelas + '.'};
+    }
+
+    const pinTersimpan = norm(row[iPin]);
+    if (!pinTersimpan) return {ok:false, error:'Santri ini belum punya PIN Transaksi. Minta Admin mengaturnya di menu Data Santri.'};
+    if (pinTersimpan !== pinInput) return {ok:false, error:'PIN Transaksi salah.'};
+
+    const saldo = Number(row[iSaldo]) || 0;
+    if (nominal > saldo) {
+      return {ok:false, error:'Saldo santri tidak mencukupi (saldo: Rp'+saldo.toLocaleString('id-ID')+', diminta: Rp'+nominal.toLocaleString('id-ID')+').'};
+    }
+
+    const saldoSekarang = saldo - nominal;
+    shSantri.getRange(rowIdx, iSaldo+1).setValue(saldoSekarang);
+
+    const tz = Session.getScriptTimeZone();
+    const tgl = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+    const wkt = Utilities.formatDate(new Date(), tz, 'HH:mm:ss');
+    getOrCreateSheetKasKelas().appendRow([
+      tgl, wkt, kelas, 'Masuk', jenis, nisn, namaSantri, nominal, norm(p.keterangan), oleh
+    ]);
+
+    // Catat juga ke riwayat transaksi santri, supaya SEMUA pengeluaran saldo terlihat
+    // di satu tempat oleh Admin/Mudir dan wali santri.
+    // Catatan penting soal pengisian kolomnya:
+    // - kategori 'Kas Kelas' membuatnya tidak terhitung sebagai belanja kantin, jadi
+    //   tidak memakan limit jajan harian santri (memang seharusnya begitu).
+    // - kolom pemilik dikosongkan supaya transaksi ini tidak muncul di laporan
+    //   penjualan pemilik barang -- kalau diisi nama wali kelas yang kebetulan juga
+    //   pemilik barang, omzetnya akan tercampur.
+    // - potongan & masuk pemilik 0: uang ini milik kas kelas, bukan pendapatan pondok
+    //   maupun pemilik barang, jadi tidak boleh ikut terhitung di sana.
+    try {
+      getAktifKantinSS().getSheetByName(SHEET_TRANSAKSI_KANTIN).appendRow([
+        tgl, wkt, nisn, namaSantri, nominal, 'Kas Kelas',
+        jenis + (norm(p.keterangan) ? (' - ' + norm(p.keterangan)) : '') + ' (kelas ' + kelas + ')',
+        1, 0, '', 0, saldo, saldoSekarang
+      ]);
+    } catch(e) { Logger.log('Catat riwayat transaksi kas kelas gagal: ' + e.message); }
+
+    // Beri tahu wali santri -- transaksi ini memotong saldo anaknya.
+    try {
+      kirimPushKeWali(nisn, '\uD83C\uDFEB Pembayaran ' + jenis,
+        namaSantri + ' membayar ' + jenis + ' ' + rp(nominal) + ' ke kas kelas. Sisa saldo: ' + rp(saldoSekarang) + '.');
+    } catch(e) { Logger.log('Notif wali kas kelas gagal: ' + e.message); }
+
+    return {ok:true, namaSantri: namaSantri, saldoSekarang: saldoSekarang, nominal: nominal, jenis: jenis};
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Catat pengeluaran kas kelas (tidak menyentuh saldo santri).
+function apiCatatPengeluaranKasKelas(p) {
+  const kelas = norm(p.kelas), oleh = norm(p.oleh);
+  const nominal = Number(p.nominal) || 0;
+  const keterangan = norm(p.keterangan);
+  if (nominal <= 0) return {ok:false, error:'Nominal harus lebih dari 0.'};
+  if (!keterangan) return {ok:false, error:'Keterangan pengeluaran wajib diisi.'};
+  if (!waliKelasDari(oleh, kelas)) {
+    return {ok:false, error:'Anda bukan wali kelas dari kelas ini.'};
+  }
+  const tz = Session.getScriptTimeZone();
+  getOrCreateSheetKasKelas().appendRow([
+    Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd'),
+    Utilities.formatDate(new Date(), tz, 'HH:mm:ss'),
+    kelas, 'Keluar', norm(p.jenis) || 'Uang Kas', '', '', nominal, keterangan, oleh
+  ]);
+  return {ok:true};
+}
+
+// Rekap kas satu kelas: saldo per jenis, daftar santri yang sudah/belum bayar,
+// dan riwayat transaksi terbaru.
+function apiGetRekapKasKelas(p) {
+  const kelas = norm(p.kelas);
+  const jenisFilter = norm(p.jenis);
+  if (!kelas) return {ok:false, error:'Kelas tidak diketahui.'};
+
+  const sh = getOrCreateSheetKasKelas();
+  const rows = sh.getDataRange().getValues(); rows.shift();
+
+  const perJenis = {};      // { jenis: {masuk, keluar} }
+  const sudahBayar = {};    // { jenis: { nisn: total } }
+  const riwayat = [];
+
+  rows.forEach(function(r, i){
+    if (norm(r[2]) !== kelas) return;
+    const tipe = norm(r[3]), jenis = norm(r[4]) || 'Uang Kas';
+    const nominal = Number(r[7]) || 0;
+    if (!perJenis[jenis]) perJenis[jenis] = {masuk:0, keluar:0};
+    if (tipe === 'Keluar') perJenis[jenis].keluar += nominal;
+    else {
+      perJenis[jenis].masuk += nominal;
+      const nisn = norm(r[5]);
+      if (nisn) {
+        if (!sudahBayar[jenis]) sudahBayar[jenis] = {};
+        sudahBayar[jenis][nisn] = (sudahBayar[jenis][nisn] || 0) + nominal;
+      }
+    }
+    if (!jenisFilter || jenis === jenisFilter) {
+      riwayat.push({rowIndex:i+2, tanggal:norm(r[0]), waktu:norm(r[1]), tipe:tipe, jenis:jenis,
+        nisn:norm(r[5]), nama:norm(r[6]), nominal:nominal, keterangan:norm(r[8]), oleh:norm(r[9])});
+    }
+  });
+
+  riwayat.sort(function(a,b){ return (b.tanggal+b.waktu).localeCompare(a.tanggal+a.waktu); });
+
+  // Daftar santri kelas ini beserta status bayarnya untuk jenis yang dipilih
+  const shSantri = getAktifSS().getSheetByName(SHEET_SANTRI);
+  const rs = shSantri.getDataRange().getValues();
+  const hs = rs.shift();
+  const iKelasS = hs.indexOf('Kelas'), iSaldoS = hs.indexOf('Saldo Kantin');
+  const jenisUtama = jenisFilter || 'Uang Kas';
+  const daftarSantri = [];
+  rs.forEach(function(r){
+    if (iKelasS === -1 || norm(r[iKelasS]) !== kelas) return;
+    const nisn = norm(r[0]);
+    daftarSantri.push({
+      nisn: nisn, nama: norm(r[1]),
+      saldo: iSaldoS !== -1 ? (Number(r[iSaldoS]) || 0) : 0,
+      sudahBayar: (sudahBayar[jenisUtama] && sudahBayar[jenisUtama][nisn]) || 0
+    });
+  });
+  daftarSantri.sort(function(a,b){ return a.nama.localeCompare(b.nama); });
+
+  // Daftar jenis yang pernah dipakai di kelas ini, untuk pilihan di aplikasi
+  const daftarJenis = Object.keys(perJenis);
+
+  return {ok:true, kelas:kelas, perJenis:perJenis, daftarJenis:daftarJenis,
+          daftarSantri:daftarSantri, riwayat:riwayat.slice(0, 100)};
+}
+
+// Hapus satu catatan kas kelas. Kalau catatan itu berupa pemasukan dari santri,
+// saldo santrinya DIKEMBALIKAN -- supaya pembatalan salah input tidak membuat
+// uang santri hilang begitu saja.
+function apiHapusKasKelas(p) {
+  const oleh = norm(p.oleh);
+  const baris = Number(p.rowIndex);
+  const sh = getOrCreateSheetKasKelas();
+  if (!(baris > 1) || baris > sh.getLastRow()) return {ok:false, error:'Catatan tidak ditemukan.'};
+
+  const lock = LockService.getScriptLock();
+  try { lock.waitLock(15000); } catch (e) { return {ok:false, error:'Sistem sedang sibuk, coba lagi.'}; }
+  try {
+    const data = sh.getRange(baris, 1, 1, headerKasKelas().length).getValues()[0];
+    const kelas = norm(data[2]), tipe = norm(data[3]);
+    const nisn = norm(data[5]), nominal = Number(data[7]) || 0;
+    if (!waliKelasDari(oleh, kelas)) return {ok:false, error:'Anda bukan wali kelas dari kelas ini.'};
+
+    if (tipe === 'Masuk' && nisn && nominal > 0) {
+      const shSantri = getAktifSS().getSheetByName(SHEET_SANTRI);
+      const rows = shSantri.getDataRange().getValues();
+      const iSaldo = rows[0].indexOf('Saldo Kantin');
+      for (let i=1;i<rows.length;i++) {
+        if (norm(rows[i][0]) === nisn) {
+          const saldoLama = Number(rows[i][iSaldo]) || 0;
+          const saldoBaru = saldoLama + nominal;
+          shSantri.getRange(i+1, iSaldo+1).setValue(saldoBaru);
+          // Pengembalian dicatat juga di riwayat transaksi santri -- tanpa ini saldo
+          // bertambah tanpa jejak dan wali santri akan bingung melihatnya naik sendiri.
+          try {
+            const tzH = Session.getScriptTimeZone();
+            getAktifKantinSS().getSheetByName(SHEET_TRANSAKSI_KANTIN).appendRow([
+              Utilities.formatDate(new Date(), tzH, 'yyyy-MM-dd'),
+              Utilities.formatDate(new Date(), tzH, 'HH:mm:ss'),
+              nisn, norm(data[6]), nominal, 'Kas Kelas',
+              'Pembatalan ' + norm(data[4]) + ' (kelas ' + kelas + ') - saldo dikembalikan',
+              1, 0, '', 0, saldoLama, saldoBaru
+            ]);
+          } catch(e) { Logger.log('Catat pembatalan kas kelas gagal: ' + e.message); }
+          break;
+        }
+      }
+    }
+    sh.deleteRow(baris);
+    return {ok:true, dikembalikan: (tipe === 'Masuk' ? nominal : 0)};
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+
+// ============================================================
+// MODUL FLYER TASMI' HAFALAN
+//
+// Admin/Mudir mengunggah template gambar (boleh lebih dari satu). Pengampu halaqoh
+// hanya memilih template yang tersedia lalu mengisi data santri -- mereka tidak bisa
+// menambah, mengubah, atau menghapus template.
+//
+// Catatan teknis penting (proxy gambar):
+// Flyer digambar ulang di <canvas> supaya bisa diunduh dalam resolusi tinggi. Kalau
+// gambar dimuat langsung dari URL Google Drive, browser menandai canvas sebagai
+// "tercemar" (tainted) karena beda domain, dan perintah unduh akan GAGAL TOTAL.
+// Karena itu gambar diambil lewat apiGambarKeBase64 di bawah: server yang mengunduh
+// gambarnya lalu mengirim isinya sebagai teks base64, sehingga di browser gambar itu
+// dianggap berasal dari domain sendiri dan canvas tetap bersih.
+// ============================================================
+
+const SHEET_TEMPLATE_FLYER = 'TemplateFlyer';
+
+function getOrCreateSheetTemplateFlyer() {
+  const ss = getMasterSS();
+  let sh = ss.getSheetByName(SHEET_TEMPLATE_FLYER);
+  if (!sh) {
+    sh = ss.insertSheet(SHEET_TEMPLATE_FLYER);
+    sh.appendRow(['Nama Template','URL Gambar','Keterangan','Aktif','Dibuat']);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+function apiGetTemplateFlyer() {
+  const sh = getOrCreateSheetTemplateFlyer();
+  const rows = sh.getDataRange().getValues(); rows.shift();
+  const data = rows.map(function(r,i){
+    return { rowIndex:i+2, nama:norm(r[0]), url:norm(r[1]), keterangan:norm(r[2]),
+             aktif: String(r[3]).toLowerCase() !== 'false' };
+  }).filter(function(x){ return x.nama && x.url; });
+  return {ok:true, data:data};
+}
+
+function apiSaveTemplateFlyer(p) {
+  if (!adminAtauMudir(p.oleh)) {
+    return {ok:false, error:'Hanya Admin/Mudir yang boleh mengatur template flyer.'};
+  }
+  const nama = norm(p.nama), url = norm(p.url);
+  if (!nama) return {ok:false, error:'Nama template wajib diisi.'};
+  if (!url) return {ok:false, error:'Gambar template wajib diunggah.'};
+  const sh = getOrCreateSheetTemplateFlyer();
+  const tz = Session.getScriptTimeZone();
+  const baris = [nama, url, norm(p.keterangan), (p.aktif === false ? 'false' : 'true'),
+                 Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd')];
+  if (p.rowIndex && Number(p.rowIndex) > 1) {
+    sh.getRange(Number(p.rowIndex), 1, 1, 5).setValues([baris]);
+  } else {
+    sh.appendRow(baris);
+  }
+  return {ok:true};
+}
+
+function apiHapusTemplateFlyer(p) {
+  if (!adminAtauMudir(p.oleh)) {
+    return {ok:false, error:'Hanya Admin/Mudir yang boleh menghapus template flyer.'};
+  }
+  const sh = getOrCreateSheetTemplateFlyer();
+  const baris = Number(p.rowIndex);
+  if (!(baris > 1) || baris > sh.getLastRow()) return {ok:false, error:'Template tidak ditemukan.'};
+  sh.deleteRow(baris);
+  return {ok:true};
+}
+
+// Ambil gambar dari URL lalu kembalikan sebagai data URI base64.
+// Dipakai supaya canvas tidak "tercemar" (lihat catatan di atas) sehingga flyer
+// benar-benar bisa diunduh. Dibatasi ke domain Google agar tidak bisa dipakai
+// mengambil sembarang alamat di internet.
+function apiGambarKeBase64(p) {
+  const url = norm(p.url);
+  if (!url) return {ok:false, error:'URL gambar kosong.'};
+  if (!/^https:\/\/(lh3\.googleusercontent\.com|drive\.google\.com)\//.test(url)) {
+    return {ok:false, error:'Hanya gambar dari Google Drive yang bisa diproses.'};
+  }
+  try {
+    const resp = UrlFetchApp.fetch(url, {muteHttpExceptions:true, followRedirects:true});
+    if (resp.getResponseCode() !== 200) {
+      return {ok:false, error:'Gagal mengambil gambar (kode '+resp.getResponseCode()+'). Pastikan gambar dibagikan untuk "siapa saja yang memiliki link".'};
+    }
+    const blob = resp.getBlob();
+    const mime = blob.getContentType() || 'image/jpeg';
+    return {ok:true, dataUri: 'data:' + mime + ';base64,' + Utilities.base64Encode(blob.getBytes())};
+  } catch (e) {
+    return {ok:false, error:'Gagal memproses gambar: ' + e.message};
+  }
+}
+
+// Daftar santri yang bisa dipilih pengampu untuk dibuatkan flyer.
+// Admin/Mudir melihat semua santri; pengampu hanya santri di halaqoh yang dia ampu.
+function apiGetSantriUntukFlyer(p) {
+  const oleh = norm(p.oleh);
+  if (adminAtauMudir(oleh)) {
+    const rows = getAktifSS().getSheetByName(SHEET_SANTRI).getDataRange().getValues();
+    const header = rows.shift();
+    const iKelas = header.indexOf('Kelas');
+    return {ok:true, data: rows.filter(function(r){ return norm(r[0]); }).map(function(r){
+      return {nisn:norm(r[0]), nama:norm(r[1]), kelas: iKelas !== -1 ? norm(r[iKelas]) : ''};
+    })};
+  }
+  // Pengampu: kumpulkan anggota dari semua halaqoh yang dia ampu
+  const halaqoh = getSantriHalaqohGuru(oleh);
+  if (!halaqoh.length) return {ok:true, data:[], catatan:'Anda belum tercatat sebagai pengampu halaqoh mana pun.'};
+  const sudah = {};
+  const hasil = [];
+  halaqoh.forEach(function(h){
+    (getSantriHalaqohByGender(h.namaHalaqoh, h.gender) || []).forEach(function(s){
+      const nisn = norm(s.nisn || s.NISN);
+      if (!nisn || sudah[nisn]) return;
+      sudah[nisn] = 1;
+      hasil.push({nisn:nisn, nama:norm(s.nama || s.Nama), kelas:norm(s.kelas || s.Kelas || '')});
+    });
+  });
+  hasil.sort(function(a,b){ return a.nama.localeCompare(b.nama); });
+  return {ok:true, data:hasil};
+}
+
+
+// ============================================================
+// RIWAYAT TASMI' HAFALAN
+//
+// Dicatat otomatis setiap kali flyer diunduh, DAN bisa ditambahkan manual untuk
+// melengkapi data tasmi' yang sudah terjadi sebelum fitur ini ada.
+//
+// Kolom 'Sumber' membedakan keduanya (Flyer / Manual) supaya terlihat mana data
+// yang berasal dari pembuatan flyer dan mana yang diinput belakangan.
+// ============================================================
+
+const SHEET_RIWAYAT_TASMI = 'RiwayatTasmi';
+// Riwayat Tasmi' ikut disalin ke tahun ajaran baru: ini rekam jejak capaian hafalan
+// santri sepanjang dia mondok, bukan data satu tahun ajaran. Kalau direset tiap tahun,
+// catatan berapa juz yang sudah ditasmi' terputus dan tidak bisa dipakai untuk laporan.
+// (push diletakkan SETELAH deklarasi di atas -- kalau sebelumnya, nilainya belum ada
+// saat baris ini dijalankan dan seluruh skrip akan error.)
+SHEETS_DISALIN.push(SHEET_RIWAYAT_TASMI);
+
+function getOrCreateSheetRiwayatTasmi() {
+  const ss = getAktifSS();
+  let sh = ss.getSheetByName(SHEET_RIWAYAT_TASMI);
+  if (!sh) {
+    sh = ss.insertSheet(SHEET_RIWAYAT_TASMI);
+    sh.appendRow(['Tanggal','NISN','Nama Santri','Kelas','Jumlah Juz','Rincian Juz','Nilai','Pengampu','Sumber','Catatan','Dicatat']);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+function apiSimpanRiwayatTasmi(p) {
+  const nisn = norm(p.nisn), nama = norm(p.nama);
+  if (!nama) return {ok:false, error:'Nama santri wajib diisi.'};
+  const juz = norm(p.juz);
+  if (!juz) return {ok:false, error:'Jumlah juz wajib diisi.'};
+  const tanggal = norm(p.tanggal) || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+
+  const sh = getOrCreateSheetRiwayatTasmi();
+  const baris = [tanggal, nisn, nama, norm(p.kelas), juz, norm(p.rincian), norm(p.nilai),
+                 norm(p.pengampu), norm(p.sumber) || 'Manual', norm(p.catatan),
+                 Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss')];
+
+  if (p.rowIndex && Number(p.rowIndex) > 1) {
+    // Edit: hanya pencatatnya sendiri atau Admin/Mudir yang boleh mengubah
+    const lama = sh.getRange(Number(p.rowIndex), 1, 1, 11).getValues()[0];
+    if (!adminAtauMudir(p.oleh) && normNama(norm(lama[7])) !== normNama(norm(p.oleh))) {
+      return {ok:false, error:'Catatan ini dibuat pengampu lain, tidak bisa Anda ubah.'};
+    }
+    sh.getRange(Number(p.rowIndex), 1, 1, 11).setValues([baris]);
+  } else {
+    sh.appendRow(baris);
+  }
+  return {ok:true};
+}
+
+function apiGetRiwayatTasmi(p) {
+  const sh = getOrCreateSheetRiwayatTasmi();
+  const rows = sh.getDataRange().getValues(); rows.shift();
+  const tz = Session.getScriptTimeZone();
+  const oleh = norm(p.oleh);
+  const semua = adminAtauMudir(oleh);   // Admin/Mudir melihat semua pengampu
+  const filterNisn = norm(p.nisn);
+
+  const data = rows.map(function(r,i){
+    const t = (r[0] instanceof Date) ? Utilities.formatDate(r[0], tz, 'yyyy-MM-dd') : norm(r[0]);
+    return {rowIndex:i+2, tanggal:t, nisn:norm(r[1]), nama:norm(r[2]), kelas:norm(r[3]),
+            juz:norm(r[4]), rincian:norm(r[5]), nilai:norm(r[6]), pengampu:norm(r[7]),
+            sumber:norm(r[8]), catatan:norm(r[9])};
+  }).filter(function(x){
+    if (!x.nama) return false;
+    if (filterNisn && x.nisn !== filterNisn) return false;
+    if (!semua && p.hanyaSaya === true && normNama(x.pengampu) !== normNama(oleh)) return false;
+    if (p.tglMulai && x.tanggal < norm(p.tglMulai)) return false;
+    if (p.tglAkhir && x.tanggal > norm(p.tglAkhir)) return false;
+    return true;
+  }).sort(function(a,b){ return b.tanggal.localeCompare(a.tanggal); });
+
+  // Ringkasan: berapa santri berbeda, dan sebaran nilainya
+  const santriUnik = {}, perNilai = {};
+  data.forEach(function(x){
+    if (x.nisn) santriUnik[x.nisn] = 1;
+    if (x.nilai) perNilai[x.nilai] = (perNilai[x.nilai] || 0) + 1;
+  });
+
+  return {ok:true, data:data, jumlahSantri:Object.keys(santriUnik).length,
+          totalCatatan:data.length, perNilai:perNilai, bolehSemua:semua};
+}
+
+function apiHapusRiwayatTasmi(p) {
+  const sh = getOrCreateSheetRiwayatTasmi();
+  const baris = Number(p.rowIndex);
+  if (!(baris > 1) || baris > sh.getLastRow()) return {ok:false, error:'Catatan tidak ditemukan.'};
+  const lama = sh.getRange(baris, 1, 1, 11).getValues()[0];
+  if (!adminAtauMudir(p.oleh) && normNama(norm(lama[7])) !== normNama(norm(p.oleh))) {
+    return {ok:false, error:'Catatan ini dibuat pengampu lain, tidak bisa Anda hapus.'};
+  }
+  sh.deleteRow(baris);
+  return {ok:true};
 }

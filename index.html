@@ -197,6 +197,36 @@
   #absensi-app .artikel-card p{font-size:12px;color:#64748b;margin:0}
   #absensi-app .site-footer{background:#0f172a;color:#94a3b8;padding:24px 18px;text-align:center;font-size:12px;line-height:1.8}
 
+  /* ====== KAS KELAS ====== */
+  #absensi-app .kas-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:10px}
+  #absensi-app .kas-kartu{border:1px solid #e2e8f0;border-radius:12px;padding:12px;cursor:pointer;background:#fff;transition:all .18s}
+  #absensi-app .kas-kartu:hover{border-color:#5eead4}
+  #absensi-app .kas-kartu.aktif{border-color:var(--tema);background:#f0fdfa;box-shadow:0 0 0 2px rgba(13,148,136,.15)}
+  #absensi-app .kas-nama{font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.04em}
+  #absensi-app .kas-sisa{font-size:19px;font-weight:800;color:#0f766e;margin:3px 0}
+  #absensi-app .kas-rinci{font-size:11px;color:#94a3b8}
+
+  /* ====== MENU KANTIN (kartu produk berfoto) ====== */
+  #absensi-app .menu-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  @media(min-width:640px){ #absensi-app .menu-grid{grid-template-columns:repeat(3,1fr);gap:12px} }
+  @media(min-width:980px){ #absensi-app .menu-grid{grid-template-columns:repeat(4,1fr)} }
+  #absensi-app .menu-kartu{border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;background:#fff;display:flex;flex-direction:column}
+  /* aspect-ratio menjaga tinggi kartu tetap sama SEBELUM foto selesai dimuat, supaya
+     tata letak tidak melompat-lompat saat foto masuk satu per satu */
+  #absensi-app .menu-kartu img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block;background:#f1f5f9}
+  #absensi-app .menu-noimg{width:100%;aspect-ratio:4/3;display:flex;align-items:center;justify-content:center;background:#f1f5f9;font-size:30px}
+  #absensi-app .menu-isi{padding:8px 10px 10px;display:flex;flex-direction:column;gap:4px;flex:1}
+  #absensi-app .menu-isi b{font-size:13.5px;line-height:1.35;color:#0f172a}
+  #absensi-app .menu-harga{font-size:14px;font-weight:800;color:#0d9488}
+  #absensi-app .menu-isi button{margin-top:auto;width:100%}
+
+  /* Mode daftar: tanpa foto, paling ringan dan paling cepat untuk kasir sibuk */
+  #absensi-app .menu-list{display:flex;flex-direction:column;gap:6px}
+  #absensi-app .menu-item-teks{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid #e2e8f0;border-radius:10px;padding:9px 12px;background:#fff}
+  #absensi-app .menu-item-teks b{font-size:14px}
+  #absensi-app .menu-item-teks .menu-harga{font-size:13px}
+  #absensi-app .menu-item-teks button{min-width:44px}
+
   /* ====== HALAMAN DEPAN: bagian tambahan (statistik, tentang, video, galeri) ====== */
   /* Animasi halus saat bagian halaman masuk ke layar -- memberi kesan modern tanpa
      library tambahan. Kalau JS gagal jalan, elemen tetap terlihat (kelas .tampil
@@ -323,7 +353,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbzrzWHe2G57aL0DF05sZNOqywV2t4w87eXebiQmrasAZvZbTLVN7QUUHAwyClFTaTv-/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -1487,6 +1517,21 @@
   }
   function labelSantri(s){ return s.nisn + ' - ' + s.nama; }
 
+  // Minta versi berukuran tertentu dari foto yang tersimpan di Google Drive.
+  // URL foto dari uploadSlideImage berbentuk https://lh3.googleusercontent.com/d/<ID>,
+  // dan Google menyediakan versi kecilnya kalau kita tambahkan "=w<lebar>".
+  //
+  // Ini bagian terpenting untuk menjaga aplikasi tetap ringan: tanpa ini, menampilkan
+  // 30 produk sebagai thumbnail 120px tetap akan mengunduh 30 foto ukuran penuh.
+  // Dengan ini, yang diunduh benar-benar seukuran yang ditampilkan -- bisa 10-20 kali
+  // lebih kecil. Satu foto diunggah sekali, lalu dipakai ulang di berbagai ukuran.
+  function fotoUkuran(url, lebar){
+    var u = String(url || '').trim();
+    if (!u) return '';
+    if (u.indexOf('lh3.googleusercontent.com/d/') === -1) return u; // bukan foto Drive: pakai apa adanya
+    return u.split('=')[0] + '=w' + (lebar || 300);
+  }
+
   // Widget multi-pilih santri untuk field "NISN Anak" (RoleAkses) -- mendukung wali
   // dengan >1 anak. existingCsv: NISN dipisah koma (format lama, tunggal, tetap valid
   // karena cuma 1 chip). Render: chip-chip terpilih + input autocomplete untuk menambah,
@@ -1958,6 +2003,8 @@
       {key:'hafalan',         label:'Isi Hafalan',         icon:'&#128214;'},
       {key:'riwayathafalan',  label:'Riwayat Hafalan',     icon:'&#128337;'},
       {key:'progresshafalan', label:'Progress Hafalan',    icon:'&#128200;'},
+      {key:'flyertasmi',      label:"Flyer Tasmi'",        icon:'&#127912;'},
+      {key:'riwayattasmi',    label:"Riwayat Tasmi'",      icon:'&#128218;'},
       {key:'inputnilai',      label:'Input Nilai',         icon:'&#9999;&#65039;'},
       {key:'riwayatnilai',    label:'Riwayat Nilai',       icon:'&#128202;'},
       {key:'rekapnilai',      label:'Rekap Nilai Rapor',   icon:'&#128196;'},
@@ -1975,7 +2022,8 @@
       {key:'wk_santri',       label:'Data Santri Kelas',   icon:'&#128101;'},
       {key:'wk_hafalan',      label:'Rekap Hafalan',       icon:'&#128214;'},
       {key:'wk_pelanggaran',  label:'Rekap Pelanggaran',   icon:'&#9888;&#65039;'},
-      {key:'wk_rapor',        label:'Rapor Santri',        icon:'&#128203;'}
+      {key:'wk_rapor',        label:'Rapor Santri',        icon:'&#128203;'},
+      {key:'wk_kas',          label:'Kas Kelas',           icon:'&#128176;'}
     ],
     'Bendahara': [
       {key:'dasbor',          label:'Dasbor Keuangan',      icon:'&#128200;'},
@@ -2049,11 +2097,13 @@
       raporkelassaya:guruRaporKelas,
       pelanggaran:guruCatatPelanggaran, santrisaya:guruSantriSaya, profilsaya:guruProfilSaya,
       modulajar:guruModulAjar, riwayatjurnal:guruRiwayatJurnal, sop:guruSOP,
+      flyertasmi:halamanFlyerTasmi, riwayattasmi:halamanRiwayatTasmi,
       // Wali Kelas
       wk_rekapnilai:wkRekapNilai, wk_rekapabsen:wkRekapAbsensi,
       wk_santri:wkDataSantri, wk_hafalan:wkRekapHafalan,
       wk_pelanggaran:wkRekapPelanggaran,
       wk_rapor:function(){ raporSemuaSantriKelas(wkGetKelas()); },
+      wk_kas:wkKasKelas,
       // Bendahara
       dasbor:bendDasbor, transaksi:bendTransaksi, tarikkasir:bendTarikSaldoSantri,
       bku:bendBKU, laporan:bendLaporan, pendapatan:bendPendapatanPondok,
@@ -2366,6 +2416,919 @@
     // Ambil kelas yang ditugaskan ke guru ini sebagai Wali Kelas
     // Disimpan di kolom WaliKelas di sheet Guru, format: "7A" atau "7A,7B"
     return STATE.user.waliKelas || '';
+  }
+
+  // ================= FLYER TASMI' HAFALAN =================
+  // Cara kerja singkat:
+  // 1. Semua gambar (template & foto santri) diambil lewat server sebagai base64.
+  //    Ini WAJIB -- kalau gambar dimuat langsung dari URL Google, canvas menjadi
+  //    "tercemar" dan tombol unduh akan gagal total.
+  // 2. Preview memakai satu <canvas> yang digambar ulang tiap ada perubahan.
+  //    Pendekatan canvas dipilih (bukan menumpuk elemen HTML) supaya yang dilihat
+  //    di layar benar-benar sama dengan yang diunduh -- tidak ada selisih font
+  //    atau posisi seperti kalau memakai screenshot HTML.
+  // 3. Unduhan digambar ulang pada ukuran penuh template, jadi hasilnya tajam
+  //    untuk dicetak meski preview di layar kecil.
+
+  var NILAI_TASMI = ['Mumtaz','Jayyid','Jayyidah','Jayyid Jiddan','Jayyidah Jiddan'];
+
+  // State editor flyer (dipakai bersama oleh preview dan proses unduh)
+  var FL = null;
+
+  function flyerBaru(){
+    return {
+      templateImg: null, templateUrl: '',
+      fotoImg: null, fotoAsli: null,
+      // Posisi & ukuran foto dalam satuan persen terhadap lebar/tinggi template,
+      // supaya tetap tepat saat digambar ulang di resolusi penuh.
+      foto: {x:50, y:45, lebar:38, rotasi:0},
+      teks: {
+        nama:   {isi:'', x:50, y:70, ukuran:5.5, warna:'#ffffff', tebal:true,  tampil:true},
+        kelas:  {isi:'', x:50, y:76, ukuran:3.0, warna:'#ffffff', tebal:false, tampil:true},
+        juz:    {isi:'', x:50, y:81, ukuran:3.6, warna:'#ffd700', tebal:true,  tampil:true},
+        rincian:{isi:'', x:50, y:86, ukuran:2.6, warna:'#ffffff', tebal:false, tampil:true},
+        nilai:  {isi:'', x:50, y:92, ukuran:4.2, warna:'#ffd700', tebal:true,  tampil:true}
+      },
+      pilihAktif: 'foto'
+    };
+  }
+
+  // Ambil gambar lewat server sebagai base64 lalu muat jadi objek Image.
+  function muatGambarAman(url){
+    return api('gambarKeBase64', {url:url}).then(function(r){
+      if (!r.ok) throw new Error(r.error);
+      return new Promise(function(resolve, reject){
+        var img = new Image();
+        img.onload = function(){ resolve(img); };
+        img.onerror = function(){ reject(new Error('Gambar gagal dibaca.')); };
+        img.src = r.dataUri;
+      });
+    });
+  }
+
+  // Muat file dari perangkat langsung jadi Image (tanpa lewat server).
+  function fileKeImage(file, maksLebar){
+    return resizeImageFile(file, maksLebar || 1000, 0.92).then(function(hasil){
+      return new Promise(function(resolve, reject){
+        var img = new Image();
+        img.onload = function(){ resolve(img); };
+        img.onerror = function(){ reject(new Error('Foto gagal dibaca.')); };
+        img.src = 'data:' + hasil.mimeType + ';base64,' + hasil.base64;
+      });
+    });
+  }
+
+  function halamanFlyerTasmi(){
+    var c = getContentEl();
+    c.innerHTML = '<div class="card"><p>Memuat...</p></div>';
+    FL = flyerBaru();
+
+    Promise.all([
+      api('getTemplateFlyer', {}),
+      api('getSantriUntukFlyer', {oleh: STATE.user.nama})
+    ]).then(function(hasil){
+      var resT = hasil[0], resS = hasil[1];
+      var templates = (resT.ok ? resT.data : []).filter(function(t){ return t.aktif; });
+      var santri = resS.ok ? resS.data : [];
+
+      if (!templates.length){
+        c.innerHTML = '<div class="card"><h3>&#127912; Flyer Tasmi\' Hafalan</h3>' +
+          warnBox('Belum ada template flyer. Admin/Mudir perlu mengunggahnya dulu lewat menu "Template Flyer".') + '</div>';
+        return;
+      }
+      if (!santri.length){
+        c.innerHTML = '<div class="card"><h3>&#127912; Flyer Tasmi\' Hafalan</h3>' +
+          warnBox(resS.catatan || 'Tidak ada santri yang bisa dipilih.') + '</div>';
+        return;
+      }
+
+      c.innerHTML =
+        '<div class="card"><h3>&#127912; Buat Flyer Tasmi\' Hafalan</h3>' +
+          '<div class="grid2">' +
+            '<div><label>Template</label><select id="flTemplate">' +
+              templates.map(function(t,i){ return '<option value="'+i+'">'+esc(t.nama)+'</option>'; }).join('') +
+            '</select></div>' +
+            '<div><label>Santri</label><select id="flSantri"><option value="">-- pilih santri --</option>' +
+              santri.map(function(s,i){ return '<option value="'+i+'">'+esc(s.nama)+(s.kelas?(' ('+esc(s.kelas)+')'):'')+'</option>'; }).join('') +
+            '</select></div>' +
+          '</div>' +
+          '<div class="grid2">' +
+            '<div>'+fieldText('flJuz','Jumlah Juz (contoh: 5 Juz)','')+'</div>' +
+            '<div><label>Nilai</label><select id="flNilai">' +
+              NILAI_TASMI.map(function(n){ return '<option value="'+esc(n)+'">'+esc(n)+'</option>'; }).join('') +
+            '</select></div>' +
+          '</div>' +
+          fieldText('flRincian','Rincian Juz (contoh: Juz 1, 2, 3, 29, 30)','') +
+          '<label>Foto Santri</label><input type="file" id="flFoto" accept="image/*">' +
+          '<div id="flStatusFoto"></div>' +
+        '</div>' +
+
+        '<div class="card"><h4>Pratinjau</h4>' +
+          '<p class="muted">Geser langsung di gambar untuk memindahkan bagian yang sedang dipilih. Atur ukurannya lewat penggeser di bawah.</p>' +
+          '<div id="flWrapKanvas" style="position:relative;width:100%;max-width:520px;margin:0 auto;background:#f1f5f9;border-radius:10px;overflow:hidden;touch-action:none">' +
+            '<canvas id="flKanvas" style="width:100%;display:block;cursor:move"></canvas>' +
+          '</div>' +
+          '<div id="flPanelAtur" style="margin-top:14px"></div>' +
+          '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' +
+            '<button id="flUnduh">&#11015; Unduh Flyer (PNG)</button>' +
+            '<button class="secondary" id="flCetak">&#128424; Cetak</button>' +
+          '</div>' +
+          '<div id="flPesan"></div>' +
+        '</div>';
+
+      // ---- muat template pertama ----
+      function gantiTemplate(){
+        var t = templates[Number(document.getElementById('flTemplate').value) || 0];
+        document.getElementById('flPesan').innerHTML = '<p class="muted">Memuat template...</p>';
+        muatGambarAman(t.url).then(function(img){
+          FL.templateImg = img;
+          document.getElementById('flPesan').innerHTML = '';
+          siapkanKanvas();
+          gambarFlyer();
+        }).catch(function(e){
+          document.getElementById('flPesan').innerHTML = errBox('Template gagal dimuat: ' + e.message);
+        });
+      }
+      document.getElementById('flTemplate').onchange = gantiTemplate;
+
+      document.getElementById('flSantri').onchange = function(){
+        var s = santri[Number(this.value)];
+        if (!s) return;
+        FL.nisnAktif = s.nisn;
+        FL._sudahDicatat = null; // ganti santri berarti catatan berikutnya catatan baru
+        FL.teks.nama.isi = s.nama;
+        FL.teks.kelas.isi = s.kelas ? ('Kelas ' + s.kelas) : '';
+        gambarFlyer();
+      };
+      document.getElementById('flJuz').oninput = function(){ FL.teks.juz.isi = this.value; gambarFlyer(); };
+      document.getElementById('flRincian').oninput = function(){ FL.teks.rincian.isi = this.value; gambarFlyer(); };
+      document.getElementById('flNilai').onchange = function(){ FL.teks.nilai.isi = this.value; gambarFlyer(); };
+      FL.teks.nilai.isi = NILAI_TASMI[0];
+
+      document.getElementById('flFoto').onchange = function(e){
+        var file = e.target.files[0];
+        if (!file) return;
+        var st = document.getElementById('flStatusFoto');
+        st.innerHTML = '<p class="muted">Memproses foto...</p>';
+        fileKeImage(file, 900).then(function(img){
+          FL.fotoAsli = img;
+          FL.fotoImg = img;
+          st.innerHTML = '<p class="muted">Menghapus latar belakang... (butuh beberapa detik)</p>';
+          return hapusLatarBelakang(img).then(function(hasil){
+            FL.fotoImg = hasil.img;
+            st.innerHTML = hasil.berhasil
+              ? '<p style="color:#16a34a;font-weight:600">&#9989; Latar belakang dihapus. <button class="small secondary" id="flPakaiAsli">Pakai foto asli</button></p>'
+              : warnBox('Latar belakang tidak bisa dihapus otomatis di perangkat ini, foto dipakai apa adanya. Saran: pakai foto dengan latar polos.');
+            var b = document.getElementById('flPakaiAsli');
+            if (b) b.onclick = function(){ FL.fotoImg = FL.fotoAsli; gambarFlyer(); };
+            gambarFlyer();
+          });
+        }).catch(function(err){
+          st.innerHTML = errBox('Foto gagal diproses: ' + err.message);
+        });
+      };
+
+      document.getElementById('flUnduh').onclick = unduhFlyer;
+      document.getElementById('flCetak').onclick = cetakFlyer;
+
+      renderPanelAtur();
+      pasangGeser();
+      gantiTemplate();
+    });
+  }
+
+  // ---- Kanvas ----
+  function siapkanKanvas(){
+    var kanvas = document.getElementById('flKanvas');
+    if (!kanvas || !FL.templateImg) return;
+    // Kanvas dibuat seukuran template aslinya supaya hasil unduhan tajam.
+    // CSS yang mengecilkan tampilannya di layar, bukan resolusinya.
+    kanvas.width = FL.templateImg.naturalWidth;
+    kanvas.height = FL.templateImg.naturalHeight;
+  }
+
+  function gambarFlyer(){
+    var kanvas = document.getElementById('flKanvas');
+    if (!kanvas || !FL.templateImg) return;
+    var ctx = kanvas.getContext('2d');
+    var W = kanvas.width, H = kanvas.height;
+    ctx.clearRect(0,0,W,H);
+    ctx.drawImage(FL.templateImg, 0, 0, W, H);
+
+    // Foto santri
+    if (FL.fotoImg){
+      var lebarFoto = W * (FL.foto.lebar / 100);
+      var skala = lebarFoto / FL.fotoImg.naturalWidth;
+      var tinggiFoto = FL.fotoImg.naturalHeight * skala;
+      var px = W * (FL.foto.x / 100) - lebarFoto / 2;
+      var py = H * (FL.foto.y / 100) - tinggiFoto / 2;
+      ctx.drawImage(FL.fotoImg, px, py, lebarFoto, tinggiFoto);
+    }
+
+    // Teks -- ukuran dinyatakan dalam persen lebar template supaya proporsional
+    Object.keys(FL.teks).forEach(function(k){
+      var t = FL.teks[k];
+      if (!t.tampil || !t.isi) return;
+      var ukuranPx = W * (t.ukuran / 100);
+      ctx.font = (t.tebal ? 'bold ' : '') + ukuranPx + 'px Arial, sans-serif';
+      ctx.fillStyle = t.warna;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      // Garis luar tipis supaya teks tetap terbaca di atas latar terang maupun gelap
+      ctx.lineWidth = Math.max(1, ukuranPx * 0.055);
+      ctx.strokeStyle = 'rgba(0,0,0,.45)';
+      var x = W * (t.x / 100), y = H * (t.y / 100);
+      ctx.strokeText(t.isi, x, y);
+      ctx.fillText(t.isi, x, y);
+    });
+  }
+
+  // ---- Panel pengaturan ----
+  function renderPanelAtur(){
+    var bagian = [
+      {key:'foto',    label:'Foto Santri'},
+      {key:'nama',    label:'Nama'},
+      {key:'kelas',   label:'Kelas'},
+      {key:'juz',     label:'Jumlah Juz'},
+      {key:'rincian', label:'Rincian Juz'},
+      {key:'nilai',   label:'Nilai'}
+    ];
+    var a = FL.pilihAktif;
+    var obj = (a === 'foto') ? FL.foto : FL.teks[a];
+    var el = document.getElementById('flPanelAtur');
+    el.innerHTML =
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">' +
+        bagian.map(function(b){
+          var aktif = (b.key === a);
+          return '<button class="flTabBtn" data-k="'+b.key+'" style="padding:7px 13px;border-radius:18px;border:1px solid '+(aktif?'var(--tema)':'#e2e8f0')+';background:'+(aktif?'var(--tema)':'#fff')+';color:'+(aktif?'#fff':'#475569')+';cursor:pointer;font-size:12.5px;font-weight:600">'+esc(b.label)+'</button>';
+        }).join('') +
+      '</div>' +
+      '<label style="font-size:12.5px">Ukuran: <b id="flNilaiUkuran">'+(a==='foto'?obj.lebar:obj.ukuran)+'</b></label>' +
+      '<input type="range" id="flUkuran" min="'+(a==='foto'?'8':'1')+'" max="'+(a==='foto'?'100':'15')+'" step="'+(a==='foto'?'1':'0.1')+'" value="'+(a==='foto'?obj.lebar:obj.ukuran)+'" style="width:100%">' +
+      (a === 'foto' ? '' :
+        ('<div class="grid2" style="margin-top:8px">' +
+          '<div><label style="font-size:12.5px">Warna Teks</label><input type="color" id="flWarna" value="'+esc(obj.warna)+'" style="width:100%;height:38px;padding:2px;border:1px solid #cbd5e1;border-radius:8px"></div>' +
+          '<div><label style="font-size:12.5px">Ketebalan</label><select id="flTebal"><option value="1"'+(obj.tebal?' selected':'')+'>Tebal</option><option value="0"'+(!obj.tebal?' selected':'')+'>Biasa</option></select></div>' +
+        '</div>' +
+        '<label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12.5px"><input type="checkbox" id="flTampil" '+(obj.tampil?'checked':'')+' style="width:auto"> Tampilkan bagian ini</label>')) +
+      '<p class="muted" style="font-size:12px;margin-top:8px">Geser pada gambar pratinjau untuk memindahkan <b>'+esc(bagian.find(function(b){return b.key===a;}).label)+'</b>.</p>';
+
+    document.querySelectorAll('.flTabBtn').forEach(function(btn){
+      btn.onclick = function(){ FL.pilihAktif = btn.dataset.k; renderPanelAtur(); };
+    });
+    document.getElementById('flUkuran').oninput = function(){
+      var v = Number(this.value);
+      if (a === 'foto') FL.foto.lebar = v; else FL.teks[a].ukuran = v;
+      document.getElementById('flNilaiUkuran').textContent = v;
+      gambarFlyer();
+    };
+    var elWarna = document.getElementById('flWarna');
+    if (elWarna) elWarna.oninput = function(){ FL.teks[a].warna = this.value; gambarFlyer(); };
+    var elTebal = document.getElementById('flTebal');
+    if (elTebal) elTebal.onchange = function(){ FL.teks[a].tebal = (this.value === '1'); gambarFlyer(); };
+    var elTampil = document.getElementById('flTampil');
+    if (elTampil) elTampil.onchange = function(){ FL.teks[a].tampil = this.checked; gambarFlyer(); };
+  }
+
+  // ---- Geser (drag) untuk memindahkan bagian aktif ----
+  function pasangGeser(){
+    var kanvas = document.getElementById('flKanvas');
+    if (!kanvas) return;
+    var sedangGeser = false;
+
+    function posisiPersen(ev){
+      var r = kanvas.getBoundingClientRect();
+      var titik = ev.touches ? ev.touches[0] : ev;
+      return {
+        x: Math.max(0, Math.min(100, ((titik.clientX - r.left) / r.width) * 100)),
+        y: Math.max(0, Math.min(100, ((titik.clientY - r.top) / r.height) * 100))
+      };
+    }
+    function mulai(ev){ sedangGeser = true; pindah(ev); }
+    function pindah(ev){
+      if (!sedangGeser) return;
+      ev.preventDefault();
+      var p = posisiPersen(ev);
+      var a = FL.pilihAktif;
+      if (a === 'foto') { FL.foto.x = p.x; FL.foto.y = p.y; }
+      else { FL.teks[a].x = p.x; FL.teks[a].y = p.y; }
+      gambarFlyer();
+    }
+    function selesai(){ sedangGeser = false; }
+
+    kanvas.addEventListener('pointerdown', mulai);
+    kanvas.addEventListener('pointermove', pindah);
+    window.addEventListener('pointerup', selesai);
+  }
+
+  // ---- Hapus latar belakang foto ----
+  // Memakai model segmentasi orang dari MediaPipe yang berjalan DI PERANGKAT
+  // (tidak mengirim foto santri ke layanan pihak ketiga -- penting untuk privasi).
+  // Modelnya diunduh hanya saat fitur ini dipakai, jadi tidak membebani aplikasi
+  // untuk pengguna yang tidak membuat flyer.
+  var _segmentasi = null;
+  function muatModelSegmentasi(){
+    if (_segmentasi) return Promise.resolve(_segmentasi);
+    return new Promise(function(resolve, reject){
+      var s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js';
+      s.onload = function(){
+        try {
+          var seg = new window.SelfieSegmentation({locateFile: function(f){
+            return 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/' + f;
+          }});
+          seg.setOptions({modelSelection: 1});
+          _segmentasi = seg;
+          resolve(seg);
+        } catch(e){ reject(e); }
+      };
+      s.onerror = function(){ reject(new Error('Gagal memuat model. Periksa koneksi internet.')); };
+      document.head.appendChild(s);
+    });
+  }
+
+  function hapusLatarBelakang(img){
+    if (!navigator.onLine) {
+      return Promise.resolve({img: img, berhasil: false});
+    }
+    return muatModelSegmentasi().then(function(seg){
+      return new Promise(function(resolve){
+        var selesai = false;
+        // Batas waktu: kalau model tidak merespons, jangan biarkan pengguna menunggu
+        // tanpa kepastian -- pakai foto aslinya saja.
+        var waktuHabis = setTimeout(function(){
+          if (!selesai) { selesai = true; resolve({img: img, berhasil: false}); }
+        }, 15000);
+
+        seg.onResults(function(hasil){
+          if (selesai) return;
+          selesai = true; clearTimeout(waktuHabis);
+          try {
+            var k = document.createElement('canvas');
+            k.width = img.naturalWidth; k.height = img.naturalHeight;
+            var ctx = k.getContext('2d');
+            ctx.drawImage(hasil.segmentationMask, 0, 0, k.width, k.height);
+            ctx.globalCompositeOperation = 'source-in';
+            ctx.drawImage(img, 0, 0, k.width, k.height);
+            var out = new Image();
+            out.onload = function(){ resolve({img: out, berhasil: true}); };
+            out.onerror = function(){ resolve({img: img, berhasil: false}); };
+            out.src = k.toDataURL('image/png');
+          } catch(e){ resolve({img: img, berhasil: false}); }
+        });
+        seg.send({image: img}).catch(function(){
+          if (!selesai) { selesai = true; clearTimeout(waktuHabis); resolve({img: img, berhasil: false}); }
+        });
+      });
+    }).catch(function(){
+      return {img: img, berhasil: false};
+    });
+  }
+
+  // ---- Unduh & cetak ----
+  function unduhFlyer(){
+    var kanvas = document.getElementById('flKanvas');
+    var pesan = document.getElementById('flPesan');
+    if (!kanvas || !FL.templateImg){ pesan.innerHTML = errBox('Template belum dimuat.'); return; }
+    if (!FL.teks.nama.isi){ pesan.innerHTML = errBox('Pilih santri dulu sebelum mengunduh.'); return; }
+    try {
+      // Canvas tidak tercemar karena semua gambar dimuat sebagai base64 dari server,
+      // jadi toDataURL aman dipanggil.
+      var dataUrl = kanvas.toDataURL('image/png');
+      var a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = 'Tasmi_' + String(FL.teks.nama.isi).replace(/[^\w]+/g,'_') + '_' + todayStr() + '.png';
+      a.click();
+      pesan.innerHTML = '<p style="color:#16a34a;font-weight:600">&#9989; Flyer diunduh.</p>';
+      getarkanHp([50]);
+      catatRiwayatDariFlyer(pesan);
+    } catch(e){
+      pesan.innerHTML = errBox('Gagal mengunduh: ' + e.message + '. Coba muat ulang halaman lalu ulangi.');
+    }
+  }
+
+  // Simpan ke Riwayat Tasmi' setelah flyer diunduh. Ditandai supaya menekan unduh
+  // beberapa kali untuk santri yang sama (misal setelah memperbaiki posisi teks)
+  // tidak membuat catatan ganda.
+  function catatRiwayatDariFlyer(elPesan){
+    if (!FL || FL._sudahDicatat === FL.nisnAktif) return;
+    if (!FL.nisnAktif) return;
+    api('simpanRiwayatTasmi', {
+      tanggal: todayStr(), nisn: FL.nisnAktif, nama: FL.teks.nama.isi,
+      kelas: String(FL.teks.kelas.isi).replace(/^Kelas\s*/i,''),
+      juz: FL.teks.juz.isi, rincian: FL.teks.rincian.isi, nilai: FL.teks.nilai.isi,
+      pengampu: STATE.user.nama, sumber: 'Flyer'
+    }).then(function(r){
+      if (r.ok) {
+        FL._sudahDicatat = FL.nisnAktif;
+        if (elPesan) elPesan.innerHTML += '<p class="muted" style="font-size:12.5px">Tercatat di Riwayat Tasmi\'.</p>';
+      }
+    });
+  }
+
+  function cetakFlyer(){
+    var kanvas = document.getElementById('flKanvas');
+    if (!kanvas || !FL.templateImg) return;
+    var w = window.open('', '_blank');
+    if (!w) { alert('Izinkan pop-up untuk mencetak.'); return; }
+    w.document.write('<html><head><title>Flyer Tasmi\'</title>' +
+      '<style>@page{margin:0}body{margin:0;display:flex;align-items:center;justify-content:center}' +
+      'img{max-width:100%;max-height:100vh}</style></head><body>' +
+      '<img src="' + kanvas.toDataURL('image/png') + '" onload="window.print()"></body></html>');
+    w.document.close();
+  }
+
+  // ---- Admin: kelola template flyer ----
+  function adminTemplateFlyer(){
+    var c = getContentEl();
+    c.innerHTML = '<div class="card"><p>Memuat...</p></div>';
+    muatDaftarTemplate();
+
+    function muatDaftarTemplate(){
+      api('getTemplateFlyer', {}).then(function(res){
+        var list = res.ok ? res.data : [];
+        c.innerHTML = '<div class="card"><h3>&#128444; Template Flyer Tasmi\'</h3>' +
+          warnBox('Template yang diunggah di sini akan bisa dipilih oleh pengampu halaqoh saat membuat flyer. Pengampu tidak bisa menambah atau mengubah template.\n\nSaran ukuran: 1080 x 1350 piksel (rasio 4:5, cocok untuk unggahan media sosial) atau 1080 x 1080 (persegi). Sisakan ruang kosong untuk foto santri dan tulisan.') +
+          '<button class="small" id="btnTambahTemplate">+ Tambah Template</button>' +
+          '<div id="wrapTemplate" style="margin-top:12px">' +
+            (list.length
+              ? ('<div class="galeri-grid">' + list.map(function(t){
+                  return '<div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;background:#fff">' +
+                    '<img src="'+esc(fotoUkuran(t.url,300))+'" loading="lazy" style="width:100%;aspect-ratio:4/5;object-fit:cover;display:block">' +
+                    '<div style="padding:8px"><b style="font-size:13px">'+esc(t.nama)+'</b>' +
+                    (t.aktif?'':' <span style="font-size:10.5px;background:#fee2e2;color:#991b1b;padding:1px 6px;border-radius:8px">NONAKTIF</span>') +
+                    '<div style="display:flex;gap:5px;margin-top:6px">' +
+                      '<button class="small btnEditTpl" data-row="'+t.rowIndex+'">Edit</button>' +
+                      '<button class="small danger btnHapusTpl" data-row="'+t.rowIndex+'">Hapus</button>' +
+                    '</div></div></div>';
+                }).join('') + '</div>')
+              : '<p class="muted">Belum ada template.</p>') +
+          '</div></div>';
+
+        document.getElementById('btnTambahTemplate').onclick = function(){ formTemplate(null); };
+        document.querySelectorAll('.btnEditTpl').forEach(function(b){
+          b.onclick = function(){ formTemplate(list.find(function(t){ return t.rowIndex === Number(b.dataset.row); })); };
+        });
+        document.querySelectorAll('.btnHapusTpl').forEach(function(b){
+          b.onclick = function(){
+            if (!confirm('Hapus template ini?')) return;
+            api('hapusTemplateFlyer', {rowIndex:Number(b.dataset.row), oleh:STATE.user.nama}).then(function(r){
+              if (!r.ok) { alert(r.error); return; }
+              muatDaftarTemplate();
+            });
+          };
+        });
+      });
+    }
+
+    function formTemplate(existing){
+      var preview = existing && existing.url
+        ? '<img src="'+esc(fotoUkuran(existing.url,200))+'" style="height:110px;border-radius:8px;margin-top:4px;display:block">' : '';
+      var fields =
+        fieldText('tplNama','Nama Template', existing?existing.nama:'') +
+        fieldText('tplKet','Keterangan (opsional)', existing?existing.keterangan:'') +
+        '<label>Gambar Template</label><input type="file" id="tplFile" accept="image/*">' +
+        '<p class="muted" style="margin-top:-6px"><b>Tunggu sampai muncul "Berhasil diunggah"</b> sebelum menekan Simpan.</p>' +
+        fieldText('tplUrl','URL Gambar (terisi otomatis)', existing?existing.url:'') +
+        '<div id="tplStatus">'+preview+'</div>' +
+        '<label style="display:flex;align-items:center;gap:8px;margin-top:8px"><input type="checkbox" id="tplAktif" '+((!existing || existing.aktif)?'checked':'')+' style="width:auto"> Aktif (bisa dipilih pengampu)</label>';
+
+      var sedangUnggah = false;
+      var modal = openModal(existing?'Edit Template':'Tambah Template', fields, function(m){
+        var nama = m.querySelector('#tplNama').value.trim();
+        if (!nama) { alert('Nama template wajib diisi.'); return false; }
+        if (sedangUnggah) { alert('Gambar masih diunggah, tunggu sampai selesai.'); return false; }
+        var url = m.querySelector('#tplUrl').value.trim();
+        if (!url) { alert('Gambar template wajib diunggah.'); return false; }
+        return api('saveTemplateFlyer', {
+          rowIndex: existing?existing.rowIndex:0, nama:nama, url:url,
+          keterangan: m.querySelector('#tplKet').value.trim(),
+          aktif: m.querySelector('#tplAktif').checked, oleh: STATE.user.nama
+        }).then(function(r){
+          if (!r.ok) { alert(r.error); throw new Error(r.error); }
+          muatDaftarTemplate();
+        });
+      });
+      modal.querySelector('#tplFile').onchange = function(e){
+        var file = e.target.files[0];
+        if (!file) return;
+        var st = modal.querySelector('#tplStatus');
+        sedangUnggah = true;
+        st.innerHTML = '<p class="muted">Memproses gambar...</p>';
+        // Template diunggah dalam resolusi tinggi (1400px) karena akan jadi dasar
+        // flyer yang dicetak -- kalau terlalu kecil, hasil cetaknya pecah.
+        resizeImageFile(file, 1400, 0.9).then(function(hasil){
+          st.innerHTML = '<p class="muted">Mengunggah... mohon tunggu.</p>';
+          api('uploadSlideImage', {base64:hasil.base64, mimeType:hasil.mimeType, fileName:file.name}).then(function(res){
+            sedangUnggah = false;
+            if (!res.ok) { st.innerHTML = errBox(res.error); return; }
+            modal.querySelector('#tplUrl').value = res.url;
+            st.innerHTML = '<p style="color:#16a34a;font-weight:600;margin:6px 0">&#9989; Berhasil diunggah.</p><img src="'+esc(fotoUkuran(res.url,200))+'" style="height:110px;border-radius:8px;display:block">';
+          }).catch(function(){
+            sedangUnggah = false;
+            st.innerHTML = errBox('Gagal mengunggah. Periksa koneksi lalu coba lagi.');
+          });
+        }).catch(function(){
+          sedangUnggah = false;
+          st.innerHTML = errBox('Gagal memproses gambar. Coba file lain.');
+        });
+      };
+    }
+  }
+
+
+  // ================= RIWAYAT TASMI' HAFALAN =================
+  // Berisi catatan santri yang sudah tasmi': otomatis dari pembuatan flyer, dan
+  // bisa ditambahkan manual untuk melengkapi data tasmi' sebelum aplikasi dipakai.
+  var _rtFilter = {tglMulai:'', tglAkhir:'', hanyaSaya:false, cari:''};
+
+  function halamanRiwayatTasmi(){
+    var c = getContentEl();
+    c.innerHTML = '<div class="card"><p>Memuat riwayat...</p></div>';
+    muatRiwayatTasmi();
+  }
+
+  function muatRiwayatTasmi(){
+    var c = getContentEl();
+    Promise.all([
+      api('getRiwayatTasmi', {oleh: STATE.user.nama, tglMulai:_rtFilter.tglMulai,
+                              tglAkhir:_rtFilter.tglAkhir, hanyaSaya:_rtFilter.hanyaSaya}),
+      api('getSantriUntukFlyer', {oleh: STATE.user.nama})
+    ]).then(function(hasil){
+      var res = hasil[0];
+      var daftarSantri = hasil[1].ok ? hasil[1].data : [];
+      if (!res.ok){ c.innerHTML = '<div class="card">'+errBox(res.error)+'</div>'; return; }
+
+      var data = res.data;
+      var kata = _rtFilter.cari.toLowerCase().trim();
+      if (kata) {
+        data = data.filter(function(x){
+          return (x.nama+' '+x.kelas+' '+x.juz+' '+x.rincian+' '+x.nilai+' '+x.pengampu).toLowerCase().indexOf(kata) !== -1;
+        });
+      }
+
+      var ringkasNilai = Object.keys(res.perNilai).map(function(n){
+        return '<span style="background:#f1f5f9;border-radius:12px;padding:3px 10px;font-size:12px;margin-right:5px;display:inline-block;margin-bottom:4px">'+esc(n)+': <b>'+res.perNilai[n]+'</b></span>';
+      }).join('');
+
+      c.innerHTML =
+        '<div class="card"><h3>&#128218; Riwayat Tasmi\' Hafalan</h3>' +
+          '<div class="stat-ringkas" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px">' +
+            '<div><div class="muted" style="font-size:11.5px">TOTAL CATATAN</div><b style="font-size:20px;color:#0f766e">'+res.totalCatatan+'</b></div>' +
+            '<div><div class="muted" style="font-size:11.5px">SANTRI BERBEDA</div><b style="font-size:20px;color:#0f766e">'+res.jumlahSantri+'</b></div>' +
+          '</div>' +
+          (ringkasNilai ? ('<div style="margin-bottom:10px">'+ringkasNilai+'</div>') : '') +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+            '<button class="small" id="btnTambahTasmi">+ Tambah Catatan Manual</button>' +
+            (data.length ? '<button class="small secondary" id="btnEksporTasmi">&#11015; Ekspor CSV</button>' : '') +
+          '</div>' +
+        '</div>' +
+
+        '<div class="card"><h4>Filter</h4>' +
+          '<div class="grid2">' +
+            '<div><label>Dari Tanggal</label><input type="date" id="rtMulai" value="'+esc(_rtFilter.tglMulai)+'"></div>' +
+            '<div><label>Sampai Tanggal</label><input type="date" id="rtAkhir" value="'+esc(_rtFilter.tglAkhir)+'"></div>' +
+          '</div>' +
+          '<input id="rtCari" placeholder="Cari nama santri / juz / nilai..." value="'+esc(_rtFilter.cari)+'">' +
+          (res.bolehSemua ? '' :
+            '<label style="display:flex;align-items:center;gap:8px;margin-top:8px"><input type="checkbox" id="rtSaya" '+(_rtFilter.hanyaSaya?'checked':'')+' style="width:auto"> Hanya catatan yang saya buat</label>') +
+          '<div style="display:flex;gap:8px;margin-top:10px"><button class="small" id="btnTerapkanFilter">Terapkan</button>' +
+          '<button class="small secondary" id="btnResetFilter">Reset</button></div>' +
+        '</div>' +
+
+        '<div class="card"><h4>Daftar Catatan ('+data.length+')</h4>' +
+          (data.length
+            ? ('<div style="overflow-x:auto"><table><tr><th>Tanggal</th><th>Santri</th><th>Juz</th><th>Nilai</th><th>Pengampu</th><th>Aksi</th></tr>' +
+               data.map(function(x){
+                 var lencana = x.sumber === 'Manual'
+                   ? ' <span style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px">MANUAL</span>' : '';
+                 return '<tr>' +
+                   '<td>'+esc(x.tanggal)+'</td>' +
+                   '<td><b>'+esc(x.nama)+'</b>'+lencana+(x.kelas?('<br><span class="muted" style="font-size:11px">'+esc(x.kelas)+'</span>'):'')+'</td>' +
+                   '<td><b>'+esc(x.juz)+'</b>'+(x.rincian?('<br><span class="muted" style="font-size:11px">'+esc(x.rincian)+'</span>'):'')+'</td>' +
+                   '<td>'+esc(x.nilai||'-')+'</td>' +
+                   '<td style="font-size:12px">'+esc(x.pengampu||'-')+'</td>' +
+                   '<td><button class="small btnEditTasmi" data-row="'+x.rowIndex+'">Edit</button> ' +
+                   '<button class="small danger btnHapusTasmi" data-row="'+x.rowIndex+'">Hapus</button></td></tr>';
+               }).join('') + '</table></div>')
+            : '<p class="muted">Belum ada catatan yang cocok dengan filter.</p>') +
+        '</div>';
+
+      document.getElementById('btnTambahTasmi').onclick = function(){ formRiwayatTasmi(null, daftarSantri); };
+      document.getElementById('btnTerapkanFilter').onclick = function(){
+        _rtFilter.tglMulai = document.getElementById('rtMulai').value;
+        _rtFilter.tglAkhir = document.getElementById('rtAkhir').value;
+        _rtFilter.cari = document.getElementById('rtCari').value;
+        var s = document.getElementById('rtSaya');
+        _rtFilter.hanyaSaya = s ? s.checked : false;
+        muatRiwayatTasmi();
+      };
+      document.getElementById('btnResetFilter').onclick = function(){
+        _rtFilter = {tglMulai:'', tglAkhir:'', hanyaSaya:false, cari:''};
+        muatRiwayatTasmi();
+      };
+      var btnEks = document.getElementById('btnEksporTasmi');
+      if (btnEks) btnEks.onclick = function(){ eksporRiwayatTasmi(data); };
+
+      document.querySelectorAll('.btnEditTasmi').forEach(function(b){
+        b.onclick = function(){
+          formRiwayatTasmi(data.find(function(x){ return x.rowIndex === Number(b.dataset.row); }), daftarSantri);
+        };
+      });
+      document.querySelectorAll('.btnHapusTasmi').forEach(function(b){
+        b.onclick = function(){
+          if (!confirm('Hapus catatan tasmi\' ini?')) return;
+          api('hapusRiwayatTasmi', {rowIndex:Number(b.dataset.row), oleh:STATE.user.nama}).then(function(r){
+            if (!r.ok){ alert(r.error); return; }
+            muatRiwayatTasmi();
+          });
+        };
+      });
+    });
+  }
+
+  function formRiwayatTasmi(existing, daftarSantri){
+    var opsi = daftarSantri.map(function(s){ return s.nisn + ' - ' + s.nama; });
+    var nilaiSantri = existing ? ((existing.nisn ? existing.nisn + ' - ' : '') + existing.nama) : '';
+    var fields =
+      '<label>Tanggal Tasmi\'</label><input type="date" id="rtfTgl" value="'+esc(existing?existing.tanggal:todayStr())+'">' +
+      fieldAutocomplete('rtfSantri','Santri', opsi, nilaiSantri, 'Ketik nama atau NISN santri...') +
+      '<p class="muted" style="margin-top:-6px">Kalau santrinya tidak ada di daftar (misal sudah lulus), tulis saja namanya langsung.</p>' +
+      fieldText('rtfKelas','Kelas', existing?existing.kelas:'') +
+      '<div class="grid2">' +
+        '<div>'+fieldText('rtfJuz','Jumlah Juz (contoh: 5 Juz)', existing?existing.juz:'')+'</div>' +
+        '<div><label>Nilai</label><select id="rtfNilai">' +
+          ['','Mumtaz','Jayyid','Jayyidah','Jayyid Jiddan','Jayyidah Jiddan'].map(function(n){
+            return '<option value="'+esc(n)+'"'+((existing && existing.nilai===n)?' selected':'')+'>'+(n||'-- pilih --')+'</option>';
+          }).join('') + '</select></div>' +
+      '</div>' +
+      fieldText('rtfRincian','Rincian Juz (contoh: Juz 1, 2, 3, 29, 30)', existing?existing.rincian:'') +
+      fieldText('rtfPengampu','Pengampu', existing?existing.pengampu:STATE.user.nama) +
+      fieldText('rtfCatatan','Catatan (opsional)', existing?existing.catatan:'');
+
+    openModal(existing?'Edit Catatan Tasmi\'':'Tambah Catatan Tasmi\'', fields, function(m){
+      var isiSantri = m.querySelector('#rtfSantri').value.trim();
+      if (!isiSantri){ alert('Nama santri wajib diisi.'); return false; }
+      // Kalau dipilih dari daftar, formatnya "NISN - Nama". Kalau diketik bebas
+      // (santri lama yang sudah lulus), seluruh isian dipakai sebagai nama.
+      var nisn = '', nama = isiSantri;
+      var pisah = isiSantri.split(' - ');
+      if (pisah.length > 1 && daftarSantri.some(function(s){ return String(s.nisn) === pisah[0].trim(); })) {
+        nisn = pisah[0].trim();
+        nama = pisah.slice(1).join(' - ').trim();
+      }
+      var juz = m.querySelector('#rtfJuz').value.trim();
+      if (!juz){ alert('Jumlah juz wajib diisi.'); return false; }
+
+      return api('simpanRiwayatTasmi', {
+        rowIndex: existing?existing.rowIndex:0,
+        tanggal: m.querySelector('#rtfTgl').value,
+        nisn: nisn, nama: nama,
+        kelas: m.querySelector('#rtfKelas').value.trim(),
+        juz: juz, rincian: m.querySelector('#rtfRincian').value.trim(),
+        nilai: m.querySelector('#rtfNilai').value,
+        pengampu: m.querySelector('#rtfPengampu').value.trim(),
+        catatan: m.querySelector('#rtfCatatan').value.trim(),
+        sumber: existing ? existing.sumber : 'Manual',
+        oleh: STATE.user.nama
+      }).then(function(r){
+        if (!r.ok){ alert(r.error); throw new Error(r.error); }
+        muatRiwayatTasmi();
+      });
+    });
+
+    // Isi kelas otomatis saat santri dipilih dari daftar
+    var elSantri = document.getElementById('rtfSantri');
+    if (elSantri) elSantri.onchange = function(){
+      var nisn = this.value.split(' - ')[0].trim();
+      var s = daftarSantri.find(function(x){ return String(x.nisn) === nisn; });
+      if (s && s.kelas) document.getElementById('rtfKelas').value = s.kelas;
+    };
+  }
+
+  function eksporRiwayatTasmi(data){
+    var bom = '\uFEFF';
+    var baris = [['Tanggal','NISN','Nama Santri','Kelas','Jumlah Juz','Rincian Juz','Nilai','Pengampu','Sumber','Catatan']];
+    data.forEach(function(x){
+      baris.push([x.tanggal, x.nisn, x.nama, x.kelas, x.juz, x.rincian, x.nilai, x.pengampu, x.sumber, x.catatan]);
+    });
+    var csv = bom + baris.map(function(r){
+      return r.map(function(v){
+        var s = String(v == null ? '' : v);
+        if (s.indexOf(',') !== -1 || s.indexOf('"') !== -1 || s.indexOf('\n') !== -1) s = '"'+s.replace(/"/g,'""')+'"';
+        return s;
+      }).join(',');
+    }).join('\n');
+    var blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'Riwayat_Tasmi_' + todayStr() + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+
+  // ---------------- WALI KELAS: KAS KELAS ----------------
+  // Wali kelas menerima pembayaran santri (uang kas, rihlah, dll) langsung dari saldo
+  // santri, dengan PIN santri sebagai persetujuan -- alur dan pengamanannya sama
+  // dengan transaksi kantin.
+  var JENIS_KAS_BAWAAN = ['Uang Kas', 'Uang Rihlah', 'Uang Kegiatan'];
+  var _wkJenisAktif = 'Uang Kas';
+
+  function wkKasKelas(){
+    var kelas = wkGetKelas();
+    var c = getContentEl();
+    if (!kelas){
+      c.innerHTML = '<div class="card">'+warnBox('Anda belum ditugaskan sebagai Wali Kelas di data Guru. Minta Admin mengisi kolom WaliKelas.')+'</div>';
+      return;
+    }
+    c.innerHTML = '<div class="card"><p>Memuat data kas kelas...</p></div>';
+    muatKasKelas(kelas);
+  }
+
+  function muatKasKelas(kelas){
+    var c = getContentEl();
+    api('getRekapKasKelas', {kelas: kelas, jenis: _wkJenisAktif}).then(function(res){
+      if (!res.ok){ c.innerHTML = '<div class="card">'+errBox(res.error)+'</div>'; return; }
+
+      // Gabungkan jenis bawaan dengan jenis yang sudah pernah dipakai di kelas ini
+      var semuaJenis = JENIS_KAS_BAWAAN.slice();
+      (res.daftarJenis || []).forEach(function(j){ if (semuaJenis.indexOf(j) === -1) semuaJenis.push(j); });
+
+      var ringkasan = semuaJenis.map(function(j){
+        var d = res.perJenis[j] || {masuk:0, keluar:0};
+        var sisa = d.masuk - d.keluar;
+        var aktif = (j === _wkJenisAktif);
+        return '<div class="kas-kartu'+(aktif?' aktif':'')+'" data-jenis="'+esc(j)+'">' +
+          '<div class="kas-nama">'+esc(j)+'</div>' +
+          '<div class="kas-sisa">Rp'+sisa.toLocaleString('id-ID')+'</div>' +
+          '<div class="kas-rinci">Masuk Rp'+d.masuk.toLocaleString('id-ID')+' &middot; Keluar Rp'+d.keluar.toLocaleString('id-ID')+'</div>' +
+        '</div>';
+      }).join('');
+
+      // Status bayar santri untuk jenis yang sedang dipilih
+      var sudah = res.daftarSantri.filter(function(s){ return s.sudahBayar > 0; });
+      var belum = res.daftarSantri.filter(function(s){ return s.sudahBayar <= 0; });
+
+      c.innerHTML =
+        '<div class="card"><h3>&#128176; Kas Kelas &mdash; ' + esc(kelas) + '</h3>' +
+          '<p class="muted">Klik kartu di bawah untuk berpindah jenis kas. Sisa = total masuk dikurangi pengeluaran.</p>' +
+          '<div class="kas-grid">' + ringkasan + '</div>' +
+          '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' +
+            '<button id="btnTerimaKas">+ Terima Pembayaran</button>' +
+            '<button class="secondary" id="btnKeluarKas">&minus; Catat Pengeluaran</button>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="card"><h4>Status Pembayaran &mdash; ' + esc(_wkJenisAktif) + '</h4>' +
+          '<p class="muted">Sudah bayar: <b style="color:#16a34a">'+sudah.length+'</b> santri &middot; Belum: <b style="color:#dc2626">'+belum.length+'</b> santri</p>' +
+          (belum.length
+            ? ('<details style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:600;color:#dc2626">Lihat '+belum.length+' santri yang belum bayar</summary>' +
+               '<table style="margin-top:8px"><tr><th>Nama</th><th>Saldo</th><th>Aksi</th></tr>' +
+               belum.map(function(s){
+                 return '<tr><td>'+esc(s.nama)+'</td><td>Rp'+s.saldo.toLocaleString('id-ID')+'</td>' +
+                   '<td><button class="small btnBayarCepat" data-nisn="'+esc(s.nisn)+'" data-nama="'+esc(s.nama)+'">Terima</button></td></tr>';
+               }).join('') + '</table></details>')
+            : '<p class="muted">Semua santri sudah membayar.</p>') +
+          (sudah.length
+            ? ('<details><summary style="cursor:pointer;font-weight:600;color:#16a34a">Lihat '+sudah.length+' santri yang sudah bayar</summary>' +
+               '<table style="margin-top:8px"><tr><th>Nama</th><th>Total Dibayar</th></tr>' +
+               sudah.map(function(s){ return '<tr><td>'+esc(s.nama)+'</td><td>Rp'+s.sudahBayar.toLocaleString('id-ID')+'</td></tr>'; }).join('') +
+               '</table></details>')
+            : '') +
+        '</div>' +
+
+        '<div class="card"><h4>Riwayat Transaksi &mdash; ' + esc(_wkJenisAktif) + '</h4>' +
+          (res.riwayat.length
+            ? ('<table><tr><th>Tanggal</th><th>Santri</th><th>Nominal</th><th>Keterangan</th><th>Aksi</th></tr>' +
+               res.riwayat.map(function(r){
+                 var warna = r.tipe === 'Keluar' ? '#dc2626' : '#16a34a';
+                 var tanda = r.tipe === 'Keluar' ? '-' : '+';
+                 return '<tr><td>'+esc(r.tanggal)+'<br><span class="muted" style="font-size:11px">'+esc(r.waktu)+'</span></td>' +
+                   '<td>'+esc(r.nama || '<span class="muted">(pengeluaran)</span>')+'</td>' +
+                   '<td style="color:'+warna+';font-weight:700">'+tanda+'Rp'+r.nominal.toLocaleString('id-ID')+'</td>' +
+                   '<td>'+esc(r.keterangan||'-')+'</td>' +
+                   '<td><button class="small danger btnHapusKas" data-row="'+r.rowIndex+'" data-tipe="'+esc(r.tipe)+'">Hapus</button></td></tr>';
+               }).join('') + '</table>')
+            : '<p class="muted">Belum ada transaksi untuk jenis ini.</p>') +
+        '</div>';
+
+      // Pindah jenis kas
+      document.querySelectorAll('.kas-kartu').forEach(function(el){
+        el.onclick = function(){ _wkJenisAktif = el.dataset.jenis; muatKasKelas(kelas); };
+      });
+      document.getElementById('btnTerimaKas').onclick = function(){ formTerimaKas(kelas, res.daftarSantri, null); };
+      document.getElementById('btnKeluarKas').onclick = function(){ formPengeluaranKas(kelas); };
+      document.querySelectorAll('.btnBayarCepat').forEach(function(btn){
+        btn.onclick = function(){
+          formTerimaKas(kelas, res.daftarSantri, {nisn: btn.dataset.nisn, nama: btn.dataset.nama});
+        };
+      });
+      document.querySelectorAll('.btnHapusKas').forEach(function(btn){
+        btn.onclick = function(){
+          var pesan = btn.dataset.tipe === 'Masuk'
+            ? 'Hapus catatan ini? Saldo santri akan DIKEMBALIKAN sebesar nominal tersebut.'
+            : 'Hapus catatan pengeluaran ini?';
+          if (!confirm(pesan)) return;
+          api('hapusKasKelas', {rowIndex: Number(btn.dataset.row), oleh: STATE.user.nama}).then(function(r){
+            if (!r.ok) { alert(r.error); return; }
+            if (r.dikembalikan > 0) alert('Catatan dihapus. Saldo santri dikembalikan Rp' + r.dikembalikan.toLocaleString('id-ID') + '.');
+            muatKasKelas(kelas);
+          });
+        };
+      });
+    });
+  }
+
+  function formTerimaKas(kelas, daftarSantri, santriTerpilih){
+    var opsiSantri = daftarSantri.map(function(s){ return s.nisn + ' - ' + s.nama; });
+    var nilaiAwal = santriTerpilih ? (santriTerpilih.nisn + ' - ' + santriTerpilih.nama) : '';
+
+    var fields =
+      fieldAutocomplete('kkSantri','Santri', opsiSantri, nilaiAwal, 'Ketik nama atau NISN santri...') +
+      '<label>Jenis Pembayaran</label><select id="kkJenis">' +
+        JENIS_KAS_BAWAAN.map(function(j){ return '<option value="'+esc(j)+'"'+(j===_wkJenisAktif?' selected':'')+'>'+esc(j)+'</option>'; }).join('') +
+        '<option value="__lain__">Lainnya (tulis sendiri)...</option>' +
+      '</select>' +
+      '<div id="kkWrapLain" style="display:none">' + fieldText('kkJenisLain','Tulis Jenis Pembayaran','') + '</div>' +
+      '<label>Nominal (Rp)</label><input id="kkNominal" inputmode="numeric" placeholder="contoh: 5000">' +
+      fieldText('kkKet','Keterangan (opsional)','') +
+      '<div id="kkInfoSaldo" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:9px 12px;font-size:13px;margin-bottom:10px"></div>' +
+      '<label>PIN Transaksi Santri</label>' +
+      '<input id="kkPin" type="password" inputmode="numeric" placeholder="Diisi oleh santri sendiri">' +
+      '<p class="muted" style="margin-top:-6px">Minta santri memasukkan PIN-nya sendiri sebagai tanda persetujuan.</p>';
+
+    var modal = openModal('Terima Pembayaran Kas', fields, function(m){
+      var pilih = m.querySelector('#kkSantri').value.trim();
+      var nisn = pilih.split(' - ')[0].trim();
+      if (!nisn) { alert('Pilih santri dulu.'); return false; }
+      var jenis = m.querySelector('#kkJenis').value;
+      if (jenis === '__lain__') {
+        jenis = m.querySelector('#kkJenisLain').value.trim();
+        if (!jenis) { alert('Tulis jenis pembayarannya.'); return false; }
+      }
+      var nominal = Number(String(m.querySelector('#kkNominal').value).replace(/[^\d]/g,'')) || 0;
+      if (nominal <= 0) { alert('Nominal wajib diisi dan lebih dari 0.'); return false; }
+      var pin = m.querySelector('#kkPin').value.trim();
+      if (!pin) { alert('PIN Transaksi santri wajib diisi.'); return false; }
+
+      return api('terimaKasKelas', {
+        nisn: nisn, pin: pin, kelas: kelas, jenis: jenis, nominal: nominal,
+        keterangan: m.querySelector('#kkKet').value.trim(), oleh: STATE.user.nama
+      }).then(function(r){
+        if (!r.ok) { alert(r.error); throw new Error(r.error); }
+        getarkanHp();
+        alert('Berhasil. ' + r.namaSantri + ' membayar ' + r.jenis + ' Rp' + r.nominal.toLocaleString('id-ID') +
+              '.\nSisa saldo: Rp' + r.saldoSekarang.toLocaleString('id-ID'));
+        _wkJenisAktif = r.jenis;
+        muatKasKelas(kelas);
+      });
+    });
+
+    // Tampilkan saldo santri yang dipilih supaya wali kelas tahu cukup atau tidak
+    function perbaruiInfoSaldo(){
+      var pilih = modal.querySelector('#kkSantri').value.trim();
+      var nisn = pilih.split(' - ')[0].trim();
+      var s = daftarSantri.find(function(x){ return String(x.nisn) === nisn; });
+      var nominal = Number(String(modal.querySelector('#kkNominal').value).replace(/[^\d]/g,'')) || 0;
+      var el = modal.querySelector('#kkInfoSaldo');
+      if (!s) { el.innerHTML = '<span class="muted">Pilih santri untuk melihat saldonya.</span>'; return; }
+      var sisa = s.saldo - nominal;
+      el.innerHTML = 'Saldo ' + esc(s.nama) + ': <b>Rp' + s.saldo.toLocaleString('id-ID') + '</b>' +
+        (nominal > 0
+          ? ('<br>Sisa setelah bayar: <b style="color:' + (sisa < 0 ? '#dc2626' : '#0f766e') + '">Rp' + sisa.toLocaleString('id-ID') + '</b>' +
+             (sisa < 0 ? ' <span style="color:#dc2626">(saldo tidak cukup)</span>' : ''))
+          : '');
+    }
+    modal.querySelector('#kkSantri').oninput = perbaruiInfoSaldo;
+    modal.querySelector('#kkNominal').oninput = perbaruiInfoSaldo;
+    modal.querySelector('#kkJenis').onchange = function(){
+      modal.querySelector('#kkWrapLain').style.display = (this.value === '__lain__') ? 'block' : 'none';
+    };
+    perbaruiInfoSaldo();
+  }
+
+  function formPengeluaranKas(kelas){
+    var fields =
+      '<label>Jenis Kas</label><select id="kpJenis">' +
+        JENIS_KAS_BAWAAN.map(function(j){ return '<option value="'+esc(j)+'"'+(j===_wkJenisAktif?' selected':'')+'>'+esc(j)+'</option>'; }).join('') +
+      '</select>' +
+      '<label>Nominal (Rp)</label><input id="kpNominal" inputmode="numeric" placeholder="contoh: 50000">' +
+      fieldText('kpKet','Keterangan Pengeluaran (wajib)','');
+    openModal('Catat Pengeluaran Kas', fields, function(m){
+      var nominal = Number(String(m.querySelector('#kpNominal').value).replace(/[^\d]/g,'')) || 0;
+      if (nominal <= 0) { alert('Nominal wajib diisi.'); return false; }
+      var ket = m.querySelector('#kpKet').value.trim();
+      if (!ket) { alert('Keterangan pengeluaran wajib diisi.'); return false; }
+      return api('catatPengeluaranKasKelas', {
+        kelas: kelas, jenis: m.querySelector('#kpJenis').value,
+        nominal: nominal, keterangan: ket, oleh: STATE.user.nama
+      }).then(function(r){
+        if (!r.ok) { alert(r.error); throw new Error(r.error); }
+        muatKasKelas(kelas);
+      });
+    });
   }
 
   function wkRekapNilai(){
@@ -7099,12 +8062,13 @@
     STATE._contentId = 'dp-content';
     var navItems = [
       {key:'kasir',   label:'Kasir (Jual)',      icon:'&#128717;'},
+      {key:'barang',  label:'Barang Jualan Saya', icon:'&#128230;'},
       {key:'riwayat', label:'Riwayat Transaksi', icon:'&#128203;'},
       {key:'omzet',   label:'Laporan Omzet',     icon:'&#128200;'},
       {key:'saldo',   label:'Saldo & Tarik',     icon:'&#128176;'},
       {key:'riwsaldo',label:'Riwayat Saldo',     icon:'&#128337;'}
     ];
-    var map = {kasir:pemilikKasir, riwayat:pemilikRiwayat, omzet:pemilikOmzet, saldo:pemilikSaldo, riwsaldo:pemilikRiwayatSaldo};
+    var map = {kasir:pemilikKasir, barang:pemilikKelolaBarang, riwayat:pemilikRiwayat, omzet:pemilikOmzet, saldo:pemilikSaldo, riwsaldo:pemilikRiwayatSaldo};
     activeKey = activeKey && map[activeKey] ? activeKey : 'kasir';
     renderSidebarShell({title:'Dashboard Pemilik Barang', navItems:navItems, activeKey:activeKey, contentId:'dp-content', onSelect:function(key){ map[key](); }});
     map[activeKey]();
@@ -7118,13 +8082,39 @@
       if(!res.ok){ c.innerHTML = errBox(res.error); return; }
       var tombolCekSantri = '<div class="card"><button class="secondary" id="btnCekAkunSantri">&#128100; Cek Akun Santri</button>' +
         '<p class="muted" style="margin-top:6px">Pinjamkan layar ini ke santri untuk cek saldo/riwayatnya sendiri (pakai PIN Transaksi miliknya).</p></div>';
-      if(!res.data.length){ c.innerHTML = tombolCekSantri + '<div class="card">'+warnBox('Anda belum punya barang jualan. Minta Admin menambahkan lewat menu Kelola Barang Kantin.')+'</div>'; ikatCekAkunSantri(); return; }
+      if(!res.data.length){ c.innerHTML = tombolCekSantri + '<div class="card">'+warnBox('Anda belum punya barang jualan. Buka menu "Barang Jualan Saya" di sebelah kiri untuk menambahkannya sendiri.')+'</div>'; ikatCekAkunSantri(); return; }
       var barangList = res.data;
-      c.innerHTML = tombolCekSantri + '<div class="card"><h3>Menu Jualan Saya</h3><div class="fitur-grid">' +
-        barangList.map(function(b,i){
-          return '<div class="fitur-card"><h4>'+esc(b.nama)+'</h4><p style="font-size:16px;font-weight:700;color:#0d9488;margin:4px 0">Rp'+b.harga.toLocaleString('id-ID')+'</p>' +
-            '<button class="small btnTambahKantinCart" data-i="'+i+'">+ Keranjang</button></div>';
-        }).join('') + '</div></div>' +
+      var adaFoto = barangList.some(function(b){ return !!b.foto; });
+      // Mode tampilan bisa dipilih kasir dan diingat. Kalau koneksi sedang lambat,
+      // mode "Daftar" (tanpa foto) membuat halaman terbuka seketika.
+      var modeMenu = 'foto';
+      try { modeMenu = localStorage.getItem('wasiatModeMenuKantin') || 'foto'; } catch(e){}
+      if (!adaFoto) modeMenu = 'teks'; // belum ada foto sama sekali: jangan buang ruang
+
+      function htmlKartuBarang(b, i){
+        if (modeMenu === 'teks') {
+          return '<div class="menu-item-teks">' +
+            '<div><b>'+esc(b.nama)+'</b><div class="menu-harga">Rp'+b.harga.toLocaleString('id-ID')+'</div></div>' +
+            '<button class="small btnTambahKantinCart" data-i="'+i+'">+</button></div>';
+        }
+        // loading="lazy" + fotoUkuran(240): foto hanya diunduh saat kartunya terlihat,
+        // dan yang diunduh adalah versi kecil dari server Google -- bukan foto penuh.
+        var gambar = b.foto
+          ? '<img src="'+esc(fotoUkuran(b.foto, 240))+'" alt="'+esc(b.nama)+'" loading="lazy" decoding="async">'
+          : '<div class="menu-noimg">&#127858;</div>';
+        return '<div class="menu-kartu">' + gambar +
+          '<div class="menu-isi"><b>'+esc(b.nama)+'</b>' +
+          '<div class="menu-harga">Rp'+b.harga.toLocaleString('id-ID')+'</div>' +
+          '<button class="small btnTambahKantinCart" data-i="'+i+'">+ Keranjang</button></div></div>';
+      }
+
+      c.innerHTML = tombolCekSantri + '<div class="card">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
+          '<h3 style="margin:0">Menu Jualan Saya</h3>' +
+          (adaFoto ? '<button class="secondary small" id="btnModeMenu">'+(modeMenu==='foto'?'&#9776; Tampilan Daftar':'&#128444; Tampilan Foto')+'</button>' : '') +
+        '</div>' +
+        '<div id="menuKantinWrap" class="'+(modeMenu==='foto'?'menu-grid':'menu-list')+'" style="margin-top:12px">' +
+        barangList.map(htmlKartuBarang).join('') + '</div></div>' +
         '<div class="card" id="kantinCartWrap" style="display:none"><h3>Keranjang</h3><div id="kantinCartList"></div>' +
         '<p style="font-size:18px;font-weight:700;text-align:right;margin-top:8px">Total: <span id="kantinCartTotal">Rp0</span></p>' +
         '<button id="btnBayarKantin">Proses Pembayaran</button> <button class="secondary" id="btnKosongkanKantin">Kosongkan</button></div>';
@@ -7145,15 +8135,30 @@
           btn.onclick = function(){ kantinCart.splice(Number(btn.dataset.idx),1); renderCart(); };
         });
       }
-      document.querySelectorAll('.btnTambahKantinCart').forEach(function(btn){
-        btn.onclick = function(){
-          var b = barangList[Number(btn.dataset.i)];
-          var existing = kantinCart.find(function(x){return x.nama===b.nama;});
-          if (existing) existing.jumlah++;
-          else kantinCart.push({nama:b.nama, harga:b.harga, potongan:b.potongan, jumlah:1});
-          renderCart();
-        };
-      });
+      function ikatTombolKeranjang(){
+        document.querySelectorAll('.btnTambahKantinCart').forEach(function(btn){
+          btn.onclick = function(){
+            var b = barangList[Number(btn.dataset.i)];
+            var existing = kantinCart.find(function(x){return x.nama===b.nama;});
+            if (existing) existing.jumlah++;
+            else kantinCart.push({nama:b.nama, harga:b.harga, potongan:b.potongan, jumlah:1});
+            renderCart();
+            getarkanHp([40]); // umpan balik singkat supaya kasir yakin barang masuk
+          };
+        });
+      }
+      ikatTombolKeranjang();
+
+      var btnMode = document.getElementById('btnModeMenu');
+      if (btnMode) btnMode.onclick = function(){
+        modeMenu = (modeMenu === 'foto') ? 'teks' : 'foto';
+        try { localStorage.setItem('wasiatModeMenuKantin', modeMenu); } catch(e){}
+        var wrap = document.getElementById('menuKantinWrap');
+        wrap.className = (modeMenu === 'foto') ? 'menu-grid' : 'menu-list';
+        wrap.innerHTML = barangList.map(htmlKartuBarang).join('');
+        btnMode.innerHTML = (modeMenu === 'foto') ? '&#9776; Tampilan Daftar' : '&#128444; Tampilan Foto';
+        ikatTombolKeranjang(); // tombol baru perlu dipasangi ulang
+      };
       document.getElementById('btnKosongkanKantin').onclick = function(){ kantinCart = []; renderCart(); };
       document.getElementById('btnBayarKantin').onclick = function(){
         if (!kantinCart.length) return;
@@ -8993,6 +9998,9 @@
       {key:'slide', label:'Kelola Slide', icon:'&#128444;&#65039;'},
       {key:'websitebuilder', label:'Website Builder', icon:'&#127760;'},
       {key:'notifpush', label:'Notifikasi Push', icon:'&#128276;'},
+      {key:'templateflyer', label:'Template Flyer Tasmi\'', icon:'&#128444;'},
+      {key:'flyertasmi', label:'Buat Flyer Tasmi\'', icon:'&#127912;'},
+      {key:'riwayattasmi', label:'Riwayat Tasmi\'', icon:'&#128218;'},
       {key:'barangkantin', label:'Kelola Barang Kantin', icon:'&#127850;'},
       {key:'persetujuansaldo', label:'Persetujuan Saldo Kantin', icon:'&#9989;'},
       {key:'spp', label:'SPP Santri', icon:'&#128179;'},
@@ -9013,7 +10021,8 @@
     var map = {ringkasan:adminRingkasan, tahun:adminTahunAjaran, rombel:adminRombel, halaqoh:adminHalaqoh, santri:adminDataSantri,
       data:adminDataMaster, pengganti:adminPenggantian, rekapguru:adminRekapGuru, rekapsantri:adminRekapSantri, rapor:adminRaporSantri,
       catatpelanggaran:function(){ renderFormCatatPelanggaran('da-content'); }, pelanggaran:adminKelolaPelanggaran,
-      slide:adminSlide, websitebuilder:adminWebsiteBuilder, notifpush:adminNotifikasiPush, artikel:adminArtikel, fiturberanda:adminFiturBeranda, barangkantin:adminBarangKantin,
+      slide:adminSlide, websitebuilder:adminWebsiteBuilder, notifpush:adminNotifikasiPush,
+      templateflyer:adminTemplateFlyer, flyertasmi:halamanFlyerTasmi, riwayattasmi:halamanRiwayatTasmi, artikel:adminArtikel, fiturberanda:adminFiturBeranda, barangkantin:adminBarangKantin,
       persetujuansaldo:function(){ renderPersetujuanSaldo('da-content'); }, spp:function(){ renderSppSantri('da-content'); },
       modulajar:adminModulAjar, rekapjurnal:adminRekapJurnal, rekaphalaqoh:adminRekapHalaqoh,
       raporkelas:adminRaporKelas, kelompokpapel:adminKelompokMapel, sop:adminSOP, defaultjurnal:adminDefaultJurnal,
@@ -10080,9 +11089,10 @@
         '</div>' +
 
         '<div class="card"><h4>2. Jam Mulai Tiap Jam Pelajaran</h4>' +
-          warnBox('Jadwal di aplikasi ini memakai "jam ke-" (jam ke-1, ke-2, dst), bukan jam dinding. Supaya sistem tahu kapan harus mengingatkan, isi jam mulainya di sini. Satu baris = satu jam pelajaran, format: NomorJam|JamMulai\n\nContoh:\n1|07:00\n2|07:40\n3|08:20') +
+          warnBox('Jadwal di aplikasi ini memakai "jam ke-" (jam ke-1, ke-2, dst), bukan jam dinding. Supaya sistem tahu kapan harus mengingatkan, isi jam mulainya di sini.\n\nFormat tiap baris: JamKe|JamMulai-JamSelesai|Hari\n\nBagian Hari boleh dikosongkan kalau jamnya sama untuk semua hari. Kalau jam Sabtu berbeda, tulis barisnya sendiri dengan keterangan hari.') +
           '<label>Daftar Jam Pelajaran</label>' +
-          '<textarea id="nsJamPelajaran" rows="8" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-family:monospace;font-size:13px" placeholder="1|07:00">'+esc(d.JamPelajaranWaktu||'')+'</textarea>' +
+          '<textarea id="nsJamPelajaran" rows="16" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-family:monospace;font-size:13px" placeholder="1|08:00-09:00|Senin,Selasa">'+esc(d.JamPelajaranWaktu||'')+'</textarea>' +
+          '<button class="secondary small" id="btnIsiJamBawaan" style="margin-top:6px">Isi Otomatis Sesuai Jadwal Pesantren</button>' +
           '<label style="display:flex;align-items:center;gap:8px;margin-top:10px"><input type="checkbox" id="nsJadwalAktif" '+(String(d.NotifJadwalAktif)==='true'?'checked':'')+' style="width:auto"> Kirim pengingat jadwal mengajar ke guru</label>' +
           fieldText('nsJeda','Kirim berapa menit sebelum jam mulai', d.NotifJadwalJedaMenit||'10') +
           '<button id="btnSimpanJadwalNs">Simpan</button><div id="pesanJadwalNs"></div>' +
@@ -10133,6 +11143,18 @@
           OneSignalApiKey: document.getElementById('nsApiKey').value.trim()
         };
         simpanBanyakPengaturan(data, 'pesanKunciNs', 'Kunci tersimpan. Muat ulang halaman agar layanan notifikasi mulai dimuat.');
+      };
+
+      document.getElementById('btnIsiJamBawaan').onclick = function(){
+        // Jadwal jam pelajaran pesantren: Senin-Jum'at dan Sabtu berbeda.
+        var hariBiasa = "Senin,Selasa,Rabu,Kamis,Jum'at";
+        var jamBiasa = ['08:00-09:00','09:00-10:00','11:16-12:15','13:00-14:00','14:00-15:00','15:00-16:00','16:00-17:00'];
+        var jamSabtu = ['08:00-09:00','09:00-10:00','10:00-11:00','11:00-12:00','13:30-14:30','14:30-15:30','16:00-17:00'];
+        var baris = jamBiasa.map(function(j,i){ return (i+1)+'|'+j+'|'+hariBiasa; })
+          .concat(jamSabtu.map(function(j,i){ return (i+1)+'|'+j+'|Sabtu'; }));
+        var el = document.getElementById('nsJamPelajaran');
+        if (el.value.trim() && !confirm('Ganti isi yang sekarang dengan jadwal bawaan pesantren?')) return;
+        el.value = baris.join('\n');
       };
 
       document.getElementById('btnSimpanJadwalNs').onclick = function(){
@@ -10520,43 +11542,72 @@
       '<button class="small" id="btnTambahFitur">+ Tambah Item</button>' +
       '<h4 style="margin-top:16px">Program Unggulan</h4><div id="listFiturProgram">Memuat...</div>' +
       '<h4 style="margin-top:16px">Fasilitas</h4><div id="listFiturFasilitas">Memuat...</div>' +
-      '<h4 style="margin-top:16px">Galeri Kegiatan</h4><div id="listFiturGaleri">Memuat...</div></div>';
+      '<h4 style="margin-top:16px">Galeri Kegiatan</h4>' +
+      '<p class="muted" style="margin-top:-4px">Foto wajib diisi. Item galeri tanpa foto tidak akan tampil di halaman depan.</p>' +
+      '<button class="small" id="btnTambahGaleri">+ Tambah Foto Galeri</button>' +
+      '<div id="listFiturGaleri" style="margin-top:8px">Memuat...</div></div>';
 
-    function bukaFormFitur(existing, muatUlang){
+    function bukaFormFitur(existing, muatUlang, kategoriAwal){
       var previewAwal = existing && existing.gambar ? '<img src="'+esc(existing.gambar)+'" style="height:60px;border-radius:6px;margin-top:4px;display:block">' : '';
-      var fieldsHtml = fieldSelect('ffKategori','Kategori', ['Program','Fasilitas','Galeri'], existing?existing.kategori:'Program') +
+      var katDefault = existing ? existing.kategori : (kategoriAwal || 'Program');
+      var fieldsHtml = fieldSelect('ffKategori','Kategori', ['Program','Fasilitas','Galeri'], katDefault) +
         fieldText('ffJudul','Judul (untuk Galeri: dipakai sebagai keterangan foto)', existing?existing.judul:'') +
         fieldText('ffDeskripsi','Deskripsi (opsional, untuk Fasilitas boleh dikosongkan)', existing?existing.deskripsi:'') +
         '<label>Foto</label><input type="file" id="ffFile" accept="image/*">' +
-        '<p class="muted" style="margin-top:-6px">Pilih foto dari HP/komputer -- otomatis dikecilkan &amp; diunggah.</p>' +
+        '<p class="muted" style="margin-top:-6px">Pilih foto dari HP/komputer -- otomatis dikecilkan &amp; diunggah. <b>Tunggu sampai muncul tulisan &quot;Berhasil diunggah&quot;</b> sebelum menekan Simpan.</p>' +
         fieldText('ffGambar','URL Gambar (terisi otomatis setelah unggah, atau isi manual)', existing?existing.gambar:'') +
         '<div id="ffUploadStatus">'+previewAwal+'</div>' +
         fieldText('ffUrutan','Urutan (angka kecil tampil duluan)', existing?String(existing.urutan):'0');
+
+      var sedangUnggah = false; // dipakai untuk mencegah Simpan saat unggah belum selesai
+
       var modal = openModal(existing?'Edit Item':'Tambah Item', fieldsHtml, function(m){
         var judul = m.querySelector('#ffJudul').value.trim();
         if (!judul) { alert('Judul wajib diisi.'); return false; }
-        api('saveFiturBeranda', {rowIndex: existing?existing.rowIndex:0, kategori:m.querySelector('#ffKategori').value,
-          judul:judul, deskripsi:m.querySelector('#ffDeskripsi').value.trim(), gambar:m.querySelector('#ffGambar').value.trim(),
+        // Foto masih diunggah: kalau diteruskan, item tersimpan tanpa foto.
+        if (sedangUnggah) { alert('Foto masih diunggah. Tunggu sampai muncul "Berhasil diunggah", lalu tekan Simpan.'); return false; }
+        var kategori = m.querySelector('#ffKategori').value;
+        var gambar = m.querySelector('#ffGambar').value.trim();
+        // Galeri tanpa foto tidak akan pernah tampil di halaman depan (memang disaring),
+        // jadi lebih baik dicegah di sini daripada tersimpan tapi tidak kelihatan.
+        if (kategori === 'Galeri' && !gambar) {
+          alert('Item Galeri wajib punya foto. Pilih foto dulu dan tunggu sampai selesai diunggah.');
+          return false;
+        }
+        // WAJIB di-return: tanpa ini modal langsung tertutup sebelum penyimpanan
+        // selesai, sehingga kegagalan simpan tidak pernah terlihat oleh pengguna.
+        return api('saveFiturBeranda', {rowIndex: existing?existing.rowIndex:0, kategori:kategori,
+          judul:judul, deskripsi:m.querySelector('#ffDeskripsi').value.trim(), gambar:gambar,
           urutan:m.querySelector('#ffUrutan').value.trim()}).then(function(r){
-            if(!r.ok) alert(r.error); else muatUlang();
+            if(!r.ok){ alert(r.error); throw new Error(r.error); }
+            muatUlang();
           });
       });
       modal.querySelector('#ffFile').onchange = function(e){
         var file = e.target.files[0];
         if (!file) return;
         var statusEl = modal.querySelector('#ffUploadStatus');
+        sedangUnggah = true;
         statusEl.innerHTML = '<p class="muted">Memproses gambar...</p>';
         resizeImageFile(file, 1200, 0.8).then(function(hasil){
-          statusEl.innerHTML = '<p class="muted">Mengunggah...</p>';
+          statusEl.innerHTML = '<p class="muted">Mengunggah... mohon tunggu.</p>';
           api('uploadSlideImage', {base64: hasil.base64, mimeType: hasil.mimeType, fileName: file.name}).then(function(res){
+            sedangUnggah = false;
             if(!res.ok){ statusEl.innerHTML = errBox(res.error); return; }
             modal.querySelector('#ffGambar').value = res.url;
-            statusEl.innerHTML = '<p class="muted">Berhasil diunggah.</p><img src="'+esc(res.url)+'" style="height:60px;border-radius:6px;margin-top:4px;display:block">';
+            statusEl.innerHTML = '<p style="color:#16a34a;font-weight:600;margin:6px 0">&#9989; Berhasil diunggah.</p><img src="'+esc(res.url)+'" style="height:60px;border-radius:6px;margin-top:4px;display:block">';
+          }).catch(function(){
+            sedangUnggah = false;
+            statusEl.innerHTML = errBox('Gagal mengunggah. Periksa koneksi lalu coba lagi.');
           });
-        }).catch(function(){ statusEl.innerHTML = errBox('Gagal memproses gambar. Coba file lain.'); });
+        }).catch(function(){
+          sedangUnggah = false;
+          statusEl.innerHTML = errBox('Gagal memproses gambar. Coba file lain.');
+        });
       };
     }
     document.getElementById('btnTambahFitur').onclick = function(){ bukaFormFitur(null, muatDaftarFitur); };
+    document.getElementById('btnTambahGaleri').onclick = function(){ bukaFormFitur(null, muatDaftarFitur, 'Galeri'); };
 
     function muatDaftarFitur(){
       api('getFiturBerandaList', {}).then(function(res){
@@ -10698,50 +11749,288 @@
   }
 
   // ---------------- KELOLA BARANG KANTIN ----------------
+  // ---------------- FORM BARANG KANTIN (dipakai bersama Admin & Pemilik Barang) ----------------
+  // Satu form untuk dua peran, supaya aturan harga/potongan tidak pernah berbeda
+  // antara yang diisi Admin dan yang diisi pemilik sendiri.
+  //   opts.pemilikTetap : kalau diisi, kolom Pemilik dikunci ke nama itu (mode Pemilik Barang)
+  //   opts.daftarPemilik: pilihan nama pemilik (mode Admin)
+  //   opts.aksiSimpan   : 'saveBarang' (Admin) atau 'saveBarangSaya' (Pemilik)
+  var PERSEN_POTONGAN_KANTIN = 10; // disegarkan dari server saat halaman dibuka
+
+  function hitungPotonganLokal(hargaBersih){
+    var b = Number(hargaBersih) || 0;
+    if (b <= 0) return 0;
+    return Math.round(b * PERSEN_POTONGAN_KANTIN / 100);
+  }
+
+  function bukaFormBarangKantin(existing, opts, muatUlang){
+    opts = opts || {};
+    // Kolom Harga di data = harga jual ke santri (sudah termasuk potongan). Yang diisi
+    // di form adalah harga bersih, jadi untuk item lama dihitung mundur dari keduanya.
+    var bersihAwal = existing ? Math.max(0, (existing.harga||0) - (existing.potongan||0)) : '';
+    var previewFoto = existing && existing.foto
+      ? '<img src="'+esc(fotoUkuran(existing.foto, 160))+'" style="height:70px;border-radius:8px;margin-top:4px;display:block;object-fit:cover">' : '';
+
+    var fieldPemilik = opts.pemilikTetap
+      ? '<label>Pemilik</label><input value="'+esc(opts.pemilikTetap)+'" disabled style="background:#f1f5f9">'
+      : fieldAutocomplete('bPemilik','Pemilik', opts.daftarPemilik || [], existing?existing.pemilik:'', 'Ketik nama pemilik...');
+
+    // Mode potongan yang sedang berlaku untuk barang ini, dibaca balik dari datanya.
+    var modeAwal = 'otomatis';
+    if (existing) {
+      var potLama = existing.potongan || 0, hargaLama = existing.harga || 0;
+      if (potLama > 0 && potLama === hargaLama) modeAwal = 'pondok';
+      else if (potLama === 0) modeAwal = 'nol';
+      else if (potLama !== hitungPotonganLokal(hargaLama - potLama)) modeAwal = 'manual';
+    }
+
+    // Pilihan mode potongan HANYA ditampilkan untuk Admin/Mudir. Pemilik barang selalu
+    // memakai hitungan otomatis yang seragam (server juga menolak kalau dipaksakan).
+    var blokPotongan = opts.bolehAturPotongan ? (
+      '<label>Potongan untuk Pondok</label>' +
+      '<select id="bModePotongan">' +
+        '<option value="otomatis"'+(modeAwal==='otomatis'?' selected':'')+'>Otomatis ('+PERSEN_POTONGAN_KANTIN+'% dari harga)</option>' +
+        '<option value="manual"'+(modeAwal==='manual'?' selected':'')+'>Manual (isi nominal sendiri)</option>' +
+        '<option value="nol"'+(modeAwal==='nol'?' selected':'')+'>Tanpa potongan (pemilik terima penuh)</option>' +
+        '<option value="pondok"'+(modeAwal==='pondok'?' selected':'')+'>Barang milik pondok (semua masuk pondok)</option>' +
+      '</select>' +
+      '<div id="bWrapManual" style="display:none">' +
+        '<label>Nominal Potongan per Item (Rp)</label>' +
+        '<input id="bPotonganManual" inputmode="numeric" value="'+(modeAwal==='manual'?String(existing.potongan):'')+'" placeholder="contoh: 200">' +
+      '</div>'
+    ) : '';
+
+    var fieldsHtml =
+      fieldText('bNama','Nama Barang', existing?existing.nama:'') +
+      '<label id="bLabelHarga">Harga Bersih yang Anda Terima (Rp)</label>' +
+      '<input id="bHargaBersih" inputmode="numeric" value="'+esc(String(bersihAwal))+'" placeholder="contoh: 1000">' +
+      blokPotongan +
+      '<div id="bHitungan" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:9px 12px;font-size:13px;line-height:1.7;margin-bottom:10px"></div>' +
+      fieldPemilik +
+      fieldText('bNoWa','No WA Pemilik (opsional, notifikasi)', existing?existing.noWaPemilik:'') +
+      '<label>Foto Produk (opsional)</label><input type="file" id="bFile" accept="image/*">' +
+      '<p class="muted" style="margin-top:-6px">Boleh dikosongkan. Foto otomatis dikecilkan supaya aplikasi tetap ringan. <b>Tunggu sampai muncul &quot;Berhasil diunggah&quot;</b> sebelum menekan Simpan.</p>' +
+      fieldText('bFoto','URL Foto (terisi otomatis setelah unggah)', existing?existing.foto:'') +
+      '<div id="bUploadStatus">'+previewFoto+'</div>';
+
+    var sedangUnggah = false;
+
+    var modal = openModal(existing?'Edit Barang':'Tambah Barang', fieldsHtml, function(m){
+      var nama = m.querySelector('#bNama').value.trim();
+      if (!nama) { alert('Nama barang wajib diisi.'); return false; }
+      var bersih = Number(String(m.querySelector('#bHargaBersih').value).replace(/[^\d]/g,''));
+      if (!(bersih > 0)) { alert('Harga bersih wajib diisi dan lebih dari 0.'); return false; }
+      if (sedangUnggah) { alert('Foto masih diunggah. Tunggu sampai selesai, lalu tekan Simpan.'); return false; }
+
+      var pemilik = opts.pemilikTetap || m.querySelector('#bPemilik').value.trim();
+      if (!pemilik) { alert('Pemilik wajib diisi.'); return false; }
+
+      // Harga jual & potongan akhir dihitung SERVER, supaya seragam dan tidak bisa
+      // diakali dari perangkat. Di sini hanya dikirim pilihannya.
+      var kirim = {
+        rowIndex: existing?existing.rowIndex:0, nama:nama, hargaBersih:bersih,
+        pemilik:pemilik, noWaPemilik:m.querySelector('#bNoWa').value.trim(),
+        foto:m.querySelector('#bFoto').value.trim()
+      };
+      if (opts.bolehAturPotongan) {
+        kirim.oleh = STATE.user.nama; // diverifikasi ulang di server
+        kirim.modePotongan = m.querySelector('#bModePotongan').value;
+        kirim.potonganManual = Number(String(m.querySelector('#bPotonganManual').value).replace(/[^\d]/g,'')) || 0;
+        if (kirim.modePotongan === 'manual' && !(kirim.potonganManual > 0)) {
+          alert('Nominal potongan wajib diisi untuk mode Manual.'); return false;
+        }
+      }
+      return api(opts.aksiSimpan || 'saveBarang', kirim).then(function(r){
+        if(!r.ok){ alert(r.error); throw new Error(r.error); }
+        muatUlang();
+      });
+    });
+
+    // Pratinjau perhitungan langsung saat mengetik -- supaya pemilik melihat persis
+    // berapa yang dia terima dan berapa yang dibayar santri, tanpa perlu menghitung.
+    function perbaruiHitungan(){
+      var nilai = Number(String(modal.querySelector('#bHargaBersih').value).replace(/[^\d]/g,'')) || 0;
+      var elMode = modal.querySelector('#bModePotongan');
+      var mode = elMode ? elMode.value : 'otomatis';
+      var elLabel = modal.querySelector('#bLabelHarga');
+      var elManual = modal.querySelector('#bWrapManual');
+      if (elManual) elManual.style.display = (mode === 'manual') ? 'block' : 'none';
+      // Pada mode "milik pondok" tidak ada pemilik yang menerima uang, jadi yang diisi
+      // adalah harga jual apa adanya -- labelnya ikut berubah supaya tidak salah isi.
+      if (elLabel) elLabel.textContent = (mode === 'pondok')
+        ? 'Harga Jual ke Santri (Rp)' : 'Harga Bersih yang Diterima Pemilik (Rp)';
+
+      var el = modal.querySelector('#bHitungan');
+      if (nilai <= 0) { el.innerHTML = '<span class="muted">Isi harga untuk melihat perhitungannya.</span>'; return; }
+
+      var potongan, jual, terima;
+      if (mode === 'pondok')      { jual = nilai; potongan = nilai; terima = 0; }
+      else if (mode === 'nol')    { potongan = 0; jual = nilai; terima = nilai; }
+      else if (mode === 'manual') {
+        potongan = Number(String(modal.querySelector('#bPotonganManual').value).replace(/[^\d]/g,'')) || 0;
+        jual = nilai + potongan; terima = nilai;
+      } else { potongan = hitungPotonganLokal(nilai); jual = nilai + potongan; terima = nilai; }
+
+      el.innerHTML =
+        'Pemilik terima: <b>Rp'+terima.toLocaleString('id-ID')+'</b><br>' +
+        'Masuk ke pondok: <b>Rp'+potongan.toLocaleString('id-ID')+'</b>' +
+        (mode==='pondok' ? ' <span class="muted">(barang milik pondok)</span>' : '') + '<br>' +
+        '<span style="color:#0f766e">Santri membayar: <b style="font-size:15px">Rp'+jual.toLocaleString('id-ID')+'</b></span>';
+    }
+    modal.querySelector('#bHargaBersih').oninput = perbaruiHitungan;
+    if (modal.querySelector('#bModePotongan')) modal.querySelector('#bModePotongan').onchange = perbaruiHitungan;
+    if (modal.querySelector('#bPotonganManual')) modal.querySelector('#bPotonganManual').oninput = perbaruiHitungan;
+    perbaruiHitungan();
+
+    modal.querySelector('#bFile').onchange = function(e){
+      var file = e.target.files[0];
+      if (!file) return;
+      var statusEl = modal.querySelector('#bUploadStatus');
+      sedangUnggah = true;
+      statusEl.innerHTML = '<p class="muted">Memproses gambar...</p>';
+      resizeImageFile(file, 600, 0.72).then(function(hasil){
+        statusEl.innerHTML = '<p class="muted">Mengunggah... mohon tunggu.</p>';
+        api('uploadSlideImage', {base64: hasil.base64, mimeType: hasil.mimeType, fileName: file.name}).then(function(res){
+          sedangUnggah = false;
+          if(!res.ok){ statusEl.innerHTML = errBox(res.error); return; }
+          modal.querySelector('#bFoto').value = res.url;
+          statusEl.innerHTML = '<p style="color:#16a34a;font-weight:600;margin:6px 0">&#9989; Berhasil diunggah.</p><img src="'+esc(fotoUkuran(res.url,160))+'" style="height:70px;border-radius:8px;margin-top:4px;display:block;object-fit:cover">';
+        }).catch(function(){
+          sedangUnggah = false;
+          statusEl.innerHTML = errBox('Gagal mengunggah. Periksa koneksi lalu coba lagi.');
+        });
+      }).catch(function(){
+        sedangUnggah = false;
+        statusEl.innerHTML = errBox('Gagal memproses gambar. Coba file lain.');
+      });
+    };
+    return modal;
+  }
+
+  // Tabel daftar barang yang dipakai bersama Admin & Pemilik.
+  function htmlTabelBarang(list, opts){
+    opts = opts || {};
+    var html = '<table><tr><th>Foto</th><th>Nama</th><th>Diterima</th><th>Potongan</th><th>Harga Santri</th>' +
+      (opts.tampilkanPemilik ? '<th>Pemilik</th>' : '') + '<th>Aksi</th></tr>';
+    list.forEach(function(b){
+      var bersih = Math.max(0, (b.harga||0) - (b.potongan||0));
+      // Penanda supaya barang yang diatur khusus langsung terlihat tanpa dibuka satu per satu
+      var tanda = '';
+      if ((b.potongan||0) > 0 && b.potongan === b.harga) tanda = ' <span style="background:#ede9fe;color:#5b21b6;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:10px">MILIK PONDOK</span>';
+      else if ((b.potongan||0) === 0) tanda = ' <span style="background:#fef3c7;color:#92400e;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:10px">TANPA POTONGAN</span>';
+      else if (b.potongan !== hitungPotonganLokal(bersih)) tanda = ' <span style="background:#e0f2fe;color:#075985;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:10px">MANUAL</span>';
+      html += '<tr>' +
+        '<td>'+(b.foto?('<img src="'+esc(fotoUkuran(b.foto,80))+'" loading="lazy" style="width:44px;height:44px;object-fit:cover;border-radius:6px;display:block">'):'<span class="muted">-</span>')+'</td>' +
+        '<td>'+esc(b.nama)+tanda+'</td>' +
+        '<td>Rp'+bersih.toLocaleString('id-ID')+'</td>' +
+        '<td>Rp'+(b.potongan||0).toLocaleString('id-ID')+'</td>' +
+        '<td><b>Rp'+(b.harga||0).toLocaleString('id-ID')+'</b></td>' +
+        (opts.tampilkanPemilik ? ('<td>'+esc(b.pemilik)+'</td>') : '') +
+        '<td><button class="small btnEditBarang" data-row="'+b.rowIndex+'">Edit</button> ' +
+        '<button class="small danger btnHapusBarang" data-row="'+b.rowIndex+'">Hapus</button></td></tr>';
+    });
+    return html + '</table>';
+  }
+
+  // Segarkan persen potongan dari server (dipanggil saat halaman kelola barang dibuka)
+  function muatPersenPotongan(){
+    return api('getPersenPotonganKantin', {}).then(function(r){
+      if (r && r.ok && r.persen > 0) PERSEN_POTONGAN_KANTIN = r.persen;
+    }).catch(function(){});
+  }
+
   function adminBarangKantin(){
     var c = getContentEl();
     c.innerHTML = '<p>Memuat...</p>';
-    api('getMasterData', {sheet:'Guru'}).then(function(resGuru){
+    Promise.all([api('getMasterData', {sheet:'Guru'}), muatPersenPotongan()]).then(function(hasil){
+      var resGuru = hasil[0];
       var daftarNamaGuru = resGuru.ok ? resGuru.data.data.map(function(g){return g.Nama;}) : [];
-      c.innerHTML = '<div class="card"><h3>Barang Kantin</h3>' +
-        warnBox('Data ini menyatu dengan database Absensi (bukan spreadsheet terpisah). "Pemilik" boleh diisi nama guru/staf mana saja yang berjualan.') +
-        '<button class="small" id="btnTambahBarang">+ Tambah Barang</button><div id="daftarBarangWrap">Memuat...</div></div>';
-      function bukaFormBarang(existing, muatUlang){
-        var fieldsHtml = fieldText('bNama','Nama Barang', existing?existing.nama:'') +
-          fieldText('bHarga','Harga Jual (Rp)', existing?String(existing.harga):'') +
-          fieldText('bPotongan','Potongan per Item (Rp, opsional)', existing?String(existing.potongan):'0') +
-          fieldAutocomplete('bPemilik','Pemilik', daftarNamaGuru, existing?existing.pemilik:'', 'Ketik nama pemilik...') +
-          fieldText('bNoWa','No WA Pemilik (opsional, notifikasi)', existing?existing.noWaPemilik:'');
-        openModal(existing?'Edit Barang':'Tambah Barang', fieldsHtml, function(m){
-          var nama = m.querySelector('#bNama').value.trim();
-          if (!nama) { alert('Nama barang wajib diisi.'); return false; }
-          api('saveBarang', {rowIndex: existing?existing.rowIndex:0, nama:nama, harga:m.querySelector('#bHarga').value.trim(),
-            potongan:m.querySelector('#bPotongan').value.trim(), pemilik:m.querySelector('#bPemilik').value.trim(), noWaPemilik:m.querySelector('#bNoWa').value.trim()}).then(function(r){
-              if(!r.ok) alert(r.error); else muatUlang();
-            });
+      c.innerHTML = '<div class="card"><h3>Barang Kantin (Semua Pemilik)</h3>' +
+        warnBox('Isi harga BERSIH yang ingin diterima pemilik -- potongan pondok ('+PERSEN_POTONGAN_KANTIN+'%) ditambahkan otomatis di atasnya. Khusus Admin/Mudir, potongan bisa diatur sendiri: dibebaskan, diisi nominal khusus, atau ditandai sebagai barang milik pondok (seluruh hasil penjualan masuk ke pondok). Pemilik barang tidak bisa mengubah pengaturan ini.') +
+        '<button class="small" id="btnTambahBarang">+ Tambah Barang</button>' +
+        '<div style="margin-top:10px"><input id="cariBarangAdmin" placeholder="Cari nama barang / pemilik..."></div>' +
+        '<div id="daftarBarangWrap">Memuat...</div></div>';
+
+      document.getElementById('btnTambahBarang').onclick = function(){
+        bukaFormBarangKantin(null, {daftarPemilik: daftarNamaGuru, aksiSimpan:'saveBarang', bolehAturPotongan:true}, muatDaftarBarang);
+      };
+
+      var semuaBarang = [];
+      function gambarTabel(){
+        var kata = (document.getElementById('cariBarangAdmin').value || '').toLowerCase().trim();
+        var list = kata
+          ? semuaBarang.filter(function(b){ return (b.nama+' '+b.pemilik).toLowerCase().indexOf(kata) !== -1; })
+          : semuaBarang;
+        var wrap = document.getElementById('daftarBarangWrap');
+        if (!list.length) { wrap.innerHTML = '<p class="muted">Tidak ada barang yang cocok.</p>'; return; }
+        wrap.innerHTML = htmlTabelBarang(list, {tampilkanPemilik:true});
+        document.querySelectorAll('.btnEditBarang').forEach(function(btn){
+          btn.onclick = function(){
+            bukaFormBarangKantin(
+              semuaBarang.find(function(b){return b.rowIndex===Number(btn.dataset.row);}),
+              {daftarPemilik: daftarNamaGuru, aksiSimpan:'saveBarang', bolehAturPotongan:true}, muatDaftarBarang);
+          };
+        });
+        document.querySelectorAll('.btnHapusBarang').forEach(function(btn){
+          btn.onclick = function(){
+            if(!confirm('Hapus barang ini?')) return;
+            api('deleteBarang', {rowIndex:Number(btn.dataset.row)}).then(muatDaftarBarang);
+          };
         });
       }
-      document.getElementById('btnTambahBarang').onclick = function(){ bukaFormBarang(null, muatDaftarBarang); };
+      document.getElementById('cariBarangAdmin').oninput = gambarTabel;
+
       function muatDaftarBarang(){
         api('getBarangList', {}).then(function(res){
           if(!res.ok){ document.getElementById('daftarBarangWrap').innerHTML = errBox(res.error); return; }
-          if(!res.data.length){ document.getElementById('daftarBarangWrap').innerHTML = '<p class="muted">Belum ada barang. Klik "+ Tambah Barang".</p>'; return; }
-          var html = '<table><tr><th>Nama</th><th>Harga</th><th>Potongan</th><th>Pemilik</th><th>Aksi</th></tr>';
-          res.data.forEach(function(b){
-            html += '<tr><td>'+esc(b.nama)+'</td><td>Rp'+b.harga.toLocaleString('id-ID')+'</td><td>Rp'+b.potongan.toLocaleString('id-ID')+'</td><td>'+esc(b.pemilik)+'</td>' +
-              '<td><button class="small btnEditBarang" data-row="'+b.rowIndex+'">Edit</button> <button class="small danger btnHapusBarang" data-row="'+b.rowIndex+'">Hapus</button></td></tr>';
-          });
-          html += '</table>';
-          document.getElementById('daftarBarangWrap').innerHTML = html;
-          document.querySelectorAll('.btnEditBarang').forEach(function(btn){
-            btn.onclick = function(){ bukaFormBarang(res.data.find(function(b){return b.rowIndex===Number(btn.dataset.row);}), muatDaftarBarang); };
-          });
-          document.querySelectorAll('.btnHapusBarang').forEach(function(btn){
-            btn.onclick = function(){ if(!confirm('Hapus barang ini?')) return; api('deleteBarang', {rowIndex:Number(btn.dataset.row)}).then(muatDaftarBarang); };
-          });
+          semuaBarang = res.data;
+          if(!semuaBarang.length){ document.getElementById('daftarBarangWrap').innerHTML = '<p class="muted">Belum ada barang. Klik "+ Tambah Barang".</p>'; return; }
+          gambarTabel();
         });
       }
       muatDaftarBarang();
+    });
+  }
+
+  // ---------------- PEMILIK BARANG: kelola dagangan sendiri ----------------
+  function pemilikKelolaBarang(){
+    var c = getContentEl();
+    c.innerHTML = '<p>Memuat...</p>';
+    muatPersenPotongan().then(function(){
+      c.innerHTML = '<div class="card"><h3>Barang Jualan Saya</h3>' +
+        warnBox('Isi harga BERSIH yang ingin Anda terima. Potongan untuk pondok ('+PERSEN_POTONGAN_KANTIN+'%) ditambahkan otomatis ke harga yang dibayar santri -- jadi uang yang masuk ke Anda tetap sebesar harga bersih yang Anda isi. Foto boleh dikosongkan.') +
+        '<button class="small" id="btnTambahBarangSaya">+ Tambah Barang</button>' +
+        '<div id="daftarBarangSayaWrap" style="margin-top:10px">Memuat...</div></div>';
+
+      document.getElementById('btnTambahBarangSaya').onclick = function(){
+        bukaFormBarangKantin(null, {pemilikTetap: STATE.user.nama, aksiSimpan:'saveBarangSaya'}, muatBarangSaya);
+      };
+
+      function muatBarangSaya(){
+        api('getBarangSaya', {pemilik: STATE.user.nama}).then(function(res){
+          var wrap = document.getElementById('daftarBarangSayaWrap');
+          if(!res.ok){ wrap.innerHTML = errBox(res.error); return; }
+          if(!res.data.length){ wrap.innerHTML = '<p class="muted">Belum ada barang. Klik "+ Tambah Barang" untuk mulai berjualan.</p>'; return; }
+          wrap.innerHTML = htmlTabelBarang(res.data, {tampilkanPemilik:false});
+          document.querySelectorAll('.btnEditBarang').forEach(function(btn){
+            btn.onclick = function(){
+              bukaFormBarangKantin(
+                res.data.find(function(b){return b.rowIndex===Number(btn.dataset.row);}),
+                {pemilikTetap: STATE.user.nama, aksiSimpan:'saveBarangSaya'}, muatBarangSaya);
+            };
+          });
+          document.querySelectorAll('.btnHapusBarang').forEach(function(btn){
+            btn.onclick = function(){
+              if(!confirm('Hapus barang ini?')) return;
+              api('deleteBarangSaya', {rowIndex:Number(btn.dataset.row), pemilik: STATE.user.nama}).then(function(r){
+                if(!r.ok){ alert(r.error); return; }
+                muatBarangSaya();
+              });
+            };
+          });
+        });
+      }
+      muatBarangSaya();
     });
   }
 
