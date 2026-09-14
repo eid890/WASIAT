@@ -244,6 +244,9 @@ function route(action, p) {
     case 'simpanRiwayatTasmi': return apiSimpanRiwayatTasmi(p);
     case 'getRiwayatTasmi':    return apiGetRiwayatTasmi(p);
     case 'hapusRiwayatTasmi':  return apiHapusRiwayatTasmi(p);
+    // Perbaikan kolom Kategori
+    case 'cekKategoriKosong':        return apiCekKategoriKosong(p);
+    case 'perbaikiKategoriTransaksi': return apiPerbaikiKategoriTransaksi(p);
     case 'getSantriUntukTransaksiKantin': return {ok:true, data: getSantriUntukTransaksiKantin()};
     case 'prosesTransaksiKantin': return apiProsesTransaksiKantin(p);
     case 'getRiwayatTransaksiPemilik': return {ok:true, data: getRiwayatTransaksiPemilik(p.pemilik, p.tglMulai, p.tglAkhir)};
@@ -2354,7 +2357,10 @@ function getRiwayatMutasiSaldoSantri(nisn, tglMulai, tglAkhir) {
   const KATEGORI_MUTASI = ['Top Up Saldo','Penarikan'];
   return rows.filter(r => {
     if (norm(r[2]) !== nisn) return false;
-    if (KATEGORI_MUTASI.indexOf(norm(r[5])) === -1) return false;
+    // Kategori kosong pada data lama ditebak dari kolom lain, supaya riwayat mutasi
+    // saldo tidak tampil kosong untuk transaksi yang sebenarnya ada.
+    const kategoriBaris = norm(r[5]) || tebakKategoriTransaksi(r[6], r[9], r[10]);
+    if (KATEGORI_MUTASI.indexOf(kategoriBaris) === -1) return false;
     const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
     if (tglMulai && tgl < tglMulai) return false;
     if (tglAkhir && tgl > tglAkhir) return false;
@@ -2376,7 +2382,10 @@ function getRiwayatMutasiSaldoAdmin(tglMulai, tglAkhir) {
   const tz = Session.getScriptTimeZone();
   const KATEGORI_MUTASI = ['Top Up Saldo','Penarikan'];
   return rows.filter(r => {
-    if (KATEGORI_MUTASI.indexOf(norm(r[5])) === -1) return false;
+    // Kategori kosong pada data lama ditebak dari kolom lain (lihat catatan di
+    // tebakKategoriTransaksi), supaya rekap mutasi saldo Admin tidak tampil kosong.
+    const kategoriBaris = norm(r[5]) || tebakKategoriTransaksi(r[6], r[9], r[10]);
+    if (KATEGORI_MUTASI.indexOf(kategoriBaris) === -1) return false;
     const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
     if (tglMulai && tgl < tglMulai) return false;
     if (tglAkhir && tgl > tglAkhir) return false;
@@ -2794,7 +2803,12 @@ function hitungTotalBelanjaHariIniSantri(nisn, tanggalStr) {
   const tz = Session.getScriptTimeZone();
   let total = 0;
   rows.forEach(function(r){
-    if (norm(r[2]) !== nisn || norm(r[5]) !== 'Kantin') return;
+    if (norm(r[2]) !== nisn) return;
+    // Kategori kosong (data dari versi aplikasi terdahulu) ditebak dari kolom lain.
+    // Tanpa ini, limit jajan harian tidak berfungsi sama sekali untuk data lama --
+    // semua belanja tidak terhitung karena penyaringnya mencari kata 'Kantin'.
+    const kategori = norm(r[5]) || tebakKategoriTransaksi(r[6], r[9], r[10]);
+    if (kategori !== 'Kantin') return;
     const d = (r[0] instanceof Date) ? r[0] : new Date(r[0]);
     if (Utilities.formatDate(d, tz, 'yyyy-MM-dd') === tanggalStr) total += Number(r[4]) || 0;
   });
@@ -9237,4 +9251,112 @@ function apiHapusRiwayatTasmi(p) {
   }
   sh.deleteRow(baris);
   return {ok:true};
+}
+
+
+// ============================================================
+// PERBAIKAN KOLOM KATEGORI DI SHEET TRANSAKSI
+//
+// Masalahnya: pada data yang ditulis versi aplikasi terdahulu, kolom Kategori
+// tidak terisi. Padahal kolom itu dipakai untuk MENYARING, bukan sekadar label:
+//   - Limit jajan harian hanya menghitung kategori 'Kantin'
+//   - Riwayat Mutasi Saldo hanya menampilkan 'Top Up Saldo' dan 'Penarikan'
+// Kalau kosong, limit jajan tidak berfungsi sama sekali dan riwayat mutasi kosong.
+//
+// Dua lapis penanganan:
+// 1. tebakKategoriTransaksi() -- menebak kategori dari kolom lain saat DIBACA,
+//    sehingga fitur tetap berjalan benar walau perbaikan belum dijalankan.
+// 2. apiPerbaikiKategoriTransaksi() -- mengisi kolom yang kosong satu kali,
+//    supaya datanya benar secara permanen.
+// ============================================================
+
+// Tebak kategori dari isi baris. Urutan pemeriksaan penting: pola yang paling
+// khas diperiksa lebih dulu supaya tidak salah klasifikasi.
+function tebakKategoriTransaksi(namaBarang, pemilik, masukPemilik) {
+  const nb = norm(namaBarang);
+  const nbKecil = nb.toLowerCase();
+  if (!nb && !norm(pemilik)) return '';
+
+  if (nbKecil.indexOf('top up') !== -1 || nbKecil.indexOf('topup') !== -1) return 'Top Up Saldo';
+  if (nbKecil.indexOf('penarikan') !== -1 || nbKecil.indexOf('tarik saldo') !== -1) return 'Penarikan';
+  if (nbKecil.indexOf('koreksi') !== -1) return 'Koreksi Saldo';
+  // Kas kelas ditulis dengan pola "<jenis> ... (kelas <nama kelas>)"
+  if (nbKecil.indexOf('(kelas ') !== -1 || nbKecil.indexOf('uang kas') !== -1 ||
+      nbKecil.indexOf('rihlah') !== -1) return 'Kas Kelas';
+  // Sisanya: ada pemilik barang = pembelian di kantin
+  if (norm(pemilik)) return 'Kantin';
+  if (Number(masukPemilik) > 0) return 'Kantin';
+  return 'Lainnya';
+}
+
+// Isi kolom Kategori yang kosong. Hanya Admin/Mudir, dan hanya menyentuh baris
+// yang kategorinya BENAR-BENAR kosong -- baris yang sudah terisi tidak diubah.
+function apiPerbaikiKategoriTransaksi(p) {
+  if (!adminAtauMudir(p.oleh)) {
+    return {ok:false, error:'Hanya Admin/Mudir yang boleh menjalankan perbaikan data.'};
+  }
+  const sh = getAktifKantinSS().getSheetByName(SHEET_TRANSAKSI_KANTIN);
+  if (!sh) return {ok:false, error:'Sheet TransaksiKantin tidak ditemukan.'};
+
+  const rng = sh.getDataRange();
+  const nilai = rng.getValues();
+  if (nilai.length < 2) return {ok:true, diperiksa:0, diperbaiki:0, rincian:{}};
+
+  const header = nilai[0].map(function(h){ return norm(h); });
+  let iKategori = header.indexOf('Kategori');
+  const iNamaBarang = header.indexOf('Nama Barang');
+  const iPemilik = header.indexOf('Pemilik');
+  const iMasuk = header.indexOf('Masuk Pemilik');
+
+  // Kalau header-nya sendiri belum punya kolom Kategori, posisinya mengikuti
+  // urutan yang dipakai kode saat menulis (setelah Nominal).
+  if (iKategori === -1) {
+    if (iNamaBarang === -1) return {ok:false, error:'Struktur sheet tidak dikenali (kolom "Nama Barang" tidak ada).'};
+    iKategori = iNamaBarang - 1;
+    sh.getRange(1, iKategori + 1).setValue('Kategori');
+  }
+
+  const rincian = {};
+  let diperbaiki = 0;
+  // Tulis ulang sekaligus per kolom (jauh lebih cepat daripada per baris)
+  const kolomBaru = [];
+  for (let i = 1; i < nilai.length; i++) {
+    const lama = norm(nilai[i][iKategori]);
+    if (lama) { kolomBaru.push([nilai[i][iKategori]]); continue; }
+    const tebakan = tebakKategoriTransaksi(
+      iNamaBarang > -1 ? nilai[i][iNamaBarang] : '',
+      iPemilik > -1 ? nilai[i][iPemilik] : '',
+      iMasuk > -1 ? nilai[i][iMasuk] : 0
+    );
+    if (tebakan) {
+      kolomBaru.push([tebakan]);
+      rincian[tebakan] = (rincian[tebakan] || 0) + 1;
+      diperbaiki++;
+    } else {
+      kolomBaru.push(['']);
+    }
+  }
+  if (kolomBaru.length) {
+    sh.getRange(2, iKategori + 1, kolomBaru.length, 1).setValues(kolomBaru);
+  }
+  return {ok:true, diperiksa: nilai.length - 1, diperbaiki: diperbaiki, rincian: rincian};
+}
+
+// Hitung berapa baris yang kategorinya masih kosong (untuk ditampilkan ke Admin
+// sebelum dia memutuskan menjalankan perbaikan).
+function apiCekKategoriKosong(p) {
+  try {
+    const sh = getAktifKantinSS().getSheetByName(SHEET_TRANSAKSI_KANTIN);
+    if (!sh) return {ok:true, total:0, kosong:0};
+    const nilai = sh.getDataRange().getValues();
+    if (nilai.length < 2) return {ok:true, total:0, kosong:0};
+    const header = nilai[0].map(function(h){ return norm(h); });
+    const iKategori = header.indexOf('Kategori');
+    if (iKategori === -1) return {ok:true, total: nilai.length-1, kosong: nilai.length-1, tanpaKolom:true};
+    let kosong = 0;
+    for (let i = 1; i < nilai.length; i++) if (!norm(nilai[i][iKategori])) kosong++;
+    return {ok:true, total: nilai.length-1, kosong: kosong};
+  } catch (e) {
+    return {ok:false, error: e.message};
+  }
 }

@@ -353,7 +353,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbzDXznm92TF9GNWr2VR6U1Zkob0TeENzOCtCY_cRiqQ4pYKOYnBZ-q857So6FEd3a_b/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -1024,7 +1024,7 @@
       '</div></div>';
     root.appendChild(wrap);
     var btnTutup = wrap.querySelector('#soTutup');
-    btnTutup.onclick = function(){ root.removeChild(wrap); };
+    btnTutup.onclick = function(){ if (wrap && wrap.remove) wrap.remove(); };
     wrap.querySelector('#soMulai').onclick = function(){
       var btn = this;
       btn.disabled = true; btn.textContent = 'Mengunduh...';
@@ -1453,7 +1453,12 @@
       '<div id="modalStatus"></div>'+
       '<button id="modalSimpan">Simpan</button><button class="secondary" id="modalBatal">Batal</button></div>';
     root.appendChild(wrap);
-    wrap.querySelector('#modalBatal').onclick = function(){ root.removeChild(wrap); };
+    // Selalu pakai wrap.remove(), JANGAN root.removeChild(wrap).
+    // Kalau halaman sempat dirender ulang selagi modal terbuka, wrap tidak lagi
+    // menjadi anak root -- removeChild akan melempar error dan modal terkunci di
+    // layar (inilah penyebab tombol Batal/Simpan kadang tidak merespons).
+    function tutupModal(){ if (wrap && wrap.remove) wrap.remove(); }
+    wrap.querySelector('#modalBatal').onclick = tutupModal;
     wrap.querySelector('#modalSimpan').onclick = function(){
       var btnSimpan = wrap.querySelector('#modalSimpan');
       var btnBatal = wrap.querySelector('#modalBatal');
@@ -1463,7 +1468,7 @@
       try {
         result = onSubmit(wrap);
       } catch(e) {
-        statusEl.innerHTML = '<p style="color:#dc2626;margin:6px 0">⚠️ Error: '+esc(String(e.message||e))+'</p>';
+        statusEl.innerHTML = '<p style="color:#dc2626;margin:6px 0">&#9888;&#65039; Error: '+esc(String(e.message||e))+'</p>';
         console.error('openModal onSubmit error:', e);
         return;
       }
@@ -1474,19 +1479,19 @@
         loadingBtn(btnSimpan, 'Menyimpan...');
         btnBatal.disabled = true;
         statusEl.innerHTML = '';
-        result.then(function(){
-          if (wrap.parentNode) root.removeChild(wrap);
-        }).catch(function(e){
+        result.then(tutupModal).catch(function(e){
           resetBtn(btnSimpan, 'Simpan');
           btnBatal.disabled = false;
-          statusEl.innerHTML = '<p style="color:#dc2626;margin:6px 0">&#9888;&#65039; Gagal: '+esc(String(e))+'</p>';
+          statusEl.innerHTML = '<p style="color:#dc2626;margin:6px 0">&#9888;&#65039; Gagal: '+esc(String(e && e.message ? e.message : e))+'</p>';
         });
         return;
       }
 
       // Kalau sync dan tidak return false, langsung tutup
-      if (wrap.parentNode) root.removeChild(wrap);
+      tutupModal();
     };
+    // Tekan Escape untuk menutup -- pengaman tambahan kalau tombol tidak merespons
+    wrap.addEventListener('keydown', function(ev){ if (ev.key === 'Escape') tutupModal(); });
     return wrap;
   }
   function fieldText(id, label, value){ var sid=id.replace(/ /g,'_'); return '<label>'+esc(label)+'</label><input id="'+sid+'" value="'+esc(value||'')+'">' }
@@ -1530,6 +1535,39 @@
     if (!u) return '';
     if (u.indexOf('lh3.googleusercontent.com/d/') === -1) return u; // bukan foto Drive: pakai apa adanya
     return u.split('=')[0] + '=w' + (lebar || 300);
+  }
+
+  // Gambar pengganti untuk produk yang belum punya foto.
+  // Dibuat langsung di aplikasi sebagai SVG, jadi TIDAK ada berkas yang perlu
+  // diunduh sama sekali -- nol beban jaringan, dan tetap tampil saat offline.
+  // Warnanya ditentukan dari nama produk supaya tiap produk terlihat berbeda dan
+  // kasir tetap mudah membedakannya sekilas.
+  var WARNA_DEFAULT_PRODUK = [
+    ['#0d9488','#99f6e4'], ['#7c3aed','#ddd6fe'], ['#dc2626','#fecaca'],
+    ['#d97706','#fde68a'], ['#0369a1','#bae6fd'], ['#15803d','#bbf7d0'],
+    ['#be185d','#fbcfe8'], ['#4338ca','#c7d2fe']
+  ];
+  function fotoDefaultProduk(nama){
+    var teks = String(nama || '?').trim();
+    // Ambil huruf awal dari maksimal dua kata pertama (contoh: "Nasi Kuning" -> "NK")
+    var kata = teks.split(/\s+/).filter(Boolean);
+    var inisial = ((kata[0] || '?')[0] + (kata.length > 1 ? kata[1][0] : '')).toUpperCase();
+    // Pemilihan warna berdasarkan nama -- produk yang sama selalu dapat warna sama
+    var jumlah = 0;
+    for (var i = 0; i < teks.length; i++) jumlah += teks.charCodeAt(i);
+    var w = WARNA_DEFAULT_PRODUK[jumlah % WARNA_DEFAULT_PRODUK.length];
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="225" viewBox="0 0 300 225">' +
+      '<rect width="300" height="225" fill="'+w[1]+'"/>' +
+      '<circle cx="150" cy="95" r="52" fill="'+w[0]+'" opacity="0.18"/>' +
+      '<text x="150" y="112" font-family="Arial,Helvetica,sans-serif" font-size="54" font-weight="bold" fill="'+w[0]+'" text-anchor="middle">'+esc(inisial)+'</text>' +
+      '<text x="150" y="180" font-family="Arial,Helvetica,sans-serif" font-size="17" fill="'+w[0]+'" text-anchor="middle" opacity="0.75">'+esc(teks.length > 22 ? teks.slice(0,20)+'..' : teks)+'</text>' +
+      '</svg>';
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  }
+
+  // Alamat gambar produk: pakai fotonya kalau ada, kalau tidak pakai gambar default.
+  function gambarProduk(foto, nama, lebar){
+    return foto ? fotoUkuran(foto, lebar) : fotoDefaultProduk(nama);
   }
 
   // Widget multi-pilih santri untuk field "NISN Anak" (RoleAkses) -- mendukung wali
@@ -1926,7 +1964,7 @@
       gambarHtml + '<div>'+kontenHtml+'</div>' +
       '<button id="tutupDetailArtikel" style="margin-top:14px">Tutup</button></div>';
     root.appendChild(wrap);
-    wrap.querySelector('#tutupDetailArtikel').onclick = function(){ root.removeChild(wrap); };
+    wrap.querySelector('#tutupDetailArtikel').onclick = function(){ if (wrap && wrap.remove) wrap.remove(); };
   }
 
   function bukaLoginDrawer(errMsg, modeKhusus){
@@ -2416,6 +2454,255 @@
     // Ambil kelas yang ditugaskan ke guru ini sebagai Wali Kelas
     // Disimpan di kolom WaliKelas di sheet Guru, format: "7A" atau "7A,7B"
     return STATE.user.waliKelas || '';
+  }
+
+  // ================= PEMILIH SANTRI (dipakai bersama) =================
+  // Mengganti <datalist> yang tidak dapat diandalkan di HP: di banyak browser
+  // Android, saran datalist baru muncul setelah beberapa huruf diketik, dan kadang
+  // tidak muncul sama sekali -- kasir jadi tidak tahu ada daftar santri di sana.
+  //
+  // Komponen ini menampilkan daftar santri LANGSUNG tanpa perlu mengetik, bisa
+  // disaring dengan mengetik, bisa dipilih dengan sekali ketuk, dan bisa diisi
+  // lewat pindai QR. Dipakai di kasir kantin, cek akun santri, dan kas kelas
+  // supaya cara memilih santri sama persis di semua tempat.
+  //
+  //   id          : awalan id elemen (harus unik dalam satu modal)
+  //   label       : judul di atas kotak
+  //   daftarSantri: [{nisn, nama, saldo?}]
+  //   opts.tampilSaldo : tampilkan saldo di tiap baris
+  function fieldPilihSantri(id, label, daftarSantri, opts){
+    opts = opts || {};
+    return '<label>'+esc(label)+'</label>' +
+      '<div id="'+id+'_terpilih" style="display:none;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:9px 12px;margin-bottom:8px;font-size:13.5px"></div>' +
+      '<div style="display:flex;gap:6px;margin-bottom:6px">' +
+        '<input id="'+id+'_cari" placeholder="Ketik nama atau NISN..." autocomplete="off" style="flex:1;margin:0">' +
+        '<button type="button" class="secondary" id="'+id+'_scan" title="Pindai kartu QR santri" style="padding:0 12px;margin:0">&#128247;</button>' +
+      '</div>' +
+      '<div id="'+id+'_daftar" style="max-height:210px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:10px"></div>' +
+      '<input type="hidden" id="'+id+'" value="">';
+  }
+
+  // Pasang perilakunya setelah modal dirender. Mengembalikan objek dengan
+  // .nilai() untuk mengambil santri yang sedang terpilih.
+  function ikatPilihSantri(modal, id, daftarSantri, opts){
+    opts = opts || {};
+    var elCari = modal.querySelector('#'+id+'_cari');
+    var elDaftar = modal.querySelector('#'+id+'_daftar');
+    var elHidden = modal.querySelector('#'+id);
+    var elTerpilih = modal.querySelector('#'+id+'_terpilih');
+    var terpilih = null;
+
+    function gambarDaftar(){
+      var kata = elCari.value.toLowerCase().trim();
+      var hasil = kata
+        ? daftarSantri.filter(function(s){
+            return (String(s.nama) + ' ' + String(s.nisn)).toLowerCase().indexOf(kata) !== -1;
+          })
+        : daftarSantri;
+      // Dibatasi 60 baris supaya daftar panjang tidak membuat HP tersendat.
+      // Kalau yang dicari belum kelihatan, mengetik akan mempersempitnya.
+      var dipotong = hasil.length > 60;
+      hasil = hasil.slice(0, 60);
+
+      if (!hasil.length) {
+        elDaftar.innerHTML = '<p class="muted" style="padding:12px;margin:0;font-size:13px">Tidak ada santri yang cocok.</p>';
+        return;
+      }
+      elDaftar.innerHTML = hasil.map(function(s){
+        var infoSaldo = (opts.tampilSaldo && s.saldo !== undefined)
+          ? '<span style="font-size:12px;color:#0f766e;font-weight:600">Rp'+Number(s.saldo||0).toLocaleString('id-ID')+'</span>' : '';
+        return '<div class="pilihSantriBaris" data-nisn="'+esc(s.nisn)+'" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid #f1f5f9;cursor:pointer">' +
+          '<div><b style="font-size:13.5px">'+esc(s.nama)+'</b><br><span class="muted" style="font-size:11.5px">'+esc(s.nisn)+'</span></div>' +
+          infoSaldo + '</div>';
+      }).join('') + (dipotong ? '<p class="muted" style="padding:8px 12px;margin:0;font-size:12px">Menampilkan 60 teratas &mdash; ketik untuk mempersempit.</p>' : '');
+
+      elDaftar.querySelectorAll('.pilihSantriBaris').forEach(function(baris){
+        baris.onclick = function(){ pilih(baris.dataset.nisn); };
+      });
+    }
+
+    function pilih(nisn){
+      var s = daftarSantri.find(function(x){ return String(x.nisn) === String(nisn); });
+      if (!s) return;
+      terpilih = s;
+      elHidden.value = s.nisn;
+      elTerpilih.style.display = 'block';
+      elTerpilih.innerHTML = '&#9989; <b>'+esc(s.nama)+'</b> <span class="muted">('+esc(s.nisn)+')</span>' +
+        ((opts.tampilSaldo && s.saldo !== undefined) ? '<br>Saldo: <b>Rp'+Number(s.saldo||0).toLocaleString('id-ID')+'</b>' : '');
+      elCari.value = '';
+      gambarDaftar();
+      if (opts.onPilih) opts.onPilih(s);
+    }
+
+    elCari.oninput = gambarDaftar;
+    modal.querySelector('#'+id+'_scan').onclick = function(){
+      bukaPemindaiQR(function(teks){
+        var s = cariSantriDariQR(teks, daftarSantri);
+        if (!s) { alert('Santri tidak ditemukan dari QR: ' + teks); return; }
+        pilih(s.nisn);
+      });
+    };
+    gambarDaftar();
+
+    return {
+      nilai: function(){ return terpilih; },
+      pilih: pilih
+    };
+  }
+
+  // ================= PEMINDAI QR SANTRI =================
+  // Dipakai untuk mencari santri dengan cepat di kasir kantin, menggantikan
+  // pengetikan nama. Kamera BELAKANG yang dipakai (facingMode 'environment'),
+  // karena kartu santri dipindai dari sisi depan HP.
+  //
+  // Pembacaan QR memakai BarcodeDetector bawaan browser kalau tersedia (paling
+  // ringan, tanpa unduhan apa pun). Kalau browsernya belum mendukung, barulah
+  // pustaka jsQR dimuat dari CDN -- hanya saat fitur ini dipakai, sehingga
+  // pengguna yang tidak memakai pemindai tidak menanggung bebannya.
+
+  var _jsQRDimuat = null;
+  function muatJsQR(){
+    if (window.jsQR) return Promise.resolve(true);
+    if (_jsQRDimuat) return _jsQRDimuat;
+    _jsQRDimuat = new Promise(function(resolve){
+      var s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
+      s.onload = function(){ resolve(!!window.jsQR); };
+      s.onerror = function(){ resolve(false); };
+      document.head.appendChild(s);
+    });
+    return _jsQRDimuat;
+  }
+
+  // Buka pemindai. onHasil(teks) dipanggil sekali saat QR terbaca.
+  function bukaPemindaiQR(onHasil){
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert('Kamera tidak didukung di browser ini. Pastikan situs dibuka lewat HTTPS.');
+      return;
+    }
+    var wrap = document.createElement('div');
+    wrap.className = 'overlay';
+    wrap.innerHTML =
+      '<div class="modal" style="max-width:460px">' +
+        '<h3>&#128247; Pindai QR Santri</h3>' +
+        '<div style="position:relative;background:#000;border-radius:10px;overflow:hidden">' +
+          '<video id="qrVideo" playsinline muted style="width:100%;display:block"></video>' +
+          '<div style="position:absolute;inset:12% 12%;border:3px solid rgba(255,255,255,.85);border-radius:12px;pointer-events:none"></div>' +
+        '</div>' +
+        '<p class="muted" id="qrStatus" style="margin-top:8px">Menyalakan kamera...</p>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+          '<button class="secondary" id="qrGantiKamera">Ganti Kamera</button>' +
+          '<button class="secondary" id="qrTutup">Tutup</button>' +
+        '</div>' +
+      '</div>';
+    root.appendChild(wrap);
+
+    var video = wrap.querySelector('#qrVideo');
+    var status = wrap.querySelector('#qrStatus');
+    var stream = null, berjalan = true, detector = null, kanvas = null, ctx = null;
+    var pakaiBelakang = true;
+
+    function berhenti(){
+      berjalan = false;
+      if (stream) stream.getTracks().forEach(function(t){ t.stop(); });
+      if (wrap && wrap.remove) wrap.remove();
+    }
+    wrap.querySelector('#qrTutup').onclick = berhenti;
+    wrap.querySelector('#qrGantiKamera').onclick = function(){
+      pakaiBelakang = !pakaiBelakang;
+      if (stream) stream.getTracks().forEach(function(t){ t.stop(); });
+      mulaiKamera();
+    };
+
+    function mulaiKamera(){
+      // 'environment' = kamera belakang. Sebagian HP hanya menurut kalau diminta
+      // sebagai 'ideal', jadi dipakai bentuk ini supaya tidak gagal total di HP
+      // yang cuma punya satu kamera.
+      navigator.mediaDevices.getUserMedia({
+        video: { facingMode: pakaiBelakang ? {ideal:'environment'} : {ideal:'user'} },
+        audio: false
+      }).then(function(s){
+        stream = s;
+        video.srcObject = s;
+        video.play();
+        status.textContent = 'Arahkan kamera ke QR code santri...';
+        mulaiPembacaan();
+      }).catch(function(e){
+        status.innerHTML = '<span style="color:#dc2626">Kamera tidak bisa dibuka: ' + esc(e.message || 'izin ditolak') +
+          '. Pastikan Anda mengizinkan akses kamera dan situs dibuka lewat HTTPS.</span>';
+      });
+    }
+
+    function selesai(teks){
+      if (!berjalan) return;
+      getarkanHp([60]);
+      berhenti();
+      onHasil(String(teks || '').trim());
+    }
+
+    function mulaiPembacaan(){
+      if ('BarcodeDetector' in window) {
+        try {
+          detector = new window.BarcodeDetector({formats: ['qr_code']});
+        } catch(e) { detector = null; }
+      }
+      if (detector) { bacaDenganDetector(); return; }
+      muatJsQR().then(function(ok){
+        if (!ok) {
+          status.innerHTML = '<span style="color:#dc2626">Pembaca QR gagal dimuat. Periksa koneksi internet, atau cari santri dengan mengetik namanya.</span>';
+          return;
+        }
+        kanvas = document.createElement('canvas');
+        ctx = kanvas.getContext('2d', {willReadFrequently:true});
+        bacaDenganJsQR();
+      });
+    }
+
+    function bacaDenganDetector(){
+      if (!berjalan) return;
+      detector.detect(video).then(function(hasil){
+        if (hasil && hasil.length) { selesai(hasil[0].rawValue); return; }
+        if (berjalan) requestAnimationFrame(bacaDenganDetector);
+      }).catch(function(){
+        if (berjalan) requestAnimationFrame(bacaDenganDetector);
+      });
+    }
+
+    function bacaDenganJsQR(){
+      if (!berjalan) return;
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        kanvas.width = video.videoWidth;
+        kanvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, kanvas.width, kanvas.height);
+        try {
+          var data = ctx.getImageData(0, 0, kanvas.width, kanvas.height);
+          var kode = window.jsQR(data.data, data.width, data.height, {inversionAttempts:'dontInvert'});
+          if (kode && kode.data) { selesai(kode.data); return; }
+        } catch(e) { /* frame gagal dibaca, lanjut ke frame berikutnya */ }
+      }
+      requestAnimationFrame(bacaDenganJsQR);
+    }
+
+    mulaiKamera();
+  }
+
+  // Cocokkan hasil pindaian ke daftar santri.
+  // QR bisa berisi NISN polos, atau teks yang memuat NISN di dalamnya -- keduanya
+  // ditangani supaya kartu santri yang sudah terlanjur dicetak tetap bisa dipakai.
+  function cariSantriDariQR(teks, daftarSantri){
+    var bersih = String(teks || '').trim();
+    if (!bersih) return null;
+    var tepat = daftarSantri.find(function(s){ return String(s.nisn) === bersih; });
+    if (tepat) return tepat;
+    // Cari NISN yang tertanam di dalam teks (misal "NISN:20250031" atau berupa link)
+    var angka = bersih.match(/\d{4,}/g) || [];
+    for (var i = 0; i < angka.length; i++) {
+      var cocok = daftarSantri.find(function(s){ return String(s.nisn) === angka[i]; });
+      if (cocok) return cocok;
+    }
+    // Terakhir: cocokkan dengan nama (kalau QR berisi nama santri)
+    var kecil = bersih.toLowerCase();
+    return daftarSantri.find(function(s){ return String(s.nama).toLowerCase() === kecil; }) || null;
   }
 
   // ================= FLYER TASMI' HAFALAN =================
@@ -3242,11 +3529,8 @@
   }
 
   function formTerimaKas(kelas, daftarSantri, santriTerpilih){
-    var opsiSantri = daftarSantri.map(function(s){ return s.nisn + ' - ' + s.nama; });
-    var nilaiAwal = santriTerpilih ? (santriTerpilih.nisn + ' - ' + santriTerpilih.nama) : '';
-
     var fields =
-      fieldAutocomplete('kkSantri','Santri', opsiSantri, nilaiAwal, 'Ketik nama atau NISN santri...') +
+      fieldPilihSantri('kkSantri','Pilih Santri', daftarSantri, {tampilSaldo:true}) +
       '<label>Jenis Pembayaran</label><select id="kkJenis">' +
         JENIS_KAS_BAWAAN.map(function(j){ return '<option value="'+esc(j)+'"'+(j===_wkJenisAktif?' selected':'')+'>'+esc(j)+'</option>'; }).join('') +
         '<option value="__lain__">Lainnya (tulis sendiri)...</option>' +
@@ -3259,10 +3543,11 @@
       '<input id="kkPin" type="password" inputmode="numeric" placeholder="Diisi oleh santri sendiri">' +
       '<p class="muted" style="margin-top:-6px">Minta santri memasukkan PIN-nya sendiri sebagai tanda persetujuan.</p>';
 
+    var pilihKk = null;
     var modal = openModal('Terima Pembayaran Kas', fields, function(m){
-      var pilih = m.querySelector('#kkSantri').value.trim();
-      var nisn = pilih.split(' - ')[0].trim();
-      if (!nisn) { alert('Pilih santri dulu.'); return false; }
+      var santriDipilih = pilihKk.nilai();
+      if (!santriDipilih) { alert('Pilih santri dulu dari daftar, atau pindai kartu QR-nya.'); return false; }
+      var nisn = santriDipilih.nisn;
       var jenis = m.querySelector('#kkJenis').value;
       if (jenis === '__lain__') {
         jenis = m.querySelector('#kkJenisLain').value.trim();
@@ -3286,11 +3571,9 @@
       });
     });
 
-    // Tampilkan saldo santri yang dipilih supaya wali kelas tahu cukup atau tidak
+    // Tampilkan sisa saldo setelah pembayaran, supaya wali kelas tahu cukup atau tidak
     function perbaruiInfoSaldo(){
-      var pilih = modal.querySelector('#kkSantri').value.trim();
-      var nisn = pilih.split(' - ')[0].trim();
-      var s = daftarSantri.find(function(x){ return String(x.nisn) === nisn; });
+      var s = pilihKk ? pilihKk.nilai() : null;
       var nominal = Number(String(modal.querySelector('#kkNominal').value).replace(/[^\d]/g,'')) || 0;
       var el = modal.querySelector('#kkInfoSaldo');
       if (!s) { el.innerHTML = '<span class="muted">Pilih santri untuk melihat saldonya.</span>'; return; }
@@ -3301,7 +3584,10 @@
              (sisa < 0 ? ' <span style="color:#dc2626">(saldo tidak cukup)</span>' : ''))
           : '');
     }
-    modal.querySelector('#kkSantri').oninput = perbaruiInfoSaldo;
+    pilihKk = ikatPilihSantri(modal, 'kkSantri', daftarSantri, {
+      tampilSaldo: true, onPilih: perbaruiInfoSaldo
+    });
+    if (santriTerpilih) pilihKk.pilih(santriTerpilih.nisn);
     modal.querySelector('#kkNominal').oninput = perbaruiInfoSaldo;
     modal.querySelector('#kkJenis').onchange = function(){
       modal.querySelector('#kkWrapLain').style.display = (this.value === '__lain__') ? 'block' : 'none';
@@ -4467,10 +4753,10 @@
       }).join('') +
       '<button class="secondary" style="margin-top:14px;width:100%" id="btnTutupDaftarMA">Tutup</button></div>';
     root.appendChild(overlay);
-    overlay.querySelector('#btnTutupDaftarMA').onclick = function(){ root.removeChild(overlay); };
+    overlay.querySelector('#btnTutupDaftarMA').onclick = function(){ if (overlay && overlay.remove) overlay.remove(); };
     overlay.querySelectorAll('.btnLihatMAGuru').forEach(function(btn){
       var ma = daftar.find(function(m){ return m.rowIndex===Number(btn.dataset.row); });
-      btn.onclick = function(){ root.removeChild(overlay); tampilkanModulAjar(ma); };
+      btn.onclick = function(){ if (overlay && overlay.remove) overlay.remove(); tampilkanModulAjar(ma); };
     });
   }
 
@@ -8084,12 +8370,13 @@
         '<p class="muted" style="margin-top:6px">Pinjamkan layar ini ke santri untuk cek saldo/riwayatnya sendiri (pakai PIN Transaksi miliknya).</p></div>';
       if(!res.data.length){ c.innerHTML = tombolCekSantri + '<div class="card">'+warnBox('Anda belum punya barang jualan. Buka menu "Barang Jualan Saya" di sebelah kiri untuk menambahkannya sendiri.')+'</div>'; ikatCekAkunSantri(); return; }
       var barangList = res.data;
-      var adaFoto = barangList.some(function(b){ return !!b.foto; });
       // Mode tampilan bisa dipilih kasir dan diingat. Kalau koneksi sedang lambat,
       // mode "Daftar" (tanpa foto) membuat halaman terbuka seketika.
+      // Tombol pilihan SELALU tersedia -- sejak ada gambar default, produk tanpa foto
+      // pun tetap tampil rapi dalam mode kartu, jadi tidak perlu lagi memaksa mode
+      // daftar hanya karena belum ada foto yang diunggah.
       var modeMenu = 'foto';
       try { modeMenu = localStorage.getItem('wasiatModeMenuKantin') || 'foto'; } catch(e){}
-      if (!adaFoto) modeMenu = 'teks'; // belum ada foto sama sekali: jangan buang ruang
 
       function htmlKartuBarang(b, i){
         if (modeMenu === 'teks') {
@@ -8099,9 +8386,7 @@
         }
         // loading="lazy" + fotoUkuran(240): foto hanya diunduh saat kartunya terlihat,
         // dan yang diunduh adalah versi kecil dari server Google -- bukan foto penuh.
-        var gambar = b.foto
-          ? '<img src="'+esc(fotoUkuran(b.foto, 240))+'" alt="'+esc(b.nama)+'" loading="lazy" decoding="async">'
-          : '<div class="menu-noimg">&#127858;</div>';
+        var gambar = '<img src="'+esc(gambarProduk(b.foto, b.nama, 240))+'" alt="'+esc(b.nama)+'" loading="lazy" decoding="async">';
         return '<div class="menu-kartu">' + gambar +
           '<div class="menu-isi"><b>'+esc(b.nama)+'</b>' +
           '<div class="menu-harga">Rp'+b.harga.toLocaleString('id-ID')+'</div>' +
@@ -8111,7 +8396,7 @@
       c.innerHTML = tombolCekSantri + '<div class="card">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
           '<h3 style="margin:0">Menu Jualan Saya</h3>' +
-          (adaFoto ? '<button class="secondary small" id="btnModeMenu">'+(modeMenu==='foto'?'&#9776; Tampilan Daftar':'&#128444; Tampilan Foto')+'</button>' : '') +
+          '<button class="secondary small" id="btnModeMenu">'+(modeMenu==='foto'?'&#9776; Tampilan Daftar':'&#128444; Tampilan Foto')+'</button>' +
         '</div>' +
         '<div id="menuKantinWrap" class="'+(modeMenu==='foto'?'menu-grid':'menu-list')+'" style="margin-top:12px">' +
         barangList.map(htmlKartuBarang).join('') + '</div></div>' +
@@ -8167,15 +8452,14 @@
           if(!resSantri.ok){ alert(resSantri.error); return; }
           var daftarSantri = resSantri.data;
           var fieldsHtml =
-            fieldAutocomplete('ktSantri','Nama Santri', daftarSantri.map(function(s){return s.nisn+' - '+s.nama;}), '', 'Ketik nama/NISN santri...') +
-            '<div id="infoSaldoKasir" style="background:#f0fdf4;border-radius:8px;padding:8px 12px;font-size:13px;margin-bottom:8px;display:none">'+
-            '&#128176; Saldo: <b id="txtSaldoKasir">-</b> &nbsp;|&nbsp; Belanja: <b>Rp'+totalBelanja.toLocaleString('id-ID')+'</b></div>'+
+            '<div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:9px 12px;font-size:13.5px;margin-bottom:10px">Total belanja: <b style="font-size:15px;color:#0f766e">Rp'+totalBelanja.toLocaleString('id-ID')+'</b></div>' +
+            fieldPilihSantri('ktSantri','Pilih Santri', daftarSantri, {tampilSaldo:true}) +
             '<div id="warnSaldoKasir" style="display:none;background:#fee2e2;color:#991b1b;border-radius:8px;padding:8px;font-size:13px;margin-bottom:8px"></div>'+
-            '<label>PIN Transaksi Santri</label><input type="password" id="ktPin" placeholder="PIN">';
+            '<label>PIN Transaksi Santri</label><input type="password" id="ktPin" inputmode="numeric" placeholder="PIN Transaksi milik santri">';
+          var pilihKt = null;
           var modal = openModal('Konfirmasi Pembayaran', fieldsHtml, function(m){
-            var raw = m.querySelector('#ktSantri').value.trim();
-            var found = daftarSantri.find(function(s){ return (s.nisn+' - '+s.nama) === raw; });
-            if (!found) { alert('Pilih santri dari saran yang muncul saat mengetik.'); return false; }
+            var found = pilihKt.nilai();
+            if (!found) { alert('Pilih santri dulu dari daftar, atau pindai kartu QR-nya.'); return false; }
             if (found.saldo < totalBelanja) { alert('Saldo tidak cukup!\nSaldo: Rp'+found.saldo.toLocaleString('id-ID')+'\nBelanja: Rp'+totalBelanja.toLocaleString('id-ID')); return false; }
             var pin = m.querySelector('#ktPin').value.trim();
             if (!pin) { alert('PIN Transaksi wajib diisi.'); return false; }
@@ -8186,18 +8470,21 @@
               pemilikKasir();
             });
           });
-          // Tampilkan saldo santri saat dipilih
-          if (modal) {
-            var inp = modal.querySelector('#ktSantri');
-            if (inp) inp.addEventListener('change', function(){
-              var s = daftarSantri.find(function(x){return (x.nisn+' - '+x.nama)===inp.value.trim();});
-              var el=modal.querySelector('#infoSaldoKasir'), we=modal.querySelector('#warnSaldoKasir');
-              if(!s||!el){if(el)el.style.display='none';return;}
-              modal.querySelector('#txtSaldoKasir').textContent='Rp'+s.saldo.toLocaleString('id-ID');
-              el.style.display='block';
-              if(we){if(s.saldo<totalBelanja){we.style.display='block';we.textContent='⚠️ Saldo kurang! Kekurangan Rp'+(totalBelanja-s.saldo).toLocaleString('id-ID');el.style.background='#fee2e2';}else{we.style.display='none';el.style.background='#f0fdf4';}}
-            });
-          }
+          // Peringatan saldo kurang ditampilkan begitu santri dipilih, supaya kasir
+          // tahu sebelum meminta santri memasukkan PIN.
+          pilihKt = ikatPilihSantri(modal, 'ktSantri', daftarSantri, {
+            tampilSaldo: true,
+            onPilih: function(s){
+              var we = modal.querySelector('#warnSaldoKasir');
+              if (s.saldo < totalBelanja) {
+                we.style.display = 'block';
+                we.innerHTML = '&#9888;&#65039; Saldo kurang Rp' + (totalBelanja - s.saldo).toLocaleString('id-ID') + '. Transaksi tidak bisa diproses.';
+              } else {
+                we.style.display = 'none';
+                modal.querySelector('#ktPin').focus();
+              }
+            }
+          });
         });
       };
       renderCart();
@@ -8213,18 +8500,26 @@
       api('getSantriUntukTransaksiKantin', {}).then(function(resSantri){
         if(!resSantri.ok){ alert(resSantri.error); return; }
         var daftarSantri = resSantri.data;
-        var fieldsHtml = fieldAutocomplete('casSantri','Nama Santri', daftarSantri.map(function(s){return s.nisn+' - '+s.nama;}), '', 'Ketik nama/NISN santri...') +
-          '<label>PIN Transaksi Santri</label><input type="password" id="casPin" placeholder="PIN">';
-        openModal('Masuk Akun Santri', fieldsHtml, function(m){
-          var raw = m.querySelector('#casSantri').value.trim();
-          var found = daftarSantri.find(function(s){ return (s.nisn+' - '+s.nama) === raw; });
-          if (!found) { alert('Pilih santri dari saran yang muncul saat mengetik.'); return false; }
+        // Memakai pemilih santri yang sama persis dengan kasir: daftar langsung
+        // terlihat, bisa dicari, bisa dipindai lewat QR.
+        var fieldsHtml = fieldPilihSantri('casSantri','Pilih Santri', daftarSantri, {tampilSaldo:true}) +
+          '<label>PIN Transaksi Santri</label><input type="password" id="casPin" inputmode="numeric" placeholder="PIN Transaksi milik santri">';
+        var pilihCas = null;
+        var modalCas = openModal('Masuk Akun Santri', fieldsHtml, function(m){
+          var found = pilihCas.nilai();
+          if (!found) { alert('Pilih santri dulu dari daftar, atau pindai kartu QR-nya.'); return false; }
           var pin = m.querySelector('#casPin').value.trim();
           if (!pin) { alert('PIN Transaksi wajib diisi.'); return false; }
-          api('validasiPinTransaksiSantri', {nisn: found.nisn, pin: pin}).then(function(res){
-            if(!res.ok){ alert(res.error); return; }
+          // WAJIB di-return: tanpa ini modal langsung tertutup walau PIN salah,
+          // sehingga kasir harus mengulang dari awal setiap kali salah ketik.
+          return api('validasiPinTransaksiSantri', {nisn: found.nisn, pin: pin}).then(function(res){
+            if(!res.ok){ alert(res.error); throw new Error(res.error); }
             tampilkanAkunSantri(found.nisn, res.nama);
           });
+        });
+        pilihCas = ikatPilihSantri(modalCas, 'casSantri', daftarSantri, {
+          tampilSaldo: true,
+          onPilih: function(){ modalCas.querySelector('#casPin').focus(); }
         });
       });
     };
@@ -8515,7 +8810,7 @@
               var pesan = 'Assalamualaikum, saya ingin mengajukan tambah saldo kantin.\n\nNama Santri: '+namaSantri+'\nNominal: '+rupiah(nominal)+'\n\nBukti transfer akan segera saya kirimkan. Terima kasih.';
               window.open('https://wa.me/'+noWa+'?text='+encodeURIComponent(pesan), '_blank');
             }
-            root.removeChild(modal);
+            if (modal && modal.remove) modal.remove();
             document.getElementById('pesanTambahSaldo') && (document.getElementById('pesanTambahSaldo').innerHTML = '<p class="muted">Pengajuan terkirim, menunggu persetujuan Bendahara.</p>');
           });
           return false;
@@ -11920,7 +12215,7 @@
       else if ((b.potongan||0) === 0) tanda = ' <span style="background:#fef3c7;color:#92400e;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:10px">TANPA POTONGAN</span>';
       else if (b.potongan !== hitungPotonganLokal(bersih)) tanda = ' <span style="background:#e0f2fe;color:#075985;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:10px">MANUAL</span>';
       html += '<tr>' +
-        '<td>'+(b.foto?('<img src="'+esc(fotoUkuran(b.foto,80))+'" loading="lazy" style="width:44px;height:44px;object-fit:cover;border-radius:6px;display:block">'):'<span class="muted">-</span>')+'</td>' +
+        '<td><img src="'+esc(gambarProduk(b.foto, b.nama, 80))+'" loading="lazy" style="width:44px;height:44px;object-fit:cover;border-radius:6px;display:block"></td>' +
         '<td>'+esc(b.nama)+tanda+'</td>' +
         '<td>Rp'+bersih.toLocaleString('id-ID')+'</td>' +
         '<td>Rp'+(b.potongan||0).toLocaleString('id-ID')+'</td>' +
@@ -11939,13 +12234,52 @@
     }).catch(function(){});
   }
 
+  // Panel perbaikan kolom Kategori di sheet TransaksiKantin.
+  // Ditampilkan HANYA kalau benar-benar ada baris yang kategorinya kosong, supaya
+  // tidak menjadi tombol berbahaya yang menganggur di layar Admin selamanya.
+  function cekDanTampilkanPerbaikanKategori(){
+    var wrap = document.getElementById('panelPerbaikanKategori');
+    if (!wrap) return;
+    api('cekKategoriKosong', {}).then(function(r){
+      if (!r.ok || !r.kosong) { wrap.innerHTML = ''; return; }
+      wrap.innerHTML =
+        '<div class="card" style="border-left:4px solid #d97706">' +
+          '<h4 style="margin-top:0">&#9888;&#65039; Perlu Perbaikan Data Transaksi</h4>' +
+          '<p style="line-height:1.7;margin:6px 0"><b>' + r.kosong + ' dari ' + r.total + '</b> baris transaksi belum punya Kategori. ' +
+          'Kolom ini dipakai untuk menyaring, bukan sekadar label &mdash; selama kosong, ' +
+          '<b>limit jajan harian santri tidak berfungsi</b> dan <b>Riwayat Mutasi Saldo tampil kosong</b>.</p>' +
+          '<p class="muted" style="font-size:12.5px">Perbaikan mengisi kategori berdasarkan isi transaksinya (ada pemilik barang &rarr; Kantin, berisi &quot;Top Up&quot; &rarr; Top Up Saldo, dan seterusnya). Baris yang kategorinya sudah terisi tidak akan diubah.</p>' +
+          '<button id="btnPerbaikiKategori">Perbaiki Sekarang</button>' +
+          '<div id="hasilPerbaikanKategori"></div>' +
+        '</div>';
+      document.getElementById('btnPerbaikiKategori').onclick = function(){
+        if (!confirm('Isi Kategori untuk ' + r.kosong + ' baris yang masih kosong?\n\nBaris yang sudah terisi tidak akan diubah.')) return;
+        var btn = this; btn.disabled = true; btn.textContent = 'Memperbaiki...';
+        var el = document.getElementById('hasilPerbaikanKategori');
+        el.innerHTML = '<p class="muted">Sedang memperbaiki, mohon tunggu...</p>';
+        api('perbaikiKategoriTransaksi', {oleh: STATE.user.nama}).then(function(h){
+          btn.disabled = false; btn.textContent = 'Perbaiki Sekarang';
+          if (!h.ok) { el.innerHTML = errBox(h.error); return; }
+          var rincian = Object.keys(h.rincian || {}).map(function(k){
+            return k + ': ' + h.rincian[k];
+          }).join(' &middot; ');
+          el.innerHTML = '<div class="warn" style="background:#dcfce7;border-color:#86efac;color:#166534">' +
+            '&#9989; Selesai. ' + h.diperbaiki + ' baris diperbaiki dari ' + h.diperiksa + ' yang diperiksa.' +
+            (rincian ? '<br><span style="font-size:12.5px">' + rincian + '</span>' : '') + '</div>';
+          setTimeout(cekDanTampilkanPerbaikanKategori, 2000);
+        });
+      };
+    });
+  }
+
   function adminBarangKantin(){
     var c = getContentEl();
     c.innerHTML = '<p>Memuat...</p>';
     Promise.all([api('getMasterData', {sheet:'Guru'}), muatPersenPotongan()]).then(function(hasil){
       var resGuru = hasil[0];
       var daftarNamaGuru = resGuru.ok ? resGuru.data.data.map(function(g){return g.Nama;}) : [];
-      c.innerHTML = '<div class="card"><h3>Barang Kantin (Semua Pemilik)</h3>' +
+      c.innerHTML = '<div id="panelPerbaikanKategori"></div>' +
+        '<div class="card"><h3>Barang Kantin (Semua Pemilik)</h3>' +
         warnBox('Isi harga BERSIH yang ingin diterima pemilik -- potongan pondok ('+PERSEN_POTONGAN_KANTIN+'%) ditambahkan otomatis di atasnya. Khusus Admin/Mudir, potongan bisa diatur sendiri: dibebaskan, diisi nominal khusus, atau ditandai sebagai barang milik pondok (seluruh hasil penjualan masuk ke pondok). Pemilik barang tidak bisa mengubah pengaturan ini.') +
         '<button class="small" id="btnTambahBarang">+ Tambah Barang</button>' +
         '<div style="margin-top:10px"><input id="cariBarangAdmin" placeholder="Cari nama barang / pemilik..."></div>' +
@@ -11979,6 +12313,9 @@
         });
       }
       document.getElementById('cariBarangAdmin').oninput = gambarTabel;
+
+      // Panel perbaikan kolom Kategori -- hanya muncul kalau memang ada yang kosong.
+      cekDanTampilkanPerbaikanKategori();
 
       function muatDaftarBarang(){
         api('getBarangList', {}).then(function(res){
@@ -12927,7 +13264,7 @@
       '<div style="background:#f8fafc;border-radius:8px;padding:12px;font-size:13px;line-height:1.7;white-space:pre-wrap;margin-top:8px;max-height:400px;overflow-y:auto">'+esc(ma.isiLengkap||'Belum ada isi lengkap. Upload dan proses file terlebih dahulu.')+'</div></details>' +
       '<button class="secondary" style="margin-top:14px;width:100%" id="btnTutupMA">Tutup</button></div>';
     root.appendChild(overlay);
-    overlay.querySelector('#btnTutupMA').onclick = function(){ root.removeChild(overlay); };
+    overlay.querySelector('#btnTutupMA').onclick = function(){ if (overlay && overlay.remove) overlay.remove(); };
   }
 
   // ============ ADMIN: SOP ============
