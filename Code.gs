@@ -2304,7 +2304,7 @@ function getRekapPendapatanPondok(tglMulai, tglAkhir, jenis) {
   }).map((r,i) => ({
     rowIndex:i+2,
     tanggal: r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]),
-    waktu:norm(r[1]), jenis:norm(r[2]), keterangan:norm(r[3]),
+    waktu:formatWaktu(r[1],tz), jenis:norm(r[2]), keterangan:norm(r[3]),
     nominal:Number(r[4])||0, nisn:norm(r[5]), namaSantri:norm(r[6]), referensi:norm(r[7])
   })).sort((a,b) => b.tanggal.localeCompare(a.tanggal));
 }
@@ -2319,7 +2319,7 @@ function get5TransaksiTerbaruSantri(nisn) {
   return rows.filter(r => norm(r[2]) === nisn)
     .map(r => ({
       tanggal: r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]),
-      waktu:norm(r[1]), nominal:Number(r[4])||0,
+      waktu:formatWaktu(r[1],tz), nominal:Number(r[4])||0,
       kategori:norm(r[5]), keterangan:norm(r[6]),
       saldoSebelum:Number(r[11])||0, saldoSekarang:Number(r[12])||0
     }))
@@ -2342,7 +2342,7 @@ function getAllTransaksiSantri(nisn, tglMulai, tglAkhir) {
     return true;
   }).map(r => ({
     tanggal: r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]),
-    waktu:norm(r[1]), nominal:Number(r[4])||0,
+    waktu:formatWaktu(r[1],tz), nominal:Number(r[4])||0,
     kategori:norm(r[5]), keterangan:norm(r[6]),
     saldoSebelum:Number(r[11])||0, saldoSekarang:Number(r[12])||0
   })).sort((a,b) => (b.tanggal+b.waktu).localeCompare(a.tanggal+a.waktu));
@@ -3742,6 +3742,20 @@ function getSaldoSantriKantin(nisn) {
   return { nama:'', saldo:0, limit:0 };
 }
 
+// Format kolom waktu dari spreadsheet menjadi string "HH:mm".
+// Kolom waktu di Google Sheets BISA berupa: objek Date, string "13:44:11",
+// atau string kosong. Kalau langsung di-String() pada objek Date, hasilnya
+// "Sat Dec 30 1899 ..." -- itulah yang tampil di screenshot.
+function formatWaktu(nilaiWaktu, tz) {
+  if (!nilaiWaktu) return '';
+  if (nilaiWaktu instanceof Date) {
+    // Ambil HH:mm saja; detiknya tidak perlu ditampilkan ke pengguna
+    return Utilities.formatDate(nilaiWaktu, tz || Session.getScriptTimeZone(), 'HH:mm');
+  }
+  // Sudah berupa string: ambil hanya HH:mm (2 segmen pertama)
+  return String(nilaiWaktu).split(':').slice(0, 2).join(':');
+}
+
 function getRiwayatTransaksiSantriKantin(nisn, tglMulai, tglAkhir) {
   nisn = norm(nisn);
   const sh = getAktifKantinSS().getSheetByName(SHEET_TRANSAKSI_KANTIN);
@@ -3749,7 +3763,7 @@ function getRiwayatTransaksiSantriKantin(nisn, tglMulai, tglAkhir) {
   const tz = Session.getScriptTimeZone();
   return rows.map(function(r){
     const d = (r[0] instanceof Date) ? r[0] : new Date(r[0]);
-    return { tanggal: Utilities.formatDate(d,tz,'yyyy-MM-dd'), waktu: norm(r[1]), nisn: norm(r[2]), kategori: norm(r[5]),
+    return { tanggal: Utilities.formatDate(d,tz,'yyyy-MM-dd'), waktu: formatWaktu(r[1],tz), nisn: norm(r[2]), kategori: norm(r[5]),
       namaBarang: norm(r[6]), jumlah: Number(r[7])||0, nominal: Number(r[4])||0, saldoSekarang: Number(r[12])||0 };
   }).filter(function(x){
     if (x.nisn !== nisn) return false;
@@ -5822,7 +5836,7 @@ function getRiwayatHafalan(p) {
   return rows.map((r,idx) => ({
       rowIndex: idx+2,
       tanggal: r[0] instanceof Date ? Utilities.formatDate(r[0], tz, 'yyyy-MM-dd') : norm(r[0]),
-      waktu:norm(r[1]), halaqoh:norm(r[2]), pengampu:norm(r[3]),
+      waktu:formatWaktu(r[1],tz), halaqoh:norm(r[2]), pengampu:norm(r[3]),
       nisn:norm(r[4]), nama:norm(r[5]),
       jenis:norm(r[6]), surah:norm(r[7]), ayat:norm(r[8]),
       juz:r[9], halamanKe:norm(r[10]), nilai:r[11]
@@ -5878,7 +5892,7 @@ function getRekapHafalanSantri(nisn, tahunAjaranId) {
   const rows = sh.getDataRange().getValues(); rows.shift();
   const tz = Session.getScriptTimeZone();
   const riwayat = rows.filter(r=>norm(r[4])===nisn).map(r=>({
-      tanggal: Utilities.formatDate(new Date(r[0]),tz,'yyyy-MM-dd'), waktu:norm(r[1]), halaqoh:norm(r[2]), pengampu:norm(r[3]),
+      tanggal: Utilities.formatDate(new Date(r[0]),tz,'yyyy-MM-dd'), waktu:formatWaktu(r[1],tz), halaqoh:norm(r[2]), pengampu:norm(r[3]),
       jenis:norm(r[6]), surah:norm(r[7]), ayat:r[8], juz:r[9], halamanKe:r[10], nilai:r[11]
     })).sort((a,b)=> b.tanggal.localeCompare(a.tanggal));
 
@@ -8951,7 +8965,7 @@ function apiGetRekapKasKelas(p) {
       }
     }
     if (!jenisFilter || jenis === jenisFilter) {
-      riwayat.push({rowIndex:i+2, tanggal:norm(r[0]), waktu:norm(r[1]), tipe:tipe, jenis:jenis,
+      riwayat.push({rowIndex:i+2, tanggal:norm(r[0]), waktu:formatWaktu(r[1]), tipe:tipe, jenis:jenis,
         nisn:norm(r[5]), nama:norm(r[6]), nominal:nominal, keterangan:norm(r[8]), oleh:norm(r[9])});
     }
   });

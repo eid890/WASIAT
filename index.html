@@ -353,7 +353,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbzTa8_0Mr92LkCZEElDTuTHQdR4UTxQltOAfmE07V_64Jf3uh69lV9Rr9D7XgGdFZRa/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -649,6 +649,11 @@
 
 
 
+  // Penanda versi aplikasi. Ditampilkan di bagian bawah sidebar supaya Anda bisa
+  // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
+  // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
+  // masih memakai salinan lama.
+  var VERSI_APP = '2026.09.14-c';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -1539,6 +1544,25 @@
     m = santriList.find(function(s){ return s.nama.toLowerCase() === raw.toLowerCase(); });
     return m ? m.nisn : null;
   }
+  // Format string waktu dari backend menjadi "HH:mm" yang ringkas.
+  // Backend sudah menggunakan formatWaktu(), tapi fungsi ini dipasang
+  // sebagai pelapis kedua di sisi klien supaya tidak ada format ganjil
+  // yang lolos tampil ke pengguna, termasuk data lama yang mungkin masih
+  // tersimpan di cache offline.
+  function fmtWaktu(str){
+    var s = String(str || '').trim();
+    if (!s) return '';
+    // Format Date penuh (ciri khas bug 1899): ambil jam:menit dari string
+    if (s.length > 10 && s.indexOf(':') > 5) {
+      var m = s.match(/(\d{1,2}):(\d{2})(?::\d{2})?/);
+      return m ? m[1].padStart(2,'0') + ':' + m[2] : s;
+    }
+    // Format "HH:mm:ss" atau "HH:mm": ambil dua segmen pertama
+    var parts = s.split(':');
+    if (parts.length >= 2) return parts[0].padStart(2,'0') + ':' + parts[1];
+    return s;
+  }
+
   function labelSantri(s){ return s.nisn + ' - ' + s.nama; }
 
   // Minta versi berukuran tertentu dari foto yang tersimpan di Google Drive.
@@ -2100,6 +2124,9 @@
     ],
     'PemilikBarang': [
       {key:'kasir',           label:'Kasir (Jual)',         icon:'&#128717;'},
+      // 'barang' sebelumnya TIDAK ADA di sini, sehingga pemilik barang yang punya
+      // lebih dari satu peran tidak bisa mengelola dagangannya sama sekali.
+      {key:'barang',          label:'Barang Jualan Saya',  icon:'&#128230;'},
       {key:'riwayat',         label:'Riwayat Transaksi',   icon:'&#128203;'},
       {key:'omzet',           label:'Laporan Omzet',       icon:'&#128200;'},
       {key:'saldo',           label:'Saldo & Tarik',       icon:'&#128176;'},
@@ -2162,14 +2189,20 @@
       wk_rapor:function(){ raporSemuaSantriKelas(wkGetKelas()); },
       wk_kas:wkKasKelas,
       // Bendahara
-      dasbor:bendDasbor, transaksi:bendTransaksi, tarikkasir:bendTarikSaldoSantri,
+      // CATATAN: 'tambahsaldo' dan 'riwayatmutasi' SEBELUMNYA TIDAK ADA di sini,
+      // padahal menunya ditampilkan. Akibatnya Bendahara yang punya lebih dari satu
+      // peran (misal Bendahara + Guru) menekan "Tambah Saldo Santri" dan tidak
+      // terjadi apa-apa -- layarnya diam saja tanpa pesan error.
+      dasbor:bendDasbor, transaksi:bendTransaksi,
+      tambahsaldo:bendTambahSaldoSantri, tarikkasir:bendTarikSaldoSantri,
+      riwayatmutasi:bendRiwayatMutasiSaldo,
       bku:bendBKU, laporan:bendLaporan, pendapatan:bendPendapatanPondok,
       anggaran:bendAnggaran,
       spp:function(){ renderSppSantri(STATE._contentId||'db-content'); },
       persetujuan:function(){ renderPersetujuanSaldo(STATE._contentId||'db-content'); },
       pengaturan:bendPengaturanKantin, tarif:bendTarif, kategori:bendKategori,
       // Pemilik Barang
-      kasir:pemilikKasir, riwayat:pemilikRiwayat, omzet:pemilikOmzet,
+      kasir:pemilikKasir, barang:pemilikKelolaBarang, riwayat:pemilikRiwayat, omzet:pemilikOmzet,
       saldo:pemilikSaldo, riwsaldo:pemilikRiwayatSaldo,
       // Pembina (lama) + Pembina Putra + Pembina Putri
       absen:pembinaAbsen, rekap:pembinaRekap, profilsaya:guruProfilSaya,
@@ -2275,6 +2308,7 @@
             '<div class="lvl">'+esc(validRoles.map(labelRole).join(', '))+'</div>'+
             '<button class="small" id="sbSiapOffline">&#128229; Siapkan Offline</button>'+
             '<button class="small" id="sbLogout">Keluar</button>'+
+            '<div style="font-size:10.5px;opacity:.55;margin-top:6px;text-align:center">v'+VERSI_APP+'</div>'+
           '</div>'+
         '</nav>'+
         '<div class="main-content">'+
@@ -3511,7 +3545,7 @@
                res.riwayat.map(function(r){
                  var warna = r.tipe === 'Keluar' ? '#dc2626' : '#16a34a';
                  var tanda = r.tipe === 'Keluar' ? '-' : '+';
-                 return '<tr><td>'+esc(r.tanggal)+'<br><span class="muted" style="font-size:11px">'+esc(r.waktu)+'</span></td>' +
+                 return '<tr><td>'+esc(r.tanggal)+'<br><span class="muted" style="font-size:11px">'+fmtWaktu(r.waktu)+'</span></td>' +
                    '<td>'+esc(r.nama || '<span class="muted">(pengeluaran)</span>')+'</td>' +
                    '<td style="color:'+warna+';font-weight:700">'+tanda+'Rp'+r.nominal.toLocaleString('id-ID')+'</td>' +
                    '<td>'+esc(r.keterangan||'-')+'</td>' +
@@ -4106,7 +4140,8 @@
           '<div class="sidebar-user"><div class="nm">'+esc(STATE.user.nama)+'</div><div class="lvl">'+esc(labelRole(STATE.user.level))+'</div>' +
             ((STATE.user.roles && STATE.user.roles.length > 1) ? '<button class="small" id="sbGantiRole">Ganti Akses</button>' : '') +
             '<button class="small" id="sbSiapOffline">&#128229; Siapkan Offline</button>' +
-            '<button class="small" id="sbLogout">Keluar</button></div>' +
+            '<button class="small" id="sbLogout">Keluar</button>' +
+            '<div style="font-size:10.5px;opacity:.55;margin-top:6px;text-align:center">v'+VERSI_APP+'</div></div>' +
         '</nav>' +
         '<div class="main-content">' +
           '<div class="mobile-topbar"><button class="hamburger-btn" id="btnHamburger">&#9776;</button><span class="mobile-title">'+esc(opts.title)+'</span></div>' +
@@ -6122,7 +6157,7 @@
             var html = '<table><tr><th>Tanggal</th><th>Waktu</th><th>Nama</th><th>Jenis</th><th>Surah/Ayat/Juz/Hal</th><th>Nilai</th><th>Aksi</th></tr>';
             res.data.forEach(function(r){
               var detail = detailHafalan(r);
-              html += '<tr><td>'+esc(r.tanggal)+'</td><td>'+esc(r.waktu)+'</td><td>'+esc(r.nama)+'</td><td>'+badgeJenisHafalan(r.jenis)+'</td><td>'+detail+'</td><td>'+(r.nilai!=null&&r.nilai!==''?esc(r.nilai):'-')+'</td>' +
+              html += '<tr><td>'+esc(r.tanggal)+'</td><td>'+fmtWaktu(r.waktu)+'</td><td>'+esc(r.nama)+'</td><td>'+badgeJenisHafalan(r.jenis)+'</td><td>'+detail+'</td><td>'+(r.nilai!=null&&r.nilai!==''?esc(r.nilai):'-')+'</td>' +
                 '<td><button class="small btnEditH" data-row="'+r.rowIndex+'">Edit</button> <button class="small danger btnHapusH" data-row="'+r.rowIndex+'">Hapus</button></td></tr>';
             });
             html += '</table>';
@@ -7558,12 +7593,15 @@
       if(!res.ok){c.innerHTML=errBox(res.error);return;}
       var daftar=res.data;
       c.innerHTML='<div class="card"><h3>&#128717; Tarik Saldo Santri</h3>'+
-        warnBox('Fitur ini untuk mencatat penarikan/penggunaan saldo santri selain belanja kantin. Saldo santri akan berkurang dan notifikasi WA otomatis terkirim ke orang tua.')+
-        fieldAutocomplete('tsNama','Nama Santri',daftar.map(function(s){return s.nisn+' - '+s.nama;}),'','Ketik nama santri...')+
-        '<div id="tsInfoSaldo" style="margin:6px 0;font-size:13px;color:#64748b"></div>'+
+        warnBox('Untuk mencatat penarikan/penggunaan saldo santri selain belanja kantin. Saldo santri akan berkurang dan notifikasi otomatis terkirim ke orang tua.')+
+        // Memakai pemilih santri yang sama dengan kasir: daftar langsung terlihat,
+        // bisa dicari, bisa dipindai QR. Sebelumnya memakai datalist yang di HP
+        // sering tidak memunculkan saran sama sekali.
+        fieldPilihSantri('tsNama','Pilih Santri', daftar, {tampilSaldo:true})+
         fieldText('tsNominal','Nominal Penarikan (Rp)','')+
+        '<div id="tsSisa" style="margin:-4px 0 10px;font-size:13px"></div>'+
         '<label>Keterangan</label>'+
-        '<select id="tsKetDropdown" onchange="updateKetTarik()">'+
+        '<select id="tsKetDropdown">'+
         '<option value="Tarik Tunai">Tarik Tunai</option>'+
         '<option value="Beli Bazar">Beli Bazar</option>'+
         '<option value="Bayar Kegiatan Pondok">Bayar Kegiatan Pondok</option>'+
@@ -7574,49 +7612,63 @@
         '<button id="btnTarikSaldo" style="margin-top:12px">Tarik Saldo</button>'+
         '<div id="pesanTarik"></div></div>';
 
-      window.updateKetTarik=function(){
-        var v=document.getElementById('tsKetDropdown').value;
-        document.getElementById('tsKetTulis').style.display=v==='Lainnya'?'block':'none';
-      };
+      var pilihTs = ikatPilihSantri(document, 'tsNama', daftar, {
+        tampilSaldo:true, onPilih: perbaruiSisa
+      });
 
-      // Tampil saldo saat ini ketika santri dipilih
-      document.getElementById('tsNama').oninput=function(){
-        var raw=this.value.trim();
-        var found=daftar.find(function(s){return (s.nisn+' - '+s.nama)===raw;});
-        if(found){
-          api('getSaldoSantriKantin',{nisn:found.nisn}).then(function(r){
-            document.getElementById('tsInfoSaldo').innerHTML=r.ok?
-              '<b>Saldo saat ini: '+rupiah(r.data.saldo)+'</b>'+(r.data.limit>0?' | Limit harian: '+rupiah(r.data.limit):''):
-              '<span class="muted">Gagal memuat saldo</span>';
-          });
-        } else {
-          document.getElementById('tsInfoSaldo').innerHTML='';
-        }
+      // Tampilkan sisa saldo setelah penarikan, dan cegah lebih awal kalau kurang.
+      function perbaruiSisa(){
+        var s2 = pilihTs.nilai();
+        var nom = Number(String(document.getElementById('tsNominal').value).replace(/[^\d]/g,''))||0;
+        var el = document.getElementById('tsSisa');
+        if(!s2 || nom<=0){ el.innerHTML=''; return; }
+        var sisa = s2.saldo - nom;
+        el.innerHTML = 'Sisa setelah ditarik: <b style="color:'+(sisa<0?'#dc2626':'#0f766e')+'">'+rupiah(sisa)+'</b>'+
+          (sisa<0?' <span style="color:#dc2626">(saldo tidak cukup)</span>':'');
+      }
+      document.getElementById('tsNominal').oninput = perbaruiSisa;
+      // Dipasang lewat JS, bukan atribut onchange di HTML -- handler global lewat
+      // atribut mudah patah kalau halaman dirender ulang.
+      document.getElementById('tsKetDropdown').onchange=function(){
+        document.getElementById('tsKetTulis').style.display=this.value==='Lainnya'?'block':'none';
       };
 
       document.getElementById('btnTarikSaldo').onclick=function(){
-        var raw=document.getElementById('tsNama').value.trim();
-        var found=daftar.find(function(s){return (s.nisn+' - '+s.nama)===raw;});
-        if(!found){document.getElementById('pesanTarik').innerHTML=errBox('Pilih santri dari daftar saran.');return;}
-        var nominal=document.getElementById('tsNominal').value.trim();
-        if(!nominal||Number(nominal)<=0){document.getElementById('pesanTarik').innerHTML=errBox('Isi nominal yang valid.');return;}
+        var found = pilihTs.nilai();
+        if(!found){document.getElementById('pesanTarik').innerHTML=errBox('Pilih santri dulu dari daftar, atau pindai kartu QR-nya.');return;}
+        var nominal=Number(String(document.getElementById('tsNominal').value).replace(/[^\d]/g,''))||0;
+        if(nominal<=0){document.getElementById('pesanTarik').innerHTML=errBox('Isi nominal yang valid.');return;}
+        // Dicegah di sini supaya Bendahara tahu sebelum menekan, bukan setelah
+        // permintaan bolak-balik ke server.
+        if(nominal > found.saldo){
+          document.getElementById('pesanTarik').innerHTML=errBox('Saldo '+found.nama+' hanya '+rupiah(found.saldo)+', tidak cukup untuk menarik '+rupiah(nominal)+'.');
+          return;
+        }
         var ketDropdown=document.getElementById('tsKetDropdown').value;
         var ket=ketDropdown==='Lainnya'?document.getElementById('tsKetTulis').value.trim():ketDropdown;
         if(!ket){document.getElementById('pesanTarik').innerHTML=errBox('Isi keterangan.');return;}
         if(!confirm('Tarik saldo '+found.nama+' sebesar '+rupiah(nominal)+'?\nKeterangan: '+ket)) return;
-        var btn=document.getElementById('btnTarikSaldo');btn.disabled=true;btn.textContent='Memproses...';
+        var btn=document.getElementById('btnTarikSaldo');
+        loadingBtn(btn,'Memproses...');
         api('tarikSaldoSantriBendahara',{nisn:found.nisn,nominal:nominal,keterangan:ket,oleh:STATE.user.nama})
           .then(function(r){
-            btn.disabled=false;btn.textContent='Tarik Saldo';
+            resetBtn(btn,'Tarik Saldo');
             if(!r.ok){document.getElementById('pesanTarik').innerHTML=errBox(r.error);return;}
             document.getElementById('pesanTarik').innerHTML=
               '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;margin-top:8px">'+
               '&#10004; Berhasil! Saldo <b>'+esc(r.nama)+'</b> berkurang '+rupiah(nominal)+'.<br>'+
               'Saldo sebelum: '+rupiah(r.saldoSebelum)+' &rarr; Saldo sekarang: <b>'+rupiah(r.saldoSekarang)+'</b>'+
               '</div>';
-            document.getElementById('tsNama').value='';
+            // Segarkan saldo di daftar supaya penarikan berikutnya memakai angka
+            // terbaru -- sebelumnya daftar tetap memakai saldo lama sampai halaman
+            // dibuka ulang, sehingga pemeriksaan "cukup/tidak" bisa keliru.
+            found.saldo = r.saldoSekarang;
+            pilihTs.pilih(found.nisn);
             document.getElementById('tsNominal').value='';
-            document.getElementById('tsInfoSaldo').innerHTML='';
+            perbaruiSisa();
+          }).catch(function(){
+            resetBtn(btn,'Tarik Saldo');
+            document.getElementById('pesanTarik').innerHTML=errBox('Gagal memproses. Coba lagi.');
           });
       };
     });
@@ -7673,7 +7725,7 @@
           var prefix = isTopUp ? '+' : '-';
           var ikon = isTopUp ? '💰' : '🏧';
           html += '<tr>' +
-            '<td style="white-space:nowrap">'+esc(r.tanggal)+'<br><span class="muted" style="font-size:10px">'+esc(r.waktu)+'</span></td>' +
+            '<td style="white-space:nowrap">'+esc(r.tanggal)+'<br><span class="muted" style="font-size:10px">'+fmtWaktu(r.waktu)+'</span></td>' +
             '<td><b>'+esc(r.namaSantri)+'</b><br><span class="muted" style="font-size:10px">'+esc(r.nisn)+'</span></td>' +
             '<td style="color:'+warna+';font-weight:600;white-space:nowrap">'+ikon+' '+(isTopUp?'Tambah':'Tarik')+'</td>' +
             '<td style="font-size:11px;color:#475569">'+esc(r.keterangan||'-')+'</td>' +
@@ -7713,10 +7765,13 @@
       if (!res.ok){ c.innerHTML = errBox(res.error); return; }
       var daftar = res.data;
       c.innerHTML = '<div class="card"><h3>&#128176; Tambah Saldo Santri</h3>' +
-        warnBox('Bendahara dapat langsung menambah saldo santri tanpa perlu menunggu pengajuan dari orang tua. Notifikasi WA otomatis terkirim ke orang tua setelah saldo ditambahkan.') +
-        fieldAutocomplete('tsaNama','Nama Santri', daftar.map(function(s){return s.nisn+' - '+s.nama;}), '', 'Ketik nama/NISN santri...') +
-        '<div id="tsaInfoSaldo" style="margin:6px 0;padding:8px 12px;background:#f0fdf4;border-radius:8px;font-size:13px;display:none"></div>' +
+        warnBox('Bendahara dapat langsung menambah saldo santri tanpa menunggu pengajuan orang tua. Notifikasi otomatis terkirim ke orang tua setelah saldo ditambahkan.') +
+        // Pemilih santri yang sama dengan kasir: daftar langsung terlihat, bisa
+        // dicari, bisa dipindai QR. Datalist sebelumnya sering tidak memunculkan
+        // saran di HP sehingga santri terasa "tidak bisa dipilih".
+        fieldPilihSantri('tsaNama','Pilih Santri', daftar, {tampilSaldo:true}) +
         fieldText('tsaNominal','Nominal Tambah Saldo (Rp)', '') +
+        '<div id="tsaSesudah" style="margin:-4px 0 10px;font-size:13px"></div>' +
         '<label>Keterangan</label>' +
         '<select id="tsaKetDropdown">' +
         '<option value="Top-Up Saldo Kantin">Top-Up Saldo Kantin</option>' +
@@ -7729,52 +7784,46 @@
         '<button id="btnTambahSaldaBend" style="margin-top:12px">&#128176; Tambah Saldo</button>' +
         '<div id="pesanTambahSaldo"></div></div>';
 
+      var pilihTsa = ikatPilihSantri(document, 'tsaNama', daftar, {
+        tampilSaldo:true, onPilih: perbaruiSesudah
+      });
+
+      function perbaruiSesudah(){
+        var s2 = pilihTsa.nilai();
+        var nom = Number(String(document.getElementById('tsaNominal').value).replace(/[^\d]/g,''))||0;
+        var el = document.getElementById('tsaSesudah');
+        if(!s2 || nom<=0){ el.innerHTML=''; return; }
+        el.innerHTML = 'Saldo setelah ditambah: <b style="color:#0f766e">'+rupiah(s2.saldo + nom)+'</b>';
+      }
+      document.getElementById('tsaNominal').oninput = perbaruiSesudah;
       document.getElementById('tsaKetDropdown').onchange = function(){
         document.getElementById('tsaKetTulis').style.display = this.value === 'Lainnya' ? 'block' : 'none';
       };
 
-      // Tampil saldo saat santri dipilih
-      document.getElementById('tsaNama').oninput = function(){
-        var raw = this.value.trim();
-        var found = daftar.find(function(s){return (s.nisn+' - '+s.nama) === raw;});
-        var info = document.getElementById('tsaInfoSaldo');
-        if (found){
-          api('getSaldoSantriKantin', {nisn: found.nisn}).then(function(r){
-            if (!document.getElementById('tsaInfoSaldo')) return;
-            info.style.display = 'block';
-            info.innerHTML = r.ok ?
-              '&#128176; Saldo saat ini: <b>'+rupiah(r.data.saldo)+'</b>' +
-              (r.data.limit>0 ? ' &nbsp;|&nbsp; Limit harian: '+rupiah(r.data.limit) : '') :
-              '<span class="muted">Gagal memuat saldo</span>';
-          });
-        } else {
-          info.style.display = 'none';
-          info.innerHTML = '';
-        }
-      };
-
       document.getElementById('btnTambahSaldaBend').onclick = function(){
-        var raw = document.getElementById('tsaNama').value.trim();
-        var found = daftar.find(function(s){return (s.nisn+' - '+s.nama) === raw;});
-        if (!found){ document.getElementById('pesanTambahSaldo').innerHTML = errBox('Pilih santri dari daftar saran.'); return; }
-        var nominal = document.getElementById('tsaNominal').value.trim();
-        if (!nominal || Number(nominal) <= 0){ document.getElementById('pesanTambahSaldo').innerHTML = errBox('Isi nominal yang valid.'); return; }
+        var found = pilihTsa.nilai();
+        if (!found){ document.getElementById('pesanTambahSaldo').innerHTML = errBox('Pilih santri dulu dari daftar, atau pindai kartu QR-nya.'); return; }
+        var nominal = Number(String(document.getElementById('tsaNominal').value).replace(/[^\d]/g,''))||0;
+        if (nominal <= 0){ document.getElementById('pesanTambahSaldo').innerHTML = errBox('Isi nominal yang valid.'); return; }
         var ketDropdown = document.getElementById('tsaKetDropdown').value;
         var ket = ketDropdown === 'Lainnya' ? (document.getElementById('tsaKetTulis').value.trim() || 'Top-Up Manual') : ketDropdown;
+        if (!confirm('Tambah saldo '+found.nama+' sebesar '+rupiah(nominal)+'?\nKeterangan: '+ket)) return;
         var btn = document.getElementById('btnTambahSaldaBend');
         loadingBtn(btn, 'Menyimpan...');
-        api('tambahSaldoSantriManual', {nisn: found.nisn, nominal: Number(nominal), keterangan: ket, oleh: STATE.user.nama}).then(function(r){
+        api('tambahSaldoSantriManual', {nisn: found.nisn, nominal: nominal, keterangan: ket, oleh: STATE.user.nama}).then(function(r){
           resetBtn(btn, '&#128176; Tambah Saldo');
           if (!r.ok){ document.getElementById('pesanTambahSaldo').innerHTML = errBox(r.error); return; }
           document.getElementById('pesanTambahSaldo').innerHTML =
             '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;font-size:13px;color:#16a34a">' +
-            '&#10003; Saldo <b>'+esc(r.nama)+'</b> berhasil ditambah <b>'+rupiah(Number(nominal))+'</b>.<br>' +
-            'Saldo sebelum: '+rupiah(r.saldoSebelum)+' &nbsp;→&nbsp; Saldo baru: <b>'+rupiah(r.saldoBaru)+'</b>' +
+            '&#10003; Saldo <b>'+esc(r.nama)+'</b> berhasil ditambah <b>'+rupiah(nominal)+'</b>.<br>' +
+            'Saldo sebelum: '+rupiah(r.saldoSebelum)+' &nbsp;&rarr;&nbsp; Saldo baru: <b>'+rupiah(r.saldoBaru)+'</b>' +
             (r.waKirim ? '<br><span style="font-size:11px;opacity:.8">&#10003; Notifikasi WA terkirim ke orang tua</span>' : '') +
             '</div>';
-          // Reset form
+          // Segarkan saldo di daftar supaya penambahan berikutnya memakai angka terbaru
+          found.saldo = r.saldoBaru;
+          pilihTsa.pilih(found.nisn);
           document.getElementById('tsaNominal').value = '';
-          document.getElementById('tsaInfoSaldo').innerHTML = '&#128176; Saldo baru: <b>'+rupiah(r.saldoBaru)+'</b>';
+          perbaruiSesudah();
         }).catch(function(){
           resetBtn(btn, '&#128176; Tambah Saldo');
           document.getElementById('pesanTambahSaldo').innerHTML = errBox('Gagal menyimpan. Coba lagi.');
@@ -8663,7 +8712,7 @@
         var html = '<table><tr><th>Tanggal</th><th>Waktu</th><th>Santri</th><th>Barang</th><th>Jml</th><th>Nominal</th><th>Masuk ke Saya</th></tr>';
         res.data.forEach(function(r){
           if (r.tanggal === hariIni) totalHariIni += r.masuk;
-          html += '<tr><td>'+esc(r.tanggal)+'</td><td>'+esc(r.waktu)+'</td><td>'+esc(r.namaSantri)+'</td><td>'+esc(r.namaBarang)+'</td><td>'+r.jumlah+'</td><td>Rp'+r.nominal.toLocaleString('id-ID')+'</td><td>Rp'+r.masuk.toLocaleString('id-ID')+'</td></tr>';
+          html += '<tr><td>'+esc(r.tanggal)+'</td><td>'+fmtWaktu(r.waktu)+'</td><td>'+esc(r.namaSantri)+'</td><td>'+esc(r.namaBarang)+'</td><td>'+r.jumlah+'</td><td>Rp'+r.nominal.toLocaleString('id-ID')+'</td><td>Rp'+r.masuk.toLocaleString('id-ID')+'</td></tr>';
         });
         html += '</table>';
         document.getElementById('riwayatKantinWrap').innerHTML = '<p style="font-weight:700;margin-bottom:8px">Total Masuk Hari Ini: Rp'+totalHariIni.toLocaleString('id-ID')+'</p>' + html;
@@ -8817,7 +8866,7 @@
           res.data.map(function(r){
             var warna = r.jenis==='Masuk' ? '#16a34a' : '#dc2626';
             var prefix = r.jenis==='Masuk' ? '+' : '-';
-            return '<tr><td>'+esc(r.tanggal)+'</td><td>'+esc(r.waktu)+'</td>' +
+            return '<tr><td>'+esc(r.tanggal)+'</td><td>'+fmtWaktu(r.waktu)+'</td>' +
               '<td><span style="color:'+warna+';font-weight:600">'+esc(r.jenis)+'</span></td>' +
               '<td style="color:'+warna+';font-weight:600">'+prefix+rupiah(r.nominal)+'</td>' +
               '<td>'+rupiah(r.saldoSebelum)+'</td>' +
@@ -8964,7 +9013,7 @@
           var ikon = isTopUp ? '💰' : '🏧';
           var label = isTopUp ? 'Tambah Saldo' : 'Tarik Saldo';
           html += '<tr>' +
-            '<td style="font-size:11.5px;white-space:nowrap">'+esc(r.tanggal)+'<br><span class="muted" style="font-size:10px">'+esc(r.waktu)+'</span></td>' +
+            '<td style="font-size:11.5px;white-space:nowrap">'+esc(r.tanggal)+'<br><span class="muted" style="font-size:10px">'+fmtWaktu(r.waktu)+'</span></td>' +
             '<td><span style="color:'+warna+';font-weight:600">'+ikon+' '+esc(label)+'</span></td>' +
             '<td style="font-size:12px;color:#475569">'+esc(r.keterangan||'-')+'</td>' +
             '<td style="font-size:11px;color:#94a3b8">'+esc(r.dicatatOleh||'-')+'</td>' +
