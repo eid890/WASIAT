@@ -353,7 +353,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyBefHJ1APR-OiiAWUumRmEQZzrVRI2NSTTH6kpTs7rVDnwHeduNeBbm86UQQC0FheT/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -382,6 +382,22 @@
   var JENIS_HAFALAN_ALL = ['Sabaq','Sabqi','Manzil','Murojaah','Tahsin','Tidak Setor','Izin','Izin Pulang','Sakit','Ghaib'];
   var JENIS_HAFALAN_SETOR = ['Sabaq','Sabqi','Manzil','Murojaah','Tahsin'];
   var PETA_KELAS_BADGE_HAFALAN = {'Sabaq':'sabaq','Sabqi':'sabqi','Manzil':'manzil','Murojaah':'murojaah','Tahsin':'tahsin','Tidak Setor':'tidaksetor','Izin':'izin','Izin Pulang':'izinpulang','Sakit':'sakit','Ghaib':'ghaib'};
+  // Rangkai detail setoran hanya dari bagian yang BENAR-BENAR terisi.
+  // Sebelumnya semua bagian selalu dirangkai apa adanya, sehingga catatan yang
+  // datanya kosong tampil sebagai ": , Juz , Hal" -- membingungkan wali santri
+  // karena terlihat seperti kerusakan aplikasi, padahal isinya memang kosong.
+  function detailHafalan(r){
+    if (JENIS_HAFALAN_SETOR.indexOf(r.jenis) === -1) return '-';
+    function ada(v){ return String(v == null ? '' : v).trim(); }
+    var bagian = [];
+    if (ada(r.surah)) bagian.push(esc(r.surah) + (ada(r.ayat) ? (' : ' + esc(r.ayat)) : ''));
+    else if (ada(r.ayat)) bagian.push('Ayat ' + esc(r.ayat));
+    if (ada(r.juz)) bagian.push('Juz ' + esc(r.juz));
+    if (ada(r.halamanKe)) bagian.push('Hal ' + esc(r.halamanKe));
+    return bagian.length ? bagian.join(', ')
+      : '<span class="muted" style="font-style:italic">detail tidak terisi</span>';
+  }
+
   function badgeJenisHafalan(jenis){
     var kelas = PETA_KELAS_BADGE_HAFALAN[jenis] || 'tidaksetor';
     return '<span class="badge-hafalan '+kelas+'">'+esc(jenis)+'</span>';
@@ -666,6 +682,9 @@
     // Lepaskan pendaftaran notifikasi juga -- kalau tidak, HP ini akan terus
     // menerima pengingat milik akun sebelumnya walau sudah dipakai orang lain.
     try { if (window.OneSignal && _osSiap) window.OneSignal.logout(); } catch(e) {}
+    // Cabut verifikasi PIN pemilik barang, supaya akun berikutnya tidak mewarisi
+    // akses terbuka ke menu harga produk dan saldo.
+    try { _pinPemilikTerbukaSampai = 0; } catch(e) {}
   }
 
   // ---------------- MODE OFFLINE: antrian & auto-sinkron ----------------
@@ -5101,7 +5120,7 @@
           if(!res.data.length){ setHtmlSafe(containerId+'_riwayatHafalan', '<p class="muted">Tidak ada catatan hafalan pada bulan ini.</p>'); return; }
           var html = '<table><tr><th>Tanggal</th><th>Jenis</th><th>Surah/Ayat/Juz/Hal</th><th>Nilai</th></tr>' +
             res.data.map(function(r){
-              var detail = JENIS_HAFALAN_SETOR.indexOf(r.jenis)!==-1 ? (esc(r.surah)+' : '+esc(r.ayat)+', Juz '+esc(r.juz)+', Hal '+esc(r.halamanKe)) : '-';
+              var detail = detailHafalan(r);
               return '<tr><td>'+esc(r.tanggal)+'</td><td>'+badgeJenisHafalan(r.jenis)+'</td><td>'+detail+'</td><td>'+(r.nilai!=null&&r.nilai!==''?esc(r.nilai):'-')+'</td></tr>';
             }).join('') + '</table>';
           setHtmlSafe(containerId+'_riwayatHafalan', html);
@@ -5608,6 +5627,9 @@
           if (JENIS_HAFALAN_SETOR.indexOf(jenis) !== -1) {
             it.nilai = row.querySelector('.nilaiSelect').value;
             var mode = row.querySelector('.modeInput').value;
+            // Nilai wajib untuk semua jenis setoran. Tanpa ini catatan hafalan
+            // tersimpan tanpa nilai dan tidak berguna untuk rekap maupun rapor.
+            if (!it.nilai) { adaError = true; pesanError = 'Nilai belum dipilih untuk ' + it.nama + '.'; }
 
             if (mode === 'ayat') {
               // MODE 1: Per Ayat (existing)
@@ -5621,6 +5643,11 @@
               var halamanAkhir = row.querySelector('.halamanAkhirInput').value || halamanAwal;
               if (halamanAkhir && halamanAwal && Number(halamanAkhir) < Number(halamanAwal)) { adaError = true; pesanError = 'Halaman "sampai" lebih kecil dari "dari".'; }
               it.halamanKe = (!halamanAkhir || halamanAwal === halamanAkhir) ? halamanAwal : (halamanAwal + ' - ' + halamanAkhir);
+              // Mode ini sebelumnya TIDAK punya validasi isi sama sekali -- akibatnya
+              // catatan bisa tersimpan dengan surah, ayat, juz, dan halaman semuanya
+              // kosong, lalu tampil sebagai ": , Juz , Hal" di akun santri.
+              if (!String(it.surah||'').trim()) { adaError = true; pesanError = 'Surah belum dipilih untuk ' + it.nama + '.'; }
+              else if (!String(it.ayat||'').trim() && !String(it.halamanKe||'').trim()) { adaError = true; pesanError = 'Isi ayat atau halaman untuk ' + it.nama + '.'; }
 
             } else if (mode === 'halaman') {
               // MODE 2: Per Rentang Halaman
@@ -6094,7 +6121,7 @@
             if(!res.data.length){ setHtmlSafe('riwayatHTable', '<p class="muted">Belum ada data.</p>'); return; }
             var html = '<table><tr><th>Tanggal</th><th>Waktu</th><th>Nama</th><th>Jenis</th><th>Surah/Ayat/Juz/Hal</th><th>Nilai</th><th>Aksi</th></tr>';
             res.data.forEach(function(r){
-              var detail = JENIS_HAFALAN_SETOR.indexOf(r.jenis)!==-1 ? (esc(r.surah)+' : '+esc(r.ayat)+', Juz '+esc(r.juz)+', Hal '+esc(r.halamanKe)) : '-';
+              var detail = detailHafalan(r);
               html += '<tr><td>'+esc(r.tanggal)+'</td><td>'+esc(r.waktu)+'</td><td>'+esc(r.nama)+'</td><td>'+badgeJenisHafalan(r.jenis)+'</td><td>'+detail+'</td><td>'+(r.nilai!=null&&r.nilai!==''?esc(r.nilai):'-')+'</td>' +
                 '<td><button class="small btnEditH" data-row="'+r.rowIndex+'">Edit</button> <button class="small danger btnHapusH" data-row="'+r.rowIndex+'">Hapus</button></td></tr>';
             });
@@ -8344,20 +8371,67 @@
   // ---------------- PEMILIK BARANG (fondasi -- fitur kantin lengkap menyusul) ----------------
   var kantinCart = []; // keranjang sementara (di memori, reset tiap buka halaman Kasir)
 
+  // ---- Kunci PIN untuk menu sensitif Pemilik Barang ----
+  // HP kasir sering dipinjamkan ke santri untuk mengecek saldo/akunnya. Tanpa kunci,
+  // santri bisa membuka "Barang Jualan Saya" dan mengubah harga produk, atau
+  // mengajukan penarikan saldo pemilik. Menu yang menyangkut uang dan harga karena
+  // itu dikunci dengan PIN login pemilik.
+  //
+  // Menu Kasir dan Cek Akun Santri SENGAJA tidak dikunci -- itu justru yang perlu
+  // dipakai santri saat meminjam HP.
+  var MENU_PERLU_PIN = ['barang','saldo','omzet','riwsaldo','riwayat'];
+  var _pinPemilikTerbukaSampai = 0;   // waktu kedaluwarsa verifikasi (di memori saja)
+
+  function pinPemilikMasihBerlaku(){ return Date.now() < _pinPemilikTerbukaSampai; }
+
+  // Minta PIN sekali, lalu berlaku 5 menit supaya pemilik tidak perlu mengetik
+  // berulang kali saat berpindah antar menu. Disimpan di memori, BUKAN localStorage,
+  // sehingga hilang begitu aplikasi ditutup atau dimuat ulang.
+  function mintaPinPemilik(lanjut){
+    if (pinPemilikMasihBerlaku()) { lanjut(); return; }
+    var fields =
+      warnBox('Menu ini berisi harga produk dan saldo Anda. Masukkan PIN login Anda untuk membukanya.') +
+      '<label>PIN Login Anda</label><input type="password" id="pinPemilikInput" inputmode="numeric" placeholder="PIN akun Anda" autocomplete="off">';
+    var modal = openModal('Verifikasi Pemilik', fields, function(m){
+      var pin = m.querySelector('#pinPemilikInput').value.trim();
+      if (!pin) { alert('PIN wajib diisi.'); return false; }
+      return api('validasiPinPengguna', {nama: STATE.user.nama, pin: pin}).then(function(r){
+        if (!r.ok) { alert(r.error); throw new Error(r.error); }
+        _pinPemilikTerbukaSampai = Date.now() + 5 * 60 * 1000;
+        lanjut();
+      });
+    });
+    // Kalau dibatalkan, kembalikan ke Kasir supaya layar tidak tertinggal kosong
+    modal.querySelector('#modalBatal').addEventListener('click', function(){
+      dashboardPemilikBarang('kasir');
+    });
+    setTimeout(function(){
+      var el = modal.querySelector('#pinPemilikInput');
+      if (el) el.focus();
+    }, 100);
+  }
+
   function dashboardPemilikBarang(activeKey){
     STATE._contentId = 'dp-content';
     var navItems = [
       {key:'kasir',   label:'Kasir (Jual)',      icon:'&#128717;'},
-      {key:'barang',  label:'Barang Jualan Saya', icon:'&#128230;'},
-      {key:'riwayat', label:'Riwayat Transaksi', icon:'&#128203;'},
-      {key:'omzet',   label:'Laporan Omzet',     icon:'&#128200;'},
-      {key:'saldo',   label:'Saldo & Tarik',     icon:'&#128176;'},
-      {key:'riwsaldo',label:'Riwayat Saldo',     icon:'&#128337;'}
+      {key:'barang',  label:'Barang Jualan Saya &#128274;', icon:'&#128230;'},
+      {key:'riwayat', label:'Riwayat Transaksi &#128274;', icon:'&#128203;'},
+      {key:'omzet',   label:'Laporan Omzet &#128274;',     icon:'&#128200;'},
+      {key:'saldo',   label:'Saldo &amp; Tarik &#128274;', icon:'&#128176;'},
+      {key:'riwsaldo',label:'Riwayat Saldo &#128274;',     icon:'&#128337;'}
     ];
     var map = {kasir:pemilikKasir, barang:pemilikKelolaBarang, riwayat:pemilikRiwayat, omzet:pemilikOmzet, saldo:pemilikSaldo, riwsaldo:pemilikRiwayatSaldo};
     activeKey = activeKey && map[activeKey] ? activeKey : 'kasir';
-    renderSidebarShell({title:'Dashboard Pemilik Barang', navItems:navItems, activeKey:activeKey, contentId:'dp-content', onSelect:function(key){ map[key](); }});
-    map[activeKey]();
+
+    // Bungkus pembukaan menu: yang sensitif diminta PIN dulu.
+    function buka(key){
+      if (MENU_PERLU_PIN.indexOf(key) !== -1) mintaPinPemilik(function(){ map[key](); });
+      else map[key]();
+    }
+
+    renderSidebarShell({title:'Dashboard Pemilik Barang', navItems:navItems, activeKey:activeKey, contentId:'dp-content', onSelect:buka});
+    buka(activeKey);
   }
 
   function pemilikKasir(){
@@ -8530,6 +8604,10 @@
   // hanya boleh ganti PIN Transaksi miliknya sendiri. Tombol Kembali menutup akses ini
   // sepenuhnya dan mengembalikan ke Menu Jualan Pemilik Barang.
   function tampilkanAkunSantri(nisn, namaSantri){
+    // Santri akan memegang HP ini. Cabut verifikasi PIN pemilik supaya begitu
+    // layar kembali ke Kasir, menu yang menyangkut harga dan saldo terkunci lagi
+    // dan santri tidak bisa menyelinap masuk memakai sisa waktu verifikasi tadi.
+    _pinPemilikTerbukaSampai = 0;
     render(
       '<div class="topbar"><div class="brand"><div><h2 style="margin:0">Akun Santri: '+esc(namaSantri)+'</h2>' +
       '<span class="muted">Mode pinjam layar -- hanya lihat data &amp; ganti PIN Transaksi sendiri</span></div></div>' +
@@ -8614,13 +8692,30 @@
       }
       document.getElementById('btnAjukanTarik').onclick = function(){
         var nominal = document.getElementById('tarikNominal').value.trim();
-        if (!nominal) return;
-        api('ajukanPenarikanSaldo', {pemilik: STATE.user.nama, noWa: STATE.user.noWa, nominal: nominal}).then(function(res){
-          if(!res.ok){ document.getElementById('pesanTarik').innerHTML = errBox(res.error); return; }
-          document.getElementById('pesanTarik').innerHTML = '<p class="muted">Pengajuan terkirim, menunggu persetujuan Bendahara/Mudir.</p>';
-          document.getElementById('tarikNominal').value = '';
-          tampilRiwayat();
+        if (!nominal) { document.getElementById('pesanTarik').innerHTML = errBox('Isi nominal penarikan dulu.'); return; }
+        // PIN diminta LAGI di sini, terpisah dari kunci menu. Penarikan saldo
+        // memindahkan uang sungguhan, jadi tidak cukup mengandalkan verifikasi
+        // yang mungkin dilakukan beberapa menit sebelumnya.
+        var fields =
+          warnBox('Anda akan mengajukan penarikan sebesar Rp' + (Number(String(nominal).replace(/[^\d]/g,'')) || 0).toLocaleString('id-ID') + '. Masukkan PIN login Anda untuk mengonfirmasi.') +
+          '<label>PIN Login Anda</label><input type="password" id="pinTarikInput" inputmode="numeric" placeholder="PIN akun Anda" autocomplete="off">';
+        var modalTarik = openModal('Konfirmasi Penarikan', fields, function(m){
+          var pin = m.querySelector('#pinTarikInput').value.trim();
+          if (!pin) { alert('PIN wajib diisi.'); return false; }
+          return api('validasiPinPengguna', {nama: STATE.user.nama, pin: pin}).then(function(rp){
+            if (!rp.ok) { alert(rp.error); throw new Error(rp.error); }
+            return api('ajukanPenarikanSaldo', {pemilik: STATE.user.nama, noWa: STATE.user.noWa, nominal: nominal});
+          }).then(function(res){
+            if(!res.ok){ alert(res.error); throw new Error(res.error); }
+            document.getElementById('pesanTarik').innerHTML = '<div class="warn" style="background:#dcfce7;border-color:#86efac;color:#166534">&#9989; Pengajuan terkirim, menunggu persetujuan Bendahara/Mudir.</div>';
+            document.getElementById('tarikNominal').value = '';
+            tampilRiwayat();
+          });
         });
+        setTimeout(function(){
+          var el = modalTarik.querySelector('#pinTarikInput');
+          if (el) el.focus();
+        }, 100);
       };
       tampilRiwayat();
     });

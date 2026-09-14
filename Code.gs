@@ -271,6 +271,7 @@ function route(action, p) {
     case 'ajukanTopUpSaldo': return apiAjukanTopUpSaldo(p);
     case 'getSppSaya': return {ok:true, data: getSppSaya(p.nisn)};
     case 'validasiPinTransaksiSantri': return apiValidasiPinTransaksiSantri(p);
+    case 'validasiPinPengguna': return apiValidasiPinPengguna(p);
     case 'gantiPinTransaksiSantri': return apiGantiPinTransaksiSantri(p);
     case 'getPelanggaranSSList': return {ok:true, data: getPelanggaranSSList()};
     case 'buatPelanggaranSSBaru': return apiBuatPelanggaranSSBaru(p.nama);
@@ -9358,5 +9359,28 @@ function apiCekKategoriKosong(p) {
     return {ok:true, total: nilai.length-1, kosong: kosong};
   } catch (e) {
     return {ok:false, error: e.message};
+  }
+}
+
+
+// Verifikasi PIN login seorang pengguna (dipakai untuk mengunci menu sensitif
+// seperti "Barang Jualan Saya" dan "Tarik Saldo" di dashboard Pemilik Barang).
+//
+// Kenapa perlu: HP kasir sering dipinjamkan ke santri untuk mengecek saldo/akunnya.
+// Tanpa kunci, santri bisa membuka menu Barang Jualan dan mengubah harga produk,
+// atau mengajukan penarikan saldo pemilik.
+function apiValidasiPinPengguna(p) {
+  const nama = norm(p.nama), pin = norm(p.pin);
+  if (!nama || !pin) return {ok:false, error:'Nama dan PIN wajib diisi.'};
+  try {
+    const sh = getAktifSS().getSheetByName(SHEET_ROLE);
+    if (!sh) return {ok:false, error:'Data pengguna tidak ditemukan.'};
+    const rows = sh.getDataRange().getValues(); rows.shift();
+    const baris = rows.find(function(r){ return normNama(norm(r[0])) === normNama(nama); });
+    if (!baris) return {ok:false, error:'Akun tidak ditemukan.'};
+    if (norm(baris[2]) !== pin) return {ok:false, error:'PIN salah.'};
+    return {ok:true};
+  } catch (e) {
+    return {ok:false, error:'Gagal memeriksa PIN: ' + e.message};
   }
 }
