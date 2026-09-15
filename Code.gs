@@ -244,6 +244,10 @@ function route(action, p) {
     case 'simpanRiwayatTasmi': return apiSimpanRiwayatTasmi(p);
     case 'getRiwayatTasmi':    return apiGetRiwayatTasmi(p);
     case 'hapusRiwayatTasmi':  return apiHapusRiwayatTasmi(p);
+    // Laporan wali santri
+    case 'getKehadiranHarianSantri':  return apiGetKehadiranHarianSantri(p);
+    case 'getKetidakhadiranMapel':    return apiGetKetidakhadiranMapel(p);
+    case 'getRiwayatHafalanBulan':    return apiGetRiwayatHafalanBulan(p);
     // Perbaikan kolom Kategori
     case 'cekKategoriKosong':        return apiCekKategoriKosong(p);
     case 'perbaikiKategoriTransaksi': return apiPerbaikiKategoriTransaksi(p);
@@ -9397,4 +9401,151 @@ function apiValidasiPinPengguna(p) {
   } catch (e) {
     return {ok:false, error:'Gagal memeriksa PIN: ' + e.message};
   }
+}
+
+
+// ============================================================
+// LAPORAN WALI SANTRI - KEHADIRAN, HAFALAN, SPP (BAGIAN BARU)
+// ============================================================
+
+// Kehadiran harian satu santri berdasarkan AbsensiHarian saja.
+// Untuk wali: ini sumber paling jujur karena dicatat oleh Pembina, bukan guru mapel.
+function apiGetKehadiranHarianSantri(p) {
+  const nisn = norm(p.nisn);
+  const tglMulai = norm(p.tglMulai);
+  const tglAkhir = norm(p.tglAkhir);
+  if (!nisn) return {ok:false, error:'NISN wajib diisi.'};
+
+  const ss = getAktifSS();
+  const sh = ss.getSheetByName(SHEET_ABSENSI_HARIAN);
+  if (!sh || sh.getLastRow() <= 1) return {ok:true, rekap:{hadir:0,sakit:0,izin:0,alpa:0,total:0}, detailHari:[]};
+
+  const tz = Session.getScriptTimeZone();
+  const rows = sh.getDataRange().getValues(); rows.shift();
+
+  const detail = [];
+  let hadir=0, sakit=0, izin=0, alpa=0;
+
+  rows.forEach(function(r){
+    if (norm(r[2]) !== nisn) return;
+    const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
+    if (tglMulai && tgl < tglMulai) return;
+    if (tglAkhir && tgl > tglAkhir) return;
+    const status = norm(r[5]);
+    if (status === 'Hadir') hadir++;
+    else if (status === 'Sakit') sakit++;
+    else if (status === 'Izin' || status === 'Izin Pulang') izin++;
+    else alpa++;
+    detail.push({tanggal:tgl, status:status, catatan:norm(r[6]||'')});
+  });
+
+  detail.sort(function(a,b){ return b.tanggal.localeCompare(a.tanggal); });
+  const total = hadir+sakit+izin+alpa;
+
+  return {ok:true,
+    rekap: {hadir:hadir, sakit:sakit, izin:izin, alpa:alpa, total:total,
+            persen: total ? Math.round(hadir*100/total) : 0},
+    detailHari: detail
+  };
+}
+
+// Ketidakhadiran di mapel atau halaqoh yang TIDAK tercatat sakit/izin di absensi harian.
+// Ini yang menjadi "laporan ke wali" -- perbedaan antara absensi harian dan absensi mapel/halaqoh.
+function apiGetKetidakhadiranMapel(p) {
+  const nisn = norm(p.nisn);
+  const tglMulai = norm(p.tglMulai);
+  const tglAkhir = norm(p.tglAkhir);
+  if (!nisn) return {ok:false, error:'NISN wajib diisi.'};
+
+  const ss = getAktifSS();
+  const tz = Session.getScriptTimeZone();
+
+  // Baca status harian -- kalau hari itu sakit/izin, ketidakhadiran di mapel wajar.
+  const shH = ss.getSheetByName(SHEET_ABSENSI_HARIAN);
+  const statusHarian = {};
+  if (shH && shH.getLastRow() > 1) {
+    const rows = shH.getDataRange().getValues(); rows.shift();
+    rows.forEach(function(r){
+      if (norm(r[2]) !== nisn) return;
+      const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
+      statusHarian[tgl] = norm(r[5]);
+    });
+  }
+
+  const laporan = [];
+
+  // Cek absensi mapel
+  const shMapel = ss.getSheetByName(SHEET_ABSENSI);
+  if (shMapel && shMapel.getLastRow() > 1) {
+    const rows = shMapel.getDataRange().getValues(); rows.shift();
+    rows.forEach(function(r){
+      if (norm(r[2]) !== nisn) return;
+      const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
+      if (tglMulai && tgl < tglMulai) return;
+      if (tglAkhir && tgl > tglAkhir) return;
+      const status = norm(r[4]);
+      if (status === 'Hadir') return;
+      // Kalau hari itu memang sakit/izin (dari absensi harian), tidak perlu dilaporkan lagi
+      const statusHari = statusHarian[tgl] || '';
+      if (statusHari === 'Sakit' || statusHari === 'Izin' || statusHari === 'Izin Pulang') return;
+      laporan.push({tanggal:tgl, jenis:'Mapel', nama:norm(r[3]), status:status, catatan:norm(r[5]||'')});
+    });
+  }
+
+  // Cek absensi halaqoh (dari sheet Hafalan, status Ghaib/Sakit/Izin)
+  const TIDAK_HADIR_HALAQOH = ['Ghaib','Sakit','Izin'];
+  const shHalaqoh = ss.getSheetByName(SHEET_HAFALAN);
+  if (shHalaqoh && shHalaqoh.getLastRow() > 1) {
+    const rows = shHalaqoh.getDataRange().getValues(); rows.shift();
+    rows.forEach(function(r){
+      if (norm(r[4]) !== nisn) return;
+      const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
+      if (tglMulai && tgl < tglMulai) return;
+      if (tglAkhir && tgl > tglAkhir) return;
+      const jenis = norm(r[2]);
+      if (TIDAK_HADIR_HALAQOH.indexOf(jenis) === -1) return;
+      const statusHari = statusHarian[tgl] || '';
+      if (statusHari === 'Sakit' || statusHari === 'Izin' || statusHari === 'Izin Pulang') return;
+      laporan.push({tanggal:tgl, jenis:'Halaqoh', nama:norm(r[3]), status:jenis, catatan:''});
+    });
+  }
+
+  laporan.sort(function(a,b){ return b.tanggal.localeCompare(a.tanggal); });
+  return {ok:true, laporan:laporan, jumlah:laporan.length};
+}
+
+// Riwayat hafalan sebulan untuk unduh PDF di sisi klien.
+// Backend hanya mengirim data -- PDF dibuat di browser supaya tidak membebani server.
+function apiGetRiwayatHafalanBulan(p) {
+  const nisn = norm(p.nisn);
+  const bulan = Number(p.bulan) || new Date().getMonth()+1;
+  const tahun = Number(p.tahun) || new Date().getFullYear();
+  if (!nisn) return {ok:false, error:'NISN wajib diisi.'};
+
+  const ss = getAktifSS();
+  const tz = Session.getScriptTimeZone();
+  const sh = ss.getSheetByName(SHEET_HAFALAN);
+  if (!sh || sh.getLastRow() <= 1) return {ok:true, data:[], namaSantri:''};
+
+  const rows = sh.getDataRange().getValues(); rows.shift();
+  const data = [];
+  let namaSantri = '';
+
+  rows.forEach(function(r){
+    if (norm(r[4]) !== nisn) return;
+    const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
+    const d = new Date(tgl);
+    if (d.getMonth()+1 !== bulan || d.getFullYear() !== tahun) return;
+    if (!namaSantri) namaSantri = norm(r[5] || r[4]);
+    data.push({
+      tanggal: tgl, waktu: formatWaktu(r[1],tz),
+      halaqoh: norm(r[3]), jenis: norm(r[2]),
+      surah: norm(r[6]), ayat: norm(r[7]),
+      juz: norm(r[8]), halaman: norm(r[9]),
+      nilai: norm(r[10]||''), pengampu: norm(r[11]||'')
+    });
+  });
+
+  data.sort(function(a,b){ return a.tanggal.localeCompare(b.tanggal); });
+  return {ok:true, data:data, namaSantri:namaSantri, bulan:bulan, tahun:tahun};
 }

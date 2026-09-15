@@ -353,7 +353,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwPmWl7-xCOEvtdiLQ_p6rH-grNGhZvXL95twDHzChbBBsTeK-BYXIX15dlduZ37gHp/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -653,7 +653,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.09.14-c';
+  var VERSI_APP = '2026.09.15-a';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -2600,6 +2600,80 @@
     return {
       nilai: function(){ return terpilih; },
       pilih: pilih
+    };
+  }
+
+  // ================= INPUT NISN SANTRI (TRANSAKSI) =================
+  // Dipakai di kasir kantin dan cek akun santri -- tempat di mana SANTRI SENDIRI
+  // yang mengoperasikan HP atau kartu QR-nya.
+  //
+  // Sengaja TIDAK memakai daftar nama: kalau nama bisa dipilih bebas dari dropdown,
+  // santri bisa memilih nama teman lalu memotong saldo milik orang lain -- penipuan
+  // yang tidak terdeteksi karena tidak ada PIN di layar kasir.
+  //
+  // Satu-satunya cara masuk: ketik NISN sendiri (yang hanya santri itu tahu)
+  // ATAU scan kartu QR santri yang memuat NISN-nya.
+  // PIN Transaksi tetap diminta setelahnya sebagai lapisan kedua.
+  function fieldNisnSantri(id, opts){
+    opts = opts || {};
+    return '<label>'+(opts.label||'NISN Santri')+'</label>' +
+      '<div style="display:flex;gap:6px;margin-bottom:6px">' +
+        '<input id="'+id+'_nisn" inputmode="numeric" placeholder="Ketik NISN santri..." autocomplete="off" style="flex:1;margin:0">' +
+        '<button type="button" class="secondary" id="'+id+'_scan" title="Pindai kartu QR santri" style="padding:0 12px;margin:0">&#128247;</button>' +
+      '</div>' +
+      '<div id="'+id+'_info" style="min-height:32px;font-size:13px;padding:6px 0"></div>' +
+      '<input type="hidden" id="'+id+'" value="">';
+  }
+
+  // Pasang perilaku: cari santri dari NISN yang diketik, tunjukkan namanya
+  // sebagai konfirmasi (supaya santri bisa memastikan NISN yang diketik benar),
+  // lalu simpan NISN di hidden input.
+  // Mengembalikan objek dengan .nilai() untuk mengambil santri yang terpilih.
+  function ikatNisnSantri(modal, id, daftarSantri, opts){
+    opts = opts || {};
+    var elNisn = modal.querySelector('#'+id+'_nisn');
+    var elInfo = modal.querySelector('#'+id+'_info');
+    var elHidden = modal.querySelector('#'+id);
+    var terpilih = null;
+
+    function cariDariNisn(){
+      var nisn = elNisn.value.trim();
+      if (!nisn) { elInfo.innerHTML=''; elHidden.value=''; terpilih=null; return; }
+      var s = daftarSantri.find(function(x){ return String(x.nisn)===nisn; });
+      if (s) {
+        terpilih = s;
+        elHidden.value = s.nisn;
+        elInfo.innerHTML = '&#9989; <b>'+esc(s.nama)+'</b>' +
+          ((opts.tampilSaldo && s.saldo !== undefined)
+            ? ' &nbsp;&mdash;&nbsp; Saldo: <b style="color:#0f766e">Rp'+Number(s.saldo||0).toLocaleString('id-ID')+'</b>' : '');
+        if (opts.onPilih) opts.onPilih(s);
+      } else {
+        terpilih = null; elHidden.value = '';
+        elInfo.innerHTML = nisn.length >= 4
+          ? '<span style="color:#dc2626;font-size:12.5px">&#10006; NISN tidak ditemukan. Periksa kembali nomor yang diketik.</span>'
+          : '';
+      }
+    }
+
+    elNisn.oninput = cariDariNisn;
+    modal.querySelector('#'+id+'_scan').onclick = function(){
+      bukaPemindaiQR(function(teks){
+        var s = cariSantriDariQR(teks, daftarSantri);
+        if (!s) { alert('Santri tidak ditemukan dari QR: '+teks); return; }
+        elNisn.value = String(s.nisn);
+        cariDariNisn();
+        // Pindahkan fokus ke PIN supaya santri tinggal mengetik PIN-nya
+        var elPin = modal.querySelector('[type="password"]');
+        if (elPin) setTimeout(function(){ elPin.focus(); }, 100);
+      });
+    };
+
+    return {
+      nilai: function(){ return terpilih; },
+      isi: function(nisn){
+        elNisn.value = String(nisn);
+        cariDariNisn();
+      }
     };
   }
 
@@ -8576,13 +8650,15 @@
           var daftarSantri = resSantri.data;
           var fieldsHtml =
             '<div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:9px 12px;font-size:13.5px;margin-bottom:10px">Total belanja: <b style="font-size:15px;color:#0f766e">Rp'+totalBelanja.toLocaleString('id-ID')+'</b></div>' +
-            fieldPilihSantri('ktSantri','Pilih Santri', daftarSantri, {tampilSaldo:true}) +
+            // Hanya NISN atau scan QR -- sengaja tidak ada daftar nama.
+            // Santri wajib tahu NISN-nya sendiri atau punya kartu QR.
+            fieldNisnSantri('ktSantri', {label:'NISN Santri (atau scan kartu QR)'}) +
             '<div id="warnSaldoKasir" style="display:none;background:#fee2e2;color:#991b1b;border-radius:8px;padding:8px;font-size:13px;margin-bottom:8px"></div>'+
             '<label>PIN Transaksi Santri</label><input type="password" id="ktPin" inputmode="numeric" placeholder="PIN Transaksi milik santri">';
           var pilihKt = null;
           var modal = openModal('Konfirmasi Pembayaran', fieldsHtml, function(m){
             var found = pilihKt.nilai();
-            if (!found) { alert('Pilih santri dulu dari daftar, atau pindai kartu QR-nya.'); return false; }
+            if (!found) { alert('Masukkan NISN santri yang valid, atau scan kartu QR-nya.'); return false; }
             if (found.saldo < totalBelanja) { alert('Saldo tidak cukup!\nSaldo: Rp'+found.saldo.toLocaleString('id-ID')+'\nBelanja: Rp'+totalBelanja.toLocaleString('id-ID')); return false; }
             var pin = m.querySelector('#ktPin').value.trim();
             if (!pin) { alert('PIN Transaksi wajib diisi.'); return false; }
@@ -8595,7 +8671,7 @@
           });
           // Peringatan saldo kurang ditampilkan begitu santri dipilih, supaya kasir
           // tahu sebelum meminta santri memasukkan PIN.
-          pilihKt = ikatPilihSantri(modal, 'ktSantri', daftarSantri, {
+          pilihKt = ikatNisnSantri(modal, 'ktSantri', daftarSantri, {
             tampilSaldo: true,
             onPilih: function(s){
               var we = modal.querySelector('#warnSaldoKasir');
@@ -8625,12 +8701,12 @@
         var daftarSantri = resSantri.data;
         // Memakai pemilih santri yang sama persis dengan kasir: daftar langsung
         // terlihat, bisa dicari, bisa dipindai lewat QR.
-        var fieldsHtml = fieldPilihSantri('casSantri','Pilih Santri', daftarSantri, {tampilSaldo:true}) +
+        var fieldsHtml = fieldNisnSantri('casSantri', {label:'NISN Santri (atau scan kartu QR)'}) +
           '<label>PIN Transaksi Santri</label><input type="password" id="casPin" inputmode="numeric" placeholder="PIN Transaksi milik santri">';
         var pilihCas = null;
         var modalCas = openModal('Masuk Akun Santri', fieldsHtml, function(m){
           var found = pilihCas.nilai();
-          if (!found) { alert('Pilih santri dulu dari daftar, atau pindai kartu QR-nya.'); return false; }
+          if (!found) { alert('Masukkan NISN santri yang valid, atau scan kartu QR-nya.'); return false; }
           var pin = m.querySelector('#casPin').value.trim();
           if (!pin) { alert('PIN Transaksi wajib diisi.'); return false; }
           // WAJIB di-return: tanpa ini modal langsung tertutup walau PIN salah,
@@ -8640,7 +8716,7 @@
             tampilkanAkunSantri(found.nisn, res.nama);
           });
         });
-        pilihCas = ikatPilihSantri(modalCas, 'casSantri', daftarSantri, {
+        pilihCas = ikatNisnSantri(modalCas, 'casSantri', daftarSantri, {
           tampilSaldo: true,
           onPilih: function(){ modalCas.querySelector('#casPin').focus(); }
         });
@@ -10286,132 +10362,398 @@
     return STATE.user.nisnAnak ? [STATE.user.nisnAnak] : [];
   }
 
+  // ============================================================
+  // DASHBOARD WALI SANTRI — DIRENOVASI
+  //
+  // Perubahan utama dari versi sebelumnya:
+  // 1. Navigasi tab per bagian, bukan satu halaman panjang
+  // 2. Kehadiran diambil dari AbsensiHarian saja (sumber paling jujur)
+  // 3. Ketidakhadiran di mapel/halaqoh yang tidak tercatat di absensi harian
+  //    ditampilkan sebagai laporan tersendiri ke wali
+  // 4. Riwayat hafalan bisa diunduh sebagai PDF per bulan
+  // 5. Pengaturan visibilitas per bagian dari Admin tetap dihormati
+  // ============================================================
+
+  var _waliNisn = ''; // NISN anak yang sedang dilihat, disimpan antar tab
+
   function dashboardWali(activeNisn){
-    var listAnak = daftarNisnAnakWali();
-    if (!activeNisn) activeNisn = STATE._activeAnakNisn || listAnak[0];
-    STATE._activeAnakNisn = activeNisn;
+    var listAnak = STATE.user.nisnAnakList || (STATE.user.nisnAnak ? [STATE.user.nisnAnak] : []);
+    activeNisn = activeNisn || listAnak[0] || '';
+    _waliNisn = activeNisn;
 
-    render('<div id="dw-top"></div><div id="dw-pilihanak"></div><div id="slideBarWrap"></div><div id="dw-ringkasan"></div><div id="dw-notif" class="card">Memuat notifikasi...</div><div id="dw-jadwal"></div><div id="dw-rekap"></div><div id="dw-hafalan"></div><div id="dw-rapor"></div><div id="dw-izin"></div><div id="dw-pelanggaran"></div><div id="dw-kantin"></div><div id="dw-mutasi-saldo"></div><div id="dw-kontak"></div>');
+    render('<div id="dw-top"></div>' +
+           '<div id="dw-pilihanak"></div>' +
+           '<div id="dw-nav" style="position:sticky;top:0;z-index:80;background:#fff;border-bottom:1px solid #e2e8f0;padding:0 16px"></div>' +
+           '<div id="dw-body" style="padding-bottom:32px"></div>');
+
     document.getElementById('dw-top').innerHTML = topbar('Dashboard Wali Santri'); bindLogout();
-    renderSlideBar('slideBarWrap');
+    renderSlideBar('dw-top');
 
-    // Tab pilih anak -- hanya tampil kalau akun ini punya lebih dari 1 anak.
-    // Akun dengan 1 anak (mayoritas kasus saat ini) tampilannya identik seperti sebelumnya.
+    // Tab pilih anak
     if (listAnak.length > 1) {
-      document.getElementById('dw-pilihanak').innerHTML = '<div class="card"><p class="muted">Memuat daftar anak...</p></div>';
       api('getMasterData', {sheet:'Santri'}).then(function(resNama){
         var namaMap = {};
         if (resNama.ok) resNama.data.data.forEach(function(s){ namaMap[String(s.NISN)] = s.Nama; });
         document.getElementById('dw-pilihanak').innerHTML =
-          '<div class="card" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
-          '<b style="margin-right:4px">Pilih Anak:</b>' +
+          '<div style="padding:10px 16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:#f8fafc;border-bottom:1px solid #e2e8f0">' +
+          '<span class="muted" style="font-size:12.5px">Anak:</span>' +
           listAnak.map(function(n){
-            var aktifBtn = (n === activeNisn);
-            var nm = namaMap[String(n)] || n;
-            return '<button class="anakTabBtn" data-nisn="'+esc(n)+'" style="padding:8px 14px;border-radius:20px;cursor:pointer;font-weight:600;font-size:13px;border:1px solid '+(aktifBtn?'#0d9488':'#e2e8f0')+';background:'+(aktifBtn?'#0d9488':'#fff')+';color:'+(aktifBtn?'#fff':'#475569')+'">'+esc(nm)+'</button>';
-          }).join('') +
-          '</div>';
+            var aktif = n === activeNisn;
+            return '<button class="anakTabBtn" data-nisn="'+esc(n)+'" style="padding:6px 14px;border-radius:18px;cursor:pointer;font-size:13px;font-weight:600;border:1.5px solid '+(aktif?'#0d9488':'#e2e8f0')+';background:'+(aktif?'#0d9488':'#fff')+';color:'+(aktif?'#fff':'#475569')+'">'+esc(namaMap[String(n)] || n)+'</button>';
+          }).join('') + '</div>';
         document.querySelectorAll('.anakTabBtn').forEach(function(btn){
           btn.onclick = function(){ dashboardWali(btn.dataset.nisn); };
         });
       });
-    } else {
-      document.getElementById('dw-pilihanak').innerHTML = '';
     }
 
-    var nisn = activeNisn;
-    if(!nisn){ document.getElementById('dw-notif').innerHTML = warnBox('Akun ini belum terhubung ke data santri (NISN Anak kosong di RoleAkses).'); return; }
+    if (!activeNisn) {
+      document.getElementById('dw-body').innerHTML = '<div class="card">'+warnBox('Akun ini belum terhubung ke data santri. Minta Admin mengisi NISN Anak di RoleAkses.')+'</div>';
+      return;
+    }
 
-    // Baca pengaturan visibilitas dulu, lalu render hanya section yang diizinkan
-    var WALI_KEYS = ['WaliTampilRingkasan','WaliTampilJadwal','WaliTampilNotifAbsen','WaliTampilRekap',
-      'WaliTampilHafalan','WaliTampilRapor','WaliTampilIzin','WaliTampilPelanggaran',
-      'WaliTampilKantin','WaliTampilMutasiSaldo','WaliTampilKontak',
-      'WaliIzinAjukanTopUp','WaliIzinLihatNilai','WaliIzinGantiLimit'];
+    // Baca pengaturan visibilitas dari Admin
+    var WALI_KEYS = ['WaliTampilRingkasan','WaliTampilKehadiran','WaliTampilHafalan',
+      'WaliTampilSPP','WaliTampilNilai','WaliTampilPelanggaran','WaliTampilKantin',
+      'WaliTampilMutasiSaldo','WaliIzinAjukanTopUp','WaliIzinGantiLimit','WaliIzinLihatNilai',
+      // Compat: kunci lama tetap dibaca supaya pengaturan yang ada tidak hilang
+      'WaliTampilRekap','WaliTampilRapor','WaliTampilNotifAbsen','WaliTampilMutasiSaldo'];
     api('getPengaturanBatch', {keys: WALI_KEYS}).then(function(pwRes){
       var pw = pwRes.ok ? pwRes.data : {};
       function boleh(k){ return pw[k] !== false; }
 
-      if (boleh('WaliTampilRingkasan')) muatRingkasanWali(nisn);
-      else document.getElementById('dw-ringkasan').style.display='none';
+      // Bangun daftar tab yang boleh ditampilkan
+      var TABS = [
+        {id:'ringkasan', label:'&#127968; Ringkasan',  aktif: boleh('WaliTampilRingkasan')},
+        {id:'kehadiran', label:'&#128197; Kehadiran',   aktif: boleh('WaliTampilKehadiran') || boleh('WaliTampilRekap')},
+        {id:'hafalan',   label:'&#128218; Hafalan',     aktif: boleh('WaliTampilHafalan')},
+        {id:'nilai',     label:'&#128203; Nilai',       aktif: boleh('WaliTampilNilai') || boleh('WaliIzinLihatNilai') || boleh('WaliTampilRapor')},
+        {id:'spp',       label:'&#128179; SPP',         aktif: true},
+        {id:'keuangan',  label:'&#128176; Keuangan',    aktif: boleh('WaliTampilKantin') || boleh('WaliTampilMutasiSaldo')},
+        {id:'pelanggaran',label:'&#9888;&#65039; Sikap',aktif: boleh('WaliTampilPelanggaran')},
+      ].filter(function(t){ return t.aktif; });
 
-      if (boleh('WaliTampilPelanggaran')) muatRiwayatPelanggaranWali(nisn);
-      else document.getElementById('dw-pelanggaran').style.display='none';
+      var activeTab = 'ringkasan';
+      var _pw = pw;
 
-      if (boleh('WaliTampilKantin')) muatKantinWali(nisn, {izinTopUp:boleh('WaliIzinAjukanTopUp'), izinGantiLimit:boleh('WaliIzinGantiLimit')});
-      else document.getElementById('dw-kantin').style.display='none';
-
-      if (boleh('WaliTampilIzin')) renderIzinWaliSantri(nisn, 'dw-izin');
-      else document.getElementById('dw-izin').style.display='none';
-
-      if (boleh('WaliTampilHafalan')) renderProgressHafalanWali(nisn, 'dw-hafalan');
-      else document.getElementById('dw-hafalan').style.display='none';
-
-      if (boleh('WaliTampilMutasiSaldo')) renderRiwayatMutasiSaldo(nisn, 'dw-mutasi-saldo');
-      else document.getElementById('dw-mutasi-saldo').style.display='none';
-
-      if (boleh('WaliTampilNotifAbsen')) {
-        api('getNotifikasiMingguan', {nisn:nisn}).then(function(res){
-          if(!res.ok){ document.getElementById('dw-notif').innerHTML=errBox(res.error); return; }
-          var d=res.data, r=d.rekap;
-          // Tile Ringkasan di atas sudah menampilkan persentase kehadiran 7 hari, jadi
-          // di sini TIDAK mengulang angka Hadir yang sama -- kartu ini fokus jadi
-          // notifikasi (cuma bicara kalau ada yang perlu diperhatikan: sakit/izin/alpa).
-          var catatan = [];
-          if (r.Alpa>0) catatan.push(r.Alpa+' hari Alpa');
-          if (r.Izin>0) catatan.push(r.Izin+' hari Izin');
-          if (r.Sakit>0) catatan.push(r.Sakit+' hari Sakit');
-          var html = catatan.length
-            ? '<h3>&#128276; Perlu Diperhatikan ('+esc(d.periode)+')</h3><p>'+catatan.join(', ')+' dalam 7 hari terakhir.</p>'
-            : '<h3>&#128276; Notifikasi ('+esc(d.periode)+')</h3><p class="muted">&#9989; Tidak ada sakit/izin/alpa dalam 7 hari terakhir.</p>';
-          document.getElementById('dw-notif').innerHTML = html;
+      function renderNav(){
+        document.getElementById('dw-nav').innerHTML =
+          '<div style="display:flex;overflow-x:auto;gap:2px;padding:6px 0">' +
+          TABS.map(function(t){
+            var aktif = t.id === activeTab;
+            return '<button class="waliTabBtn" data-tab="'+t.id+'" style="white-space:nowrap;padding:8px 14px;border:none;border-bottom:3px solid '+(aktif?'#0d9488':'transparent')+';background:transparent;font-size:13px;font-weight:'+(aktif?'700':'500')+';color:'+(aktif?'#0d9488':'#64748b')+';cursor:pointer">'+t.label+'</button>';
+          }).join('') + '</div>';
+        document.querySelectorAll('.waliTabBtn').forEach(function(btn){
+          btn.onclick = function(){
+            activeTab = btn.dataset.tab;
+            renderNav();
+            renderTab(activeTab);
+          };
         });
-      } else document.getElementById('dw-notif').style.display='none';
+      }
 
-      if (boleh('WaliTampilJadwal')||boleh('WaliTampilRekap')||boleh('WaliTampilRapor')) {
-        document.getElementById('dw-jadwal').innerHTML='<p>Memuat data anak...</p>';
-        api('getJadwalSantri',{nisn:nisn}).then(function(res){
-          if(!res.ok||res.data.error){ document.getElementById('dw-jadwal').innerHTML=errBox(res.data?res.data.error:res.error); return; }
-          var d=res.data;
-          if (boleh('WaliTampilJadwal')) {
-            var infoRombel=d.belumMasukRombel?warnBox('Santri ini belum dimasukkan ke rombel manapun oleh Admin.'):'';
-            var jadwalHtml=d.jadwal.length?('<table><tr><th>Hari</th><th>Jam</th><th>Mapel</th><th>Pengampu</th></tr>'+
-              d.jadwal.map(function(j){return '<tr><td>'+esc(j.hari)+'</td><td>'+esc(j.jamKe)+'</td><td>'+esc(j.mapel)+'</td><td>'+esc(j.pengampu)+'</td></tr>';}).join('')+'</table>'):'<p class="muted">Belum ada jadwal.</p>';
-            document.getElementById('dw-jadwal').innerHTML='<div class="card"><h3>'+esc(d.nama)+' - Kelas: '+esc(d.kelas)+(d.halaqoh?(' | Halaqoh: '+esc(d.halaqoh)):'')+'</h3>'+infoRombel+'<h4>Jadwal Pelajaran</h4>'+jadwalHtml+'</div>';
-          } else document.getElementById('dw-jadwal').style.display='none';
+      function renderTab(tab){
+        var body = document.getElementById('dw-body');
+        body.innerHTML = '<div style="padding:16px"><p class="muted">Memuat...</p></div>';
+        if (tab === 'ringkasan') renderTabRingkasan(activeNisn, body, _pw);
+        else if (tab === 'kehadiran') renderTabKehadiran(activeNisn, body);
+        else if (tab === 'hafalan') renderTabHafalan(activeNisn, body);
+        else if (tab === 'nilai') renderTabNilai(activeNisn, body, {izinNilai:boleh('WaliIzinLihatNilai'), izinRapor:boleh('WaliTampilRapor')});
+        else if (tab === 'spp') renderTabSPP(activeNisn, body);
+        else if (tab === 'keuangan') renderTabKeuangan(activeNisn, body, {izinTopUp:boleh('WaliIzinAjukanTopUp'), izinGantiLimit:boleh('WaliIzinGantiLimit')});
+        else if (tab === 'pelanggaran') renderTabPelanggaran(activeNisn, body);
+      }
 
-          if (boleh('WaliTampilRekap')) renderRekapLengkapSantri('dw-rekap', nisn, {showSaldo:false, izinLihatNilai:boleh('WaliIzinLihatNilai'), sudahAdaKartuHafalan: boleh('WaliTampilHafalan')});
-          else document.getElementById('dw-rekap').style.display='none';
-
-          if (boleh('WaliTampilRapor')) renderRaporCard('dw-rapor', nisn, d.nama);
-          else document.getElementById('dw-rapor').style.display='none';
-        }); // end api getJadwalSantri
-      } // end if WaliTampilJadwal||Rekap||Rapor
-
-      if (boleh('WaliTampilKontak')) {
-        document.getElementById('dw-kontak').innerHTML = '<div class="card"><h3>Edit Data Santri</h3><p>Memuat...</p></div>';
-      api('getMasterData', {sheet:'Santri'}).then(function(resAll){
-        if(!resAll.ok){ document.getElementById('dw-kontak').innerHTML = '<div class="card">'+errBox(resAll.error)+'</div>'; return; }
-        var s = resAll.data.data.find(function(x){ return String(x.NISN)===String(nisn); });
-        if(!s){ document.getElementById('dw-kontak').innerHTML = '<div class="card">'+errBox('Data santri tidak ditemukan.')+'</div>'; return; }
-        document.getElementById('dw-kontak').innerHTML = '<div class="card"><h3>Edit Data Santri</h3>' +
-          warnBox('NISN hanya bisa diubah lewat Guru/Admin (untuk menjaga keakuratan riwayat). Perubahan Nama/Jenis Kelamin/No WA di sini aman -- riwayat absen, nilai, dan hafalan sebelumnya tetap utuh, otomatis menyesuaikan.') +
-          fieldText('editNama','Nama', s.Nama) +
-          fieldSelect('editGender','Jenis Kelamin', ['Laki-laki','Perempuan'], s['Jenis Kelamin']) +
-          fieldText('editNoWa','No WA Orang Tua', s['No WA Ortu']) +
-          '<button id="btnSimpanKontak">Simpan</button><div id="pesanKontak"></div></div>';
-        document.getElementById('btnSimpanKontak').onclick = function(){
-          var namaBaru = document.getElementById('editNama').value.trim();
-          var genderBaru = document.getElementById('editGender').value;
-          var noWaBaru = document.getElementById('editNoWa').value.trim();
-          if(!namaBaru){ document.getElementById('pesanKontak').innerHTML = errBox('Nama wajib diisi.'); return; }
-          api('ubahIdentitasSantri', {nisnLama:nisn, nisnBaru:nisn, namaBaru:namaBaru, jenisKelamin:genderBaru, noWaOrtu:noWaBaru}).then(function(res4){
-            document.getElementById('pesanKontak').innerHTML = res4.ok ? '<p class="muted">Tersimpan.</p>' : errBox(res4.error);
-          });
-        };
-      }); // end getMasterData
-      } // end if WaliTampilKontak
-    }); // end getPengaturanBatch
+      renderNav();
+      renderTab(activeTab);
+    });
   }
+
+  // ----- TAB RINGKASAN -----
+  function renderTabRingkasan(nisn, body, pw){
+    Promise.all([
+      api('getJadwalSantri', {nisn:nisn}),
+      api('getKehadiranHarianSantri', {nisn:nisn,
+        tglMulai: tglNHariLalu(30), tglAkhir: todayStr()}),
+      api('getSppSaya', {nisn:nisn}),
+      api('getSaldoSantriKantin', {nisn:nisn})
+    ]).then(function(hasil){
+      var resJ=hasil[0], resK=hasil[1], resSpp=hasil[2], resSaldo=hasil[3];
+      var d = resJ.ok ? resJ.data : {};
+      var k = resK.ok ? resK.rekap : {hadir:0,sakit:0,izin:0,alpa:0,total:0,persen:0};
+      var spp = resSpp.ok ? resSpp : {adaSpp:false,totalTunggakan:0,bulanTunggakan:[]};
+      var saldo = resSaldo.ok ? resSaldo.saldo : 0;
+
+      body.innerHTML =
+        '<div style="padding:16px">' +
+        '<div style="margin-bottom:6px"><h3 style="margin:0">'+esc(d.nama||'')+'</h3><p class="muted" style="margin:0">Kelas '+esc(d.kelas||'-')+(d.halaqoh?' &middot; Halaqoh '+esc(d.halaqoh):'')+'</p></div>' +
+
+        // Kartu ringkasan 2-kolom
+        '<div class="grid2" style="margin-top:12px">' +
+          kartuRingkasan('&#128176;', rupiah(saldo), 'Saldo Kantin', '#0d9488') +
+          kartuRingkasan('&#128197;', k.persen+'%', 'Kehadiran 30 Hari ('+(k.total||0)+' hari)', k.persen>=80?'#16a34a':k.persen>=60?'#d97706':'#dc2626') +
+          kartuRingkasan('&#9888;&#65039;', spp.totalTunggakan>0?rupiah(spp.totalTunggakan):'Lunas', 'Tunggakan SPP', spp.totalTunggakan>0?'#dc2626':'#16a34a') +
+          (k.alpa>0 ? kartuRingkasan('&#128308;', k.alpa+' hari', 'Alpa 30 Hari', '#dc2626') :
+           kartuRingkasan('&#128994;', 'Hadir '+k.hadir, 'dari '+k.total+' hari', '#16a34a')) +
+        '</div>' +
+
+        (spp.totalTunggakan > 0 ?
+          '<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:12px 14px;margin-top:12px;font-size:13.5px">' +
+          '&#128680; Tunggakan SPP: <b>'+rupiah(spp.totalTunggakan)+'</b> ('+spp.bulanTunggakan.join(', ')+'). '+
+          'Harap segera diselesaikan di loket pembayaran.</div>' : '') +
+
+        '<p class="muted" style="font-size:12px;margin-top:14px">Ketuk tab di atas untuk melihat detail kehadiran, hafalan, nilai, dan keuangan.</p>' +
+        '</div>';
+    });
+  }
+
+  function kartuRingkasan(ikon, angka, label, warna){
+    return '<div style="background:'+warna+'12;border:1.5px solid '+warna+'33;border-radius:12px;padding:14px;text-align:center">' +
+      '<div style="font-size:22px">'+ikon+'</div>' +
+      '<div style="font-size:20px;font-weight:800;color:'+warna+';line-height:1.2;margin:4px 0">'+angka+'</div>' +
+      '<div style="font-size:11.5px;color:#64748b;line-height:1.35">'+label+'</div>' +
+      '</div>';
+  }
+
+  function tglNHariLalu(n){
+    var d=new Date(); d.setDate(d.getDate()-n);
+    return d.toISOString().slice(0,10);
+  }
+
+  // ----- TAB KEHADIRAN -----
+  function renderTabKehadiran(nisn, body){
+    var now = new Date();
+    var bln = String(now.getMonth()+1).padStart(2,'0');
+    var tglMulai = now.getFullYear()+'-'+bln+'-01';
+    var tglAkhir = todayStr();
+
+    body.innerHTML =
+      '<div style="padding:16px">' +
+      '<div class="card"><h3>&#128197; Kehadiran Harian</h3>' +
+      warnBox('Diambil dari absensi harian yang dicatat Pembina, bukan dari absensi per mapel. Ini sumber paling akurat untuk mengetahui apakah santri benar-benar hadir di pondok.') +
+      '<div class="grid2"><div><label>Dari Tanggal</label><input type="date" id="khMulai" value="'+esc(tglMulai)+'"></div>' +
+      '<div><label>Sampai Tanggal</label><input type="date" id="khAkhir" value="'+esc(tglAkhir)+'"></div></div>' +
+      '<button class="small" id="btnKhTampil" style="margin-top:8px">Tampilkan</button></div>' +
+      '<div id="khRekap"></div>' +
+      '<div id="khDetail"></div>' +
+      '<div class="card"><h3>&#9888;&#65039; Tidak Hadir di Mapel/Halaqoh</h3>' +
+      warnBox('Daftar ini menampilkan ketidakhadiran di kelas atau halaqoh yang TIDAK tercatat sebagai sakit/izin di absensi harian. Artinya santri tercatat hadir di pondok, tapi tidak hadir di sesi tersebut. Wajib diperhatikan.') +
+      '<div id="khLaporan"><p class="muted">Pilih rentang tanggal lalu tekan Tampilkan.</p></div></div>' +
+      '</div>';
+
+    function muatKehadiran(){
+      var m = document.getElementById('khMulai').value;
+      var a = document.getElementById('khAkhir').value;
+      var elRekap = document.getElementById('khRekap');
+      var elDetail = document.getElementById('khDetail');
+      var elLaporan = document.getElementById('khLaporan');
+      elRekap.innerHTML = elDetail.innerHTML = elLaporan.innerHTML = '<p class="muted">Memuat...</p>';
+
+      Promise.all([
+        api('getKehadiranHarianSantri', {nisn:nisn, tglMulai:m, tglAkhir:a}),
+        api('getKetidakhadiranMapel', {nisn:nisn, tglMulai:m, tglAkhir:a})
+      ]).then(function(hasil){
+        var resK = hasil[0], resL = hasil[1];
+        if (!resK.ok){ elRekap.innerHTML = errBox(resK.error); return; }
+        var k = resK.rekap;
+
+        // Rekap angka
+        elRekap.innerHTML =
+          '<div class="card"><div class="grid2" style="gap:8px">' +
+          kartuRingkasan('&#9989;', k.hadir+' hari', 'Hadir', '#16a34a') +
+          kartuRingkasan('&#128164;', k.sakit+' hari', 'Sakit', '#0891b2') +
+          kartuRingkasan('&#128203;', k.izin+' hari', 'Izin', '#d97706') +
+          kartuRingkasan('&#128308;', k.alpa+' hari', 'Alpa', '#dc2626') +
+          '</div>' +
+          '<div style="margin-top:12px;background:#f1f5f9;border-radius:20px;height:12px;overflow:hidden">' +
+          '<div style="width:'+k.persen+'%;height:100%;background:linear-gradient(90deg,#16a34a,#0891b2);border-radius:20px"></div></div>' +
+          '<p style="text-align:center;font-size:13px;margin:6px 0">Kehadiran: <b>'+k.persen+'%</b> dari <b>'+k.total+'</b> hari</p></div>';
+
+        // Detail hari
+        if (resK.detailHari && resK.detailHari.length) {
+          var warnaTd = {Hadir:'#16a34a', Sakit:'#0891b2', Izin:'#d97706', 'Izin Pulang':'#d97706', Alpa:'#dc2626'};
+          elDetail.innerHTML =
+            '<div class="card" style="overflow-x:auto"><h4>Riwayat Per Hari</h4><table>' +
+            '<tr><th>Tanggal</th><th>Status</th><th>Catatan</th></tr>' +
+            resK.detailHari.map(function(h){
+              var w = warnaTd[h.status] || '#64748b';
+              return '<tr><td>'+esc(h.tanggal)+'</td>' +
+                '<td><b style="color:'+w+'">'+esc(h.status)+'</b></td>' +
+                '<td>'+esc(h.catatan||'-')+'</td></tr>';
+            }).join('') + '</table></div>';
+        } else {
+          elDetail.innerHTML = '<div class="card"><p class="muted">Tidak ada data kehadiran pada periode ini.</p></div>';
+        }
+
+        // Laporan ketidakhadiran mapel/halaqoh
+        if (!resL.ok){ elLaporan.innerHTML = errBox(resL.error); return; }
+        if (!resL.laporan.length) {
+          elLaporan.innerHTML = '<p style="color:#16a34a;font-weight:600">&#9989; Tidak ada ketidakhadiran yang perlu dilaporkan pada periode ini.</p>';
+        } else {
+          elLaporan.innerHTML =
+            '<div style="overflow-x:auto"><table><tr><th>Tanggal</th><th>Jenis</th><th>Nama</th><th>Status</th></tr>' +
+            resL.laporan.map(function(l){
+              return '<tr><td>'+esc(l.tanggal)+'</td><td>'+esc(l.jenis)+'</td><td>'+esc(l.nama)+'</td>' +
+                '<td><b style="color:#dc2626">'+esc(l.status)+'</b></td></tr>';
+            }).join('') + '</table></div>';
+        }
+      });
+    }
+
+    document.getElementById('btnKhTampil').onclick = muatKehadiran;
+    muatKehadiran();
+  }
+
+  // ----- TAB HAFALAN -----
+  function renderTabHafalan(nisn, body){
+    var now = new Date();
+    body.innerHTML =
+      '<div style="padding:16px">' +
+      // Progress hafalan
+      '<div id="hwProgress"><p class="muted">Memuat progres...</p></div>' +
+
+      // Filter bulan
+      '<div class="card"><h3>&#128218; Riwayat Hafalan Bulanan</h3>' +
+      '<div class="grid2"><div><label>Bulan</label><select id="hwBulan">' +
+      [['1','Januari'],['2','Februari'],['3','Maret'],['4','April'],['5','Mei'],['6','Juni'],
+       ['7','Juli'],['8','Agustus'],['9','September'],['10','Oktober'],['11','November'],['12','Desember']]
+        .map(function(m){ return '<option value="'+m[0]+'"'+(Number(m[0])===now.getMonth()+1?' selected':'')+'>'+m[1]+'</option>'; }).join('') +
+      '</select></div>' +
+      '<div><label>Tahun</label><input id="hwTahun" value="'+now.getFullYear()+'"></div></div>' +
+      '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">' +
+      '<button class="small" id="btnHwTampil">Tampilkan</button>' +
+      '<button class="small secondary" id="btnHwPdf">&#11015; Download PDF</button>' +
+      '</div></div>' +
+      '<div id="hwTabel"></div></div>';
+
+    // Muat progress
+    api('getProgressHafalan', {nisn:nisn}).then(function(res){
+      var el = document.getElementById('hwProgress');
+      if (!el) return;
+      el.innerHTML = res.ok && res.data ? renderKartuProgressHafalan(res.data, true)
+        : '<div class="card"><p class="muted">Belum ada catatan hafalan.</p></div>';
+    });
+
+    var _hwData = [];
+    var _hwNama = '';
+
+    function muatRiwayat(){
+      var bulan = document.getElementById('hwBulan').value;
+      var tahun = document.getElementById('hwTahun').value;
+      var el = document.getElementById('hwTabel');
+      if (el) el.innerHTML = '<p class="muted">Memuat...</p>';
+      api('getRiwayatHafalanBulan', {nisn:nisn, bulan:bulan, tahun:tahun}).then(function(res){
+        _hwData = res.ok ? res.data : [];
+        _hwNama = res.ok ? res.namaSantri : '';
+        if (!el) return;
+        if (!_hwData.length){ el.innerHTML='<div class="card"><p class="muted">Tidak ada catatan hafalan pada bulan ini.</p></div>'; return; }
+        el.innerHTML = '<div class="card" style="overflow-x:auto"><table>' +
+          '<tr><th>Tanggal</th><th>Jenis</th><th>Detail</th><th>Nilai</th><th>Pengampu</th></tr>' +
+          _hwData.map(function(r){
+            return '<tr><td>'+esc(r.tanggal)+'</td><td>'+badgeJenisHafalan(r.jenis)+'</td>' +
+              '<td style="font-size:12px">'+detailHafalan(r)+'</td>' +
+              '<td><b>'+(r.nilai||'-')+'</b></td><td style="font-size:12px">'+esc(r.pengampu||'-')+'</td></tr>';
+          }).join('') + '</table></div>';
+      });
+    }
+
+    document.getElementById('btnHwTampil').onclick = muatRiwayat;
+    document.getElementById('btnHwPdf').onclick = function(){ unduhPdfHafalan(_hwData, _hwNama); };
+    muatRiwayat();
+  }
+
+  // Unduh PDF riwayat hafalan menggunakan fitur print browser (paling kompatibel,
+  // tanpa memerlukan library tambahan yang memperlambat aplikasi).
+  function unduhPdfHafalan(data, namaSantri){
+    if (!data || !data.length){ alert('Tidak ada data hafalan untuk diunduh. Pilih bulan dan tekan Tampilkan terlebih dahulu.'); return; }
+    var rows = data.map(function(r){
+      return '<tr><td>'+esc(r.tanggal)+'</td><td>'+esc(r.jenis)+'</td>' +
+        '<td>'+esc(r.surah ? r.surah+(r.ayat?' : '+r.ayat:'')+(r.juz?', Juz '+r.juz:'')+(r.halaman?', Hal '+r.halaman:'') : '-')+'</td>' +
+        '<td>'+esc(r.nilai||'-')+'</td><td>'+esc(r.pengampu||'-')+'</td></tr>';
+    }).join('');
+    var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Riwayat Hafalan</title>' +
+      '<style>body{font-family:Arial,sans-serif;font-size:12px;padding:20px}' +
+      'h2{color:#0d9488;margin-bottom:4px}h4{color:#475569;margin:0 0 16px}' +
+      'table{width:100%;border-collapse:collapse}th,td{border:1px solid #e2e8f0;padding:6px 8px;text-align:left}' +
+      'th{background:#f0fdfa;color:#0d9488;font-weight:700}' +
+      'tr:nth-child(even){background:#f8fafc}' +
+      '@media print{body{padding:0}}</style></head><body>' +
+      '<h2>Riwayat Hafalan Al-Qur\'an</h2>' +
+      '<h4>'+esc(namaSantri)+'</h4>' +
+      '<table><tr><th>Tanggal</th><th>Jenis</th><th>Detail</th><th>Nilai</th><th>Pengampu</th></tr>' +
+      rows + '</table>' +
+      '<p style="margin-top:12px;color:#94a3b8;font-size:10px">Dicetak dari aplikasi WASIAT &mdash; PP Wihdatul Ummah Poso &mdash; '+todayStr()+'</p>' +
+      '<script>window.onload=function(){window.print();}<\/script></body></html>';
+    var w = window.open('','_blank');
+    if (!w){ alert('Izinkan pop-up untuk mengunduh PDF.'); return; }
+    w.document.write(html);
+    w.document.close();
+  }
+
+  // ----- TAB NILAI -----
+  function renderTabNilai(nisn, body, opts){
+    body.innerHTML = '<div style="padding:16px"><div id="hwNilai"><p class="muted">Memuat...</p></div></div>';
+    var el = document.getElementById('hwNilai');
+    // Rekap nilai akademik (rekapLengkap) dan rapor
+    if (opts.izinNilai || opts.izinRapor) {
+      api('getJadwalSantri', {nisn:nisn}).then(function(res){
+        var nama = res.ok ? res.data.nama : '';
+        var html = '<div class="card"><h3>&#128203; Nilai &amp; Kehadiran Mapel</h3></div>';
+        el.innerHTML = html;
+        renderRekapLengkapSantri('hwNilai', nisn, {showSaldo:false, izinLihatNilai:opts.izinNilai, sudahAdaKartuHafalan:true});
+        if (opts.izinRapor) {
+          var d2 = document.createElement('div');
+          d2.id = 'hwRapor';
+          body.querySelector('div').appendChild(d2);
+          renderRaporCard('hwRapor', nisn, nama);
+        }
+      });
+    } else {
+      el.innerHTML = '<div class="card"><p class="muted">Nilai akademik tidak ditampilkan. Hubungi Admin untuk informasi lebih lanjut.</p></div>';
+    }
+  }
+
+  // ----- TAB SPP -----
+  function renderTabSPP(nisn, body){
+    body.innerHTML = '<div style="padding:16px"><div class="card"><p class="muted">Memuat data SPP...</p></div></div>';
+    api('getSppSaya', {nisn:nisn}).then(function(res){
+      if (!res.ok){ body.innerHTML = '<div style="padding:16px">'+errBox(res.error)+'</div>'; return; }
+      var spp = res;
+      if (!spp.adaSpp){
+        body.innerHTML = '<div style="padding:16px"><div class="card"><p class="muted">Data SPP santri ini belum diatur. Hubungi Admin.</p></div></div>';
+        return;
+      }
+      var html = '<div style="padding:16px">' +
+        '<div class="card"><h3>&#128179; Status Pembayaran SPP</h3>' +
+        '<p>Biaya SPP: <b>'+rupiah(spp.biaya)+' / bulan</b></p>' +
+        (spp.totalTunggakan > 0
+          ? '<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:12px;margin:10px 0">' +
+            '&#128680; <b>Total Tunggakan: '+rupiah(spp.totalTunggakan)+'</b><br>' +
+            'Bulan yang belum dibayar:<br>' +
+            spp.bulanTunggakan.map(function(b){ return '&nbsp;&bull; '+esc(b); }).join('<br>') +
+            '</div>'
+          : '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px;margin:10px 0">' +
+            '&#9989; Semua pembayaran SPP sudah lunas. Jazakumullah khairan.</div>') +
+        '<p class="muted" style="font-size:12.5px">Untuk konfirmasi atau pertanyaan seputar pembayaran, hubungi Bendahara pondok.</p>' +
+        '</div></div>';
+      body.innerHTML = html;
+    });
+  }
+
+  // ----- TAB KEUANGAN -----
+  function renderTabKeuangan(nisn, body, opts){
+    body.innerHTML = '<div style="padding:16px" id="kwBody"><p class="muted">Memuat...</p></div>';
+    muatKantinWali(nisn, {izinTopUp:opts.izinTopUp, izinGantiLimit:opts.izinGantiLimit, containerId:'kwBody'});
+    renderRiwayatMutasiSaldo(nisn, 'kwBody');
+  }
+
+  // ----- TAB PELANGGARAN -----
+  function renderTabPelanggaran(nisn, body){
+    body.innerHTML = '<div style="padding:16px"><div id="hwPelanggaran"><p class="muted">Memuat...</p></div></div>';
+    muatRiwayatPelanggaranWali(nisn, 'hwPelanggaran');
+  }
+
+
 
   // =====================================================================
   // DASHBOARD ADMIN / MUDIR
@@ -13665,19 +14007,15 @@
 
   // Daftar semua section dashboard wali yang bisa dikontrol
   var WALI_SECTIONS = [
-    {key:'WaliTampilRingkasan',    label:'Ringkasan & Info Santri',    ikon:'📊', deskripsi:'Foto, nama, kelas, rekap cepat kehadiran & nilai'},
-    {key:'WaliTampilJadwal',       label:'Jadwal Pelajaran',           ikon:'📅', deskripsi:'Tabel jadwal harian santri per mapel'},
-    {key:'WaliTampilNotifAbsen',   label:'Notifikasi Absensi Mingguan',ikon:'🔔', deskripsi:'Rekap hadir/sakit/izin/alpa 7 hari terakhir'},
-    {key:'WaliTampilRekap',        label:'Rekap Akademik Lengkap',     ikon:'📋', deskripsi:'Nilai, hafalan, absensi detail per mapel'},
-    {key:'WaliTampilHafalan',      label:'Progres Hafalan Al-Qur\'an', ikon:'📿', deskripsi:'Grid 30 juz dan progres hafalan santri'},
-    {key:'WaliTampilRapor',        label:'Rapor / Nilai Akhir',        ikon:'📝', deskripsi:'Nilai rapor per mapel, sikap, kehadiran'},
-    {key:'WaliTampilIzin',         label:'Perizinan Santri',           ikon:'🚪', deskripsi:'Riwayat dan status pengajuan izin pulang'},
-    {key:'WaliTampilPelanggaran',  label:'Pelanggaran & Poin',         ikon:'⚠️',  deskripsi:'Catatan pelanggaran dan poin sanksi'},
-    {key:'WaliTampilKantin',       label:'Saldo & Belanja Kantin',     ikon:'🛒', deskripsi:'Saldo, limit harian, 5 transaksi terbaru, top-up'},
-    {key:'WaliTampilMutasiSaldo',  label:'Riwayat Tarik/Tambah Saldo',ikon:'💰', deskripsi:'Histori penambahan dan penarikan saldo'},
-    {key:'WaliTampilKontak',       label:'Kontak Pesantren',           ikon:'📞', deskripsi:'Nomor telepon, email, dan info kontak pondok'},
+    {key:'WaliTampilRingkasan',    label:'Tab Ringkasan',              ikon:'🏠', deskripsi:'Kartu cepat: saldo, kehadiran, SPP, info santri'},
+    {key:'WaliTampilKehadiran',    label:'Tab Kehadiran',              ikon:'📅', deskripsi:'Absensi harian + laporan ketidakhadiran di mapel/halaqoh'},
+    {key:'WaliTampilHafalan',      label:'Tab Hafalan',                ikon:'📿', deskripsi:'Progres juz + riwayat catatan hafalan bulanan (bisa download PDF)'},
+    {key:'WaliTampilNilai',        label:'Tab Nilai & Rapor',          ikon:'📊', deskripsi:'Nilai per mapel dan rapor akhir semester'},
+    {key:'WaliTampilPelanggaran',  label:'Tab Sikap & Pelanggaran',    ikon:'⚠️',  deskripsi:'Catatan pelanggaran, poin, dan prestasi santri'},
+    {key:'WaliTampilKantin',       label:'Tab Keuangan (Saldo/Kantin)',ikon:'💰', deskripsi:'Saldo kantin, riwayat transaksi, mutasi saldo'},
+    {key:'WaliTampilMutasiSaldo',  label:'Riwayat Tarik/Tambah Saldo',ikon:'💳', deskripsi:'Histori penambahan dan penarikan saldo di tab Keuangan'},
     {key:'WaliIzinAjukanTopUp',    label:'Tombol Ajukan Top-Up Saldo', ikon:'💳', deskripsi:'Orang tua bisa mengajukan tambah saldo sendiri'},
-    {key:'WaliIzinLihatNilai',     label:'Lihat Detail Nilai Tugas',   ikon:'📊', deskripsi:'Nilai tugas 1, 2, 3, dst di rekap akademik'},
+    {key:'WaliIzinLihatNilai',     label:'Lihat Detail Nilai Tugas',   ikon:'📝', deskripsi:'Nilai tugas 1, 2, 3, dst di tab Nilai'},
     {key:'WaliIzinGantiLimit',     label:'Ubah Limit Harian Kantin',   ikon:'🔧', deskripsi:'Orang tua bisa mengatur batas belanja harian'},
   ];
 
