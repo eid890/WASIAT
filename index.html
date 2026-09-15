@@ -353,7 +353,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwcqvmnIv8Fs0_abXUp0VbLZzCD0FoYwGxebpJzWqF4K9x3IYBMbOcf9Dk8sdPn9ko/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -653,7 +653,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.09.15-a';
+  var VERSI_APP = '2026.09.15-b';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -10478,11 +10478,13 @@
       api('getSppSaya', {nisn:nisn}),
       api('getSaldoSantriKantin', {nisn:nisn})
     ]).then(function(hasil){
-      var resJ=hasil[0], resK=hasil[1], resSpp=hasil[2], resSaldo=hasil[3];
+      var resJ=hasil[0], resK=hasil[1], resSppRaw=hasil[2], resSaldo=hasil[3];
       var d = resJ.ok ? resJ.data : {};
       var k = resK.ok ? resK.rekap : {hadir:0,sakit:0,izin:0,alpa:0,total:0,persen:0};
-      var spp = resSpp.ok ? resSpp : {adaSpp:false,totalTunggakan:0,bulanTunggakan:[]};
-      var saldo = resSaldo.ok ? resSaldo.saldo : 0;
+      // getSppSaya mengembalikan {ok, data:{adaSpp,biaya,bulanTunggakan,totalTunggakan}}
+      var spp = (resSppRaw.ok && resSppRaw.data) ? resSppRaw.data : {adaSpp:false,totalTunggakan:0,bulanTunggakan:[]};
+      // getSaldoSantriKantin mengembalikan {ok, data:{saldo,limit,nama}}
+      var saldo = (resSaldo.ok && resSaldo.data) ? (resSaldo.data.saldo || 0) : 0;
 
       body.innerHTML =
         '<div style="padding:16px">' +
@@ -10650,8 +10652,10 @@
         el.innerHTML = '<div class="card" style="overflow-x:auto"><table>' +
           '<tr><th>Tanggal</th><th>Jenis</th><th>Detail</th><th>Nilai</th><th>Pengampu</th></tr>' +
           _hwData.map(function(r){
+            // detailHafalan() mengharapkan field halamanKe, surah, ayat, juz
+            var rr = {jenis:r.jenis, surah:r.surah, ayat:r.ayat, juz:r.juz, halamanKe:r.halaman};
             return '<tr><td>'+esc(r.tanggal)+'</td><td>'+badgeJenisHafalan(r.jenis)+'</td>' +
-              '<td style="font-size:12px">'+detailHafalan(r)+'</td>' +
+              '<td style="font-size:12px">'+detailHafalan(rr)+'</td>' +
               '<td><b>'+(r.nilai||'-')+'</b></td><td style="font-size:12px">'+esc(r.pengampu||'-')+'</td></tr>';
           }).join('') + '</table></div>';
       });
@@ -10667,8 +10671,13 @@
   function unduhPdfHafalan(data, namaSantri){
     if (!data || !data.length){ alert('Tidak ada data hafalan untuk diunduh. Pilih bulan dan tekan Tampilkan terlebih dahulu.'); return; }
     var rows = data.map(function(r){
+      var detail = [
+        r.surah ? r.surah + (r.ayat ? ' : '+r.ayat : '') : '',
+        r.juz ? 'Juz '+r.juz : '',
+        r.halaman ? 'Hal '+r.halaman : ''
+      ].filter(Boolean).join(', ') || '-';
       return '<tr><td>'+esc(r.tanggal)+'</td><td>'+esc(r.jenis)+'</td>' +
-        '<td>'+esc(r.surah ? r.surah+(r.ayat?' : '+r.ayat:'')+(r.juz?', Juz '+r.juz:'')+(r.halaman?', Hal '+r.halaman:'') : '-')+'</td>' +
+        '<td>'+esc(detail)+'</td>' +
         '<td>'+esc(r.nilai||'-')+'</td><td>'+esc(r.pengampu||'-')+'</td></tr>';
     }).join('');
     var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Riwayat Hafalan</title>' +
@@ -10742,15 +10751,23 @@
 
   // ----- TAB KEUANGAN -----
   function renderTabKeuangan(nisn, body, opts){
-    body.innerHTML = '<div style="padding:16px" id="kwBody"><p class="muted">Memuat...</p></div>';
-    muatKantinWali(nisn, {izinTopUp:opts.izinTopUp, izinGantiLimit:opts.izinGantiLimit, containerId:'kwBody'});
-    renderRiwayatMutasiSaldo(nisn, 'kwBody');
+    body.innerHTML =
+      '<div style="padding:16px">' +
+      '<div id="kwSaldo"></div>' +
+      '<div id="kwMutasi"></div>' +
+      '</div>';
+    // muatKantinWali memakai ID 'dw-kantin' secara hardcode -- kita tempelkan alias
+    var fakeKantin = document.getElementById('kwSaldo');
+    fakeKantin.id = 'dw-kantin';
+    muatKantinWali(nisn, {izinTopUp:opts.izinTopUp, izinGantiLimit:opts.izinGantiLimit});
+    // Render mutasi di container terpisah
+    renderRiwayatMutasiSaldo(nisn, 'kwMutasi');
   }
 
   // ----- TAB PELANGGARAN -----
   function renderTabPelanggaran(nisn, body){
-    body.innerHTML = '<div style="padding:16px"><div id="hwPelanggaran"><p class="muted">Memuat...</p></div></div>';
-    muatRiwayatPelanggaranWali(nisn, 'hwPelanggaran');
+    body.innerHTML = '<div style="padding:16px"><div id="dw-pelanggaran"></div></div>';
+    muatRiwayatPelanggaranWali(nisn);
   }
 
 

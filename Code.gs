@@ -9474,25 +9474,26 @@ function apiGetKetidakhadiranMapel(p) {
 
   const laporan = [];
 
-  // Cek absensi mapel
+  // Cek absensi mapel - kolom: r[0]=tanggal, r[1]=waktu, r[2]=halaqoh/kelas,
+  // r[3]=mapel, r[4]=kelas, r[5]=pengampu, r[6]=NISN, r[7]=nama, r[8]=status
   const shMapel = ss.getSheetByName(SHEET_ABSENSI);
   if (shMapel && shMapel.getLastRow() > 1) {
     const rows = shMapel.getDataRange().getValues(); rows.shift();
     rows.forEach(function(r){
-      if (norm(r[2]) !== nisn) return;
+      if (norm(r[6]) !== nisn) return;
       const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
       if (tglMulai && tgl < tglMulai) return;
       if (tglAkhir && tgl > tglAkhir) return;
-      const status = norm(r[4]);
+      const status = norm(r[8]);
       if (status === 'Hadir') return;
-      // Kalau hari itu memang sakit/izin (dari absensi harian), tidak perlu dilaporkan lagi
       const statusHari = statusHarian[tgl] || '';
       if (statusHari === 'Sakit' || statusHari === 'Izin' || statusHari === 'Izin Pulang') return;
-      laporan.push({tanggal:tgl, jenis:'Mapel', nama:norm(r[3]), status:status, catatan:norm(r[5]||'')});
+      laporan.push({tanggal:tgl, jenis:'Mapel', nama:norm(r[3]), status:status, catatan:norm(r[9]||'')});
     });
   }
 
-  // Cek absensi halaqoh (dari sheet Hafalan, status Ghaib/Sakit/Izin)
+  // Cek absensi halaqoh (dari sheet Hafalan)
+  // Header: Tanggal(0),Waktu(1),Halaqoh(2),Pengampu(3),NISN(4),Nama(5),Jenis(6),Surah(7),Ayat(8),Juz(9),Halaman(10),Nilai(11)
   const TIDAK_HADIR_HALAQOH = ['Ghaib','Sakit','Izin'];
   const shHalaqoh = ss.getSheetByName(SHEET_HAFALAN);
   if (shHalaqoh && shHalaqoh.getLastRow() > 1) {
@@ -9502,11 +9503,11 @@ function apiGetKetidakhadiranMapel(p) {
       const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
       if (tglMulai && tgl < tglMulai) return;
       if (tglAkhir && tgl > tglAkhir) return;
-      const jenis = norm(r[2]);
+      const jenis = norm(r[6]);
       if (TIDAK_HADIR_HALAQOH.indexOf(jenis) === -1) return;
       const statusHari = statusHarian[tgl] || '';
       if (statusHari === 'Sakit' || statusHari === 'Izin' || statusHari === 'Izin Pulang') return;
-      laporan.push({tanggal:tgl, jenis:'Halaqoh', nama:norm(r[3]), status:jenis, catatan:''});
+      laporan.push({tanggal:tgl, jenis:'Halaqoh', nama:norm(r[2]), status:jenis, catatan:''});
     });
   }
 
@@ -9532,17 +9533,17 @@ function apiGetRiwayatHafalanBulan(p) {
   let namaSantri = '';
 
   rows.forEach(function(r){
-    if (norm(r[4]) !== nisn) return;
+    if (norm(r[4]) !== nisn) return;  // r[4] = NISN
     const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
     const d = new Date(tgl);
     if (d.getMonth()+1 !== bulan || d.getFullYear() !== tahun) return;
-    if (!namaSantri) namaSantri = norm(r[5] || r[4]);
+    if (!namaSantri) namaSantri = norm(r[5]);  // r[5] = Nama Santri
     data.push({
       tanggal: tgl, waktu: formatWaktu(r[1],tz),
-      halaqoh: norm(r[3]), jenis: norm(r[2]),
-      surah: norm(r[6]), ayat: norm(r[7]),
-      juz: norm(r[8]), halaman: norm(r[9]),
-      nilai: norm(r[10]||''), pengampu: norm(r[11]||'')
+      halaqoh: norm(r[2]), jenis: norm(r[6]),   // r[2]=Halaqoh, r[6]=Jenis
+      surah: norm(r[7]), ayat: norm(r[8]),       // r[7]=Surah, r[8]=Ayat
+      juz: norm(r[9]), halaman: norm(r[10]),     // r[9]=Juz, r[10]=Halaman
+      nilai: norm(r[11]||''), pengampu: norm(r[3]||'')  // r[11]=Nilai, r[3]=Pengampu
     });
   });
 
