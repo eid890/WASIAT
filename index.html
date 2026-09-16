@@ -353,7 +353,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbzdyl3AAYy_5DjUVuuW4hC10-iyZq1qE3gU1wYhEUf7ruDrpqIqdF79YAjFFxhNAEi_/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -653,7 +653,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.09.16-a';
+  var VERSI_APP = '2026.09.16-c';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -2079,6 +2079,7 @@
   var MENU_PER_ROLE = {
     'Guru': [
       {key:'jadwal',          label:'Jadwal & Absen',      icon:'&#128197;'},
+      {key:'jammengajar',     label:'Jam Mengajar Saya',   icon:'&#8987;'},
       {key:'riwayatabsen',    label:'Riwayat Absensi',     icon:'&#128203;'},
       {key:'rekapabsen',      label:'Rekap Absensi',       icon:'&#128202;'},
       {key:'hafalan',         label:'Isi Hafalan',         icon:'&#128214;'},
@@ -2175,7 +2176,7 @@
   function getMapFungsi(role){
     var m = {
       // Guru
-      jadwal:guruJadwal, riwayatabsen:guruRiwayat, rekapabsen:guruRekapAbsensi,
+      jadwal:guruJadwal, jammengajar:guruJamMengajar, riwayatabsen:guruRiwayat, rekapabsen:guruRekapAbsensi,
       hafalan:guruIsiHafalan, riwayathafalan:guruRiwayatHafalan, progresshafalan:function(){ renderRekapProgressHafalan({pengampu:STATE.user.nama}); },
       inputnilai:guruInputNilai, riwayatnilai:guruRiwayatNilai, rekapnilai:guruRekapNilaiRapor,
       raporkelassaya:guruRaporKelas,
@@ -4256,6 +4257,7 @@
     STATE._contentId = 'dg-content';
     var navItems = [
       {key:'jadwal', label:'Jadwal & Absen', icon:'&#128197;'},
+      {key:'jammengajar', label:'Jam Mengajar Saya', icon:'&#8987;'},
       {key:'riwayatabsen', label:'Riwayat Absensi', icon:'&#128203;'},
       {key:'rekapabsen', label:'Rekap Absensi', icon:'&#128202;'},
       {key:'hafalan', label:'Isi Hafalan', icon:'&#128214;'},
@@ -4272,7 +4274,7 @@
       {key:'profilsaya', label:'Profil Saya', icon:'&#128100;'}
     ];
     var map = {
-      jadwal:guruJadwal, riwayatabsen:guruRiwayat, rekapabsen:guruRekapAbsensi,
+      jadwal:guruJadwal, jammengajar:guruJamMengajar, riwayatabsen:guruRiwayat, rekapabsen:guruRekapAbsensi,
       hafalan:guruIsiHafalan, riwayathafalan:guruRiwayatHafalan, progresshafalan:function(){ renderRekapProgressHafalan({pengampu:STATE.user.nama}); },
       inputnilai:guruInputNilai, riwayatnilai:guruRiwayatNilai, rekapnilai:guruRekapNilaiRapor,
       pelanggaran:guruCatatPelanggaran, santrisaya:guruSantriSaya, profilsaya:guruProfilSaya,
@@ -4305,68 +4307,145 @@
         '<label>Tanggal</label><input type="date" id="cpTanggal" value="'+todayStr()+'">' +
         fieldAutocomplete('cpSantri','Nama Santri', daftarSantri.map(labelSantri), '', 'Ketik nama atau NISN santri...') +
         '<div class="grid2" style="margin-top:10px">' +
-          '<div>'+fieldAutocomplete('cpPelanggaran','Pelanggaran (opsional)', daftarPel.map(function(x){return x.nama+' (-'+x.poin+' poin)';}), '', 'Ketik jenis pelanggaran...')+'</div>' +
+          '<div>'+fieldAutocomplete('cpPelanggaran','Pelanggaran (opsional)', daftarPel.map(function(x){return x.nama+' (-'+x.poin+' poin)';}), '', 'Ketik jenis pelanggaran...')+
+            '<button type="button" class="secondary small" id="btnTogglePelBaru" style="margin-top:4px;font-size:11.5px;padding:4px 10px">+ Jenis pelanggaran belum ada di daftar</button>'+
+          '</div>' +
           '<div>'+fieldAutocomplete('cpPrestasi','Prestasi (opsional)', daftarPres.map(function(x){return x.nama+' (+'+x.poin+' poin)';}), '', 'Ketik jenis prestasi...')+'</div>' +
+        '</div>' +
+        // Panel tambah jenis pelanggaran baru langsung dari form ini -- tersembunyi
+        // secara default, muncul saat pengampu menekan tombol di atas. Poin dibatasi
+        // 1-5 lewat dropdown supaya tidak ada yang mengetik angka sembarangan
+        // (poin pelanggaran di pondok ini memang selalu kecil, beda dengan poin
+        // prestasi yang bisa lebih besar).
+        '<div id="wrapPelBaru" style="display:none;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-top:-4px;margin-bottom:10px">' +
+          '<p style="margin:0 0 8px;font-size:12.5px;color:#92400e"><b>&#9888;&#65039; Tambah jenis pelanggaran baru.</b> Jenis ini langsung masuk ke daftar pilihan dan bisa dipakai siapa saja untuk pencatatan berikutnya.</p>' +
+          '<div class="grid2">' +
+            '<div><label style="font-size:12.5px">Nama Pelanggaran Baru</label><input id="cpPelBaruNama" placeholder="contoh: Membawa HP tanpa izin"></div>' +
+            '<div><label style="font-size:12.5px">Poin (1-5)</label><select id="cpPelBaruPoin">' +
+              [1,2,3,4,5].map(function(n){ return '<option value="'+n+'"'+(n===2?' selected':'')+'>-'+n+' poin</option>'; }).join('') +
+            '</select></div>' +
+          '</div>' +
+          '<div id="pesanPelBaru"></div>' +
         '</div>' +
         '<div id="cpPoinPreview" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:8px 12px;font-size:13px;margin:8px 0;display:none"></div>' +
         '<button id="btnSimpanPelanggaran" style="margin-top:8px">Simpan Pencatatan</button>' +
         '<div id="pesanCatatPelanggaran"></div></div>';
+
+      // Toggle panel tambah jenis baru. Saat dibuka, kolom pilih pelanggaran yang
+      // sudah ada dikosongkan & dikunci -- supaya tidak ambigu mana yang dipakai:
+      // memilih dari daftar, atau menambah jenis baru.
+      var modePelBaru = false;
+      document.getElementById('btnTogglePelBaru').onclick = function(){
+        modePelBaru = !modePelBaru;
+        var wrap = document.getElementById('wrapPelBaru');
+        var elPel = document.getElementById('cpPelanggaran');
+        wrap.style.display = modePelBaru ? 'block' : 'none';
+        this.textContent = modePelBaru ? '✕ Batal, pilih dari daftar yang ada' : '+ Jenis pelanggaran belum ada di daftar';
+        if (modePelBaru) { elPel.value = ''; elPel.disabled = true; perbaruiPoinPreview(); }
+        else { elPel.disabled = false; document.getElementById('cpPelBaruNama').value = ''; perbaruiPoinPreview(); }
+      };
 
       function perbaruiPoinPreview(){
         var rawPel  = document.getElementById('cpPelanggaran').value.trim();
         var rawPres = document.getElementById('cpPrestasi').value.trim();
         var pelObj  = daftarPel.find(function(x){ return (x.nama+' (-'+x.poin+' poin)')===rawPel; });
         var presObj = daftarPres.find(function(x){ return (x.nama+' (+'+x.poin+' poin)')===rawPres; });
+        var poinPelBaru = modePelBaru ? Number(document.getElementById('cpPelBaruPoin').value) : 0;
+        var namaPelBaru = modePelBaru ? document.getElementById('cpPelBaruNama').value.trim() : '';
         var el = document.getElementById('cpPoinPreview');
         if (!el) return;
-        if (!pelObj && !presObj) { el.style.display='none'; return; }
-        var net = (presObj ? Number(presObj.poin) : 0) - (pelObj ? Number(pelObj.poin) : 0);
+        if (!pelObj && !presObj && !(modePelBaru && namaPelBaru)) { el.style.display='none'; return; }
+        var poinPel = pelObj ? Number(pelObj.poin) : (modePelBaru ? poinPelBaru : 0);
+        var net = (presObj ? Number(presObj.poin) : 0) - poinPel;
         el.style.display='block';
         el.innerHTML =
-          (pelObj  ? 'Pelanggaran: <b style="color:#dc2626">-'+pelObj.poin+' poin</b><br>' : '') +
+          (pelObj  ? 'Pelanggaran: <b style="color:#dc2626">-'+pelObj.poin+' poin</b><br>' :
+           (modePelBaru && namaPelBaru) ? 'Pelanggaran baru "'+esc(namaPelBaru)+'": <b style="color:#dc2626">-'+poinPelBaru+' poin</b><br>' : '') +
           (presObj ? 'Prestasi: <b style="color:#16a34a">+'+presObj.poin+' poin</b><br>' : '') +
           'Bersih: <b style="color:'+(net>=0?'#16a34a':'#dc2626')+'">'+(net>=0?'+':'')+net+' poin</b>';
       }
       document.getElementById('cpPelanggaran').addEventListener('change', perbaruiPoinPreview);
       document.getElementById('cpPrestasi').addEventListener('change', perbaruiPoinPreview);
+      document.getElementById('cpPelBaruNama').addEventListener('input', perbaruiPoinPreview);
+      document.getElementById('cpPelBaruPoin').addEventListener('change', perbaruiPoinPreview);
 
       document.getElementById('btnSimpanPelanggaran').onclick = function(){
         var elPesan = document.getElementById('pesanCatatPelanggaran');
         var nisn = resolveSantriNisn(document.getElementById('cpSantri').value.trim(), daftarSantri);
         if (!nisn) { elPesan.innerHTML = errBox('Pilih santri dari saran yang muncul saat mengetik.'); return; }
         var santriObj = daftarSantri.find(function(s){ return String(s.nisn)===String(nisn); });
-        var rawPel  = document.getElementById('cpPelanggaran').value.trim();
+
         var rawPres = document.getElementById('cpPrestasi').value.trim();
-        var pelObj  = daftarPel.find(function(x){ return (x.nama+' (-'+x.poin+' poin)')===rawPel; });
         var presObj = daftarPres.find(function(x){ return (x.nama+' (+'+x.poin+' poin)')===rawPres; });
-        if (rawPel  && !pelObj)  { elPesan.innerHTML = errBox('Pelanggaran tidak dikenali. Pilih dari saran yang muncul.'); return; }
         if (rawPres && !presObj) { elPesan.innerHTML = errBox('Prestasi tidak dikenali. Pilih dari saran yang muncul.'); return; }
-        if (!pelObj && !presObj) { elPesan.innerHTML = errBox('Isi minimal satu Pelanggaran atau Prestasi.'); return; }
-        var btn = document.getElementById('btnSimpanPelanggaran');
-        loadingBtn(btn, 'Menyimpan...');
-        api('savePencatatanPelanggaran', {
-          tanggal: document.getElementById('cpTanggal').value,
-          nisn: nisn, namaSantri: santriObj ? santriObj.nama : nisn,
-          pelanggaran:   pelObj  ? pelObj.nama  : '', poinPelanggaran: pelObj  ? pelObj.poin  : 0,
-          prestasi:      presObj ? presObj.nama : '', poinPrestasi:    presObj ? presObj.poin : 0,
-          namaPencatat: STATE.user.nama
-        }).then(function(res){
-          resetBtn(btn, 'Simpan Pencatatan');
-          if (!res.ok) { elPesan.innerHTML = errBox(res.error); return; }
-          document.getElementById('cpSantri').value = '';
-          document.getElementById('cpPelanggaran').value = '';
-          document.getElementById('cpPrestasi').value = '';
-          var prev = document.getElementById('cpPoinPreview');
-          if (prev) prev.style.display = 'none';
-          elPesan.innerHTML =
-            '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;font-size:13px;color:#16a34a;margin-top:8px">' +
-            '&#9989; Tersimpan. Sisa poin <b>'+esc(santriObj ? santriObj.nama : nisn)+'</b>: <b>'+res.poinTerbaru+'</b> ('+esc(res.status)+').'+
-            (res.status==='Habis' ? ' <b style="color:#dc2626">&#9888;&#65039; Poin habis — santri perlu pembinaan.</b>' : '') +
-            '</div>';
-        }).catch(function(){
-          resetBtn(btn, 'Simpan Pencatatan');
-          elPesan.innerHTML = errBox('Gagal menyimpan. Periksa koneksi lalu coba lagi.');
-        });
+
+        var pelObj = null;
+        if (!modePelBaru) {
+          var rawPel = document.getElementById('cpPelanggaran').value.trim();
+          pelObj = daftarPel.find(function(x){ return (x.nama+' (-'+x.poin+' poin)')===rawPel; });
+          if (rawPel && !pelObj) { elPesan.innerHTML = errBox('Pelanggaran tidak dikenali. Pilih dari saran yang muncul.'); return; }
+          if (!pelObj && !presObj) { elPesan.innerHTML = errBox('Isi minimal satu Pelanggaran atau Prestasi.'); return; }
+          lanjutkanSimpan(pelObj);
+        } else {
+          var namaBaru = document.getElementById('cpPelBaruNama').value.trim();
+          if (!namaBaru) { elPesan.innerHTML = errBox('Tulis nama pelanggaran barunya, atau batalkan mode tambah baru.'); return; }
+          // Cegah duplikat -- kalau nama sudah ada di daftar (huruf besar/kecil
+          // diabaikan), arahkan untuk memilih dari daftar yang ada supaya poinnya
+          // konsisten dan tidak ada dua entri untuk pelanggaran yang sama.
+          var sudahAda = daftarPel.find(function(x){ return x.nama.toLowerCase() === namaBaru.toLowerCase(); });
+          if (sudahAda) {
+            elPesan.innerHTML = errBox('"'+namaBaru+'" sudah ada di daftar (poin: -'+sudahAda.poin+'). Batalkan mode tambah baru lalu pilih dari daftar.');
+            return;
+          }
+          var poinBaru = Number(document.getElementById('cpPelBaruPoin').value);
+          if (!(poinBaru >= 1 && poinBaru <= 5)) { elPesan.innerHTML = errBox('Poin harus antara 1 sampai 5.'); return; }
+
+          var btn0 = document.getElementById('btnSimpanPelanggaran');
+          loadingBtn(btn0, 'Menambah jenis baru...');
+          // Jenis pelanggaran baru ditambahkan ke daftar master dulu, supaya langsung
+          // bisa dipilih siapa pun untuk pencatatan berikutnya -- sesuai permintaan:
+          // "guru, admin, mudir, pembina bisa menambahkan langsung dipilihan pelanggaran".
+          api('saveMasterPelPrestasi', {jenis:'Pelanggaran', nama:namaBaru, poin:poinBaru}).then(function(rm){
+            if (!rm.ok) { resetBtn(btn0, 'Simpan Pencatatan'); elPesan.innerHTML = errBox(rm.error || 'Gagal menambah jenis pelanggaran baru.'); return; }
+            var objBaru = {nama:namaBaru, poin:poinBaru};
+            daftarPel.push(objBaru); // supaya sesi ini langsung mengenalinya kalau dipakai lagi
+            lanjutkanSimpan(objBaru);
+          }).catch(function(){
+            resetBtn(btn0, 'Simpan Pencatatan');
+            elPesan.innerHTML = errBox('Gagal menambah jenis pelanggaran baru. Periksa koneksi lalu coba lagi.');
+          });
+        }
+
+        function lanjutkanSimpan(pelObjFinal){
+          if (!pelObjFinal && !presObj) { elPesan.innerHTML = errBox('Isi minimal satu Pelanggaran atau Prestasi.'); return; }
+          var btn = document.getElementById('btnSimpanPelanggaran');
+          loadingBtn(btn, 'Menyimpan...');
+          api('savePencatatanPelanggaran', {
+            tanggal: document.getElementById('cpTanggal').value,
+            nisn: nisn, namaSantri: santriObj ? santriObj.nama : nisn,
+            pelanggaran:   pelObjFinal ? pelObjFinal.nama : '', poinPelanggaran: pelObjFinal ? pelObjFinal.poin : 0,
+            prestasi:      presObj ? presObj.nama : '', poinPrestasi:    presObj ? presObj.poin : 0,
+            namaPencatat: STATE.user.nama
+          }).then(function(res){
+            resetBtn(btn, 'Simpan Pencatatan');
+            if (!res.ok) { elPesan.innerHTML = errBox(res.error); return; }
+            document.getElementById('cpSantri').value = '';
+            document.getElementById('cpPelanggaran').value = '';
+            document.getElementById('cpPrestasi').value = '';
+            document.getElementById('cpPelBaruNama').value = '';
+            if (modePelBaru) document.getElementById('btnTogglePelBaru').click(); // kembali ke mode pilih daftar
+            var prev = document.getElementById('cpPoinPreview');
+            if (prev) prev.style.display = 'none';
+            elPesan.innerHTML =
+              '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;font-size:13px;color:#16a34a;margin-top:8px">' +
+              '&#9989; Tersimpan. Sisa poin <b>'+esc(santriObj ? santriObj.nama : nisn)+'</b>: <b>'+res.poinTerbaru+'</b> ('+esc(res.status)+').'+
+              (res.status==='Habis' ? ' <b style="color:#dc2626">&#9888;&#65039; Poin habis — santri perlu pembinaan.</b>' : '') +
+              '</div>';
+          }).catch(function(){
+            resetBtn(btn, 'Simpan Pencatatan');
+            elPesan.innerHTML = errBox('Gagal menyimpan. Periksa koneksi lalu coba lagi.');
+          });
+        }
       };
     }).catch(function(err){
       if (c) c.innerHTML = errBox('Gagal memuat data: '+(err && err.message ? err.message : 'periksa koneksi.'));
@@ -4702,6 +4781,86 @@
 
 
   // ---- Jadwal & Absen Akademik ----
+  // ================= JAM MENGAJAR SAYA (Guru) =================
+  // Dihitung otomatis dari catatan Absensi (mata pelajaran) dan Isi Hafalan
+  // (halaqoh) yang guru isi sendiri -- guru tidak perlu absen kehadiran
+  // terpisah. Begitu guru mengabsen santri di suatu sesi, sesi itu otomatis
+  // terhitung sebagai jam mengajar, dengan jumlah jam sesuai yang diatur Admin
+  // di menu Data Master > Jam Pelajaran (default 2 jam kalau mapelnya belum diatur).
+
+  // Widget ringkas untuk halaman Jadwal & Absen (landing page guru) -- supaya
+  // guru langsung melihat "sudah X jam bulan ini" tanpa perlu berpindah menu.
+  function widgetJamMengajarRingkas(containerId){
+    var el = document.getElementById(containerId);
+    if (!el) return;
+    var now = new Date();
+    api('getRekapJamMengajarGuru', {pengampu: STATE.user.nama, bulan: now.getMonth()+1, tahun: now.getFullYear()}).then(function(res){
+      if (!el || !res.ok || !res.data) { if (el) el.innerHTML = ''; return; }
+      var d = res.data;
+      var namaBulan = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][now.getMonth()];
+      el.innerHTML =
+        '<div class="card" style="border-left:4px solid #0d9488;cursor:pointer" id="widgetJamKlik">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">' +
+            '<div><div class="muted" style="font-size:12px">JAM MENGAJAR &mdash; '+namaBulan+' '+now.getFullYear()+'</div>' +
+            '<div style="font-size:26px;font-weight:800;color:#0d9488;line-height:1.2">'+d.totalJam+' <span style="font-size:14px;font-weight:600;color:#64748b">jam</span></div>' +
+            '<div class="muted" style="font-size:12px">dari '+d.jumlahSesi+' sesi mengajar tercatat</div></div>' +
+            '<div style="color:#0d9488;font-size:13px;font-weight:600">Lihat Rincian &rarr;</div>' +
+          '</div>' +
+        '</div>';
+      var w = document.getElementById('widgetJamKlik');
+      if (w) w.onclick = function(){
+        var nav = document.querySelector('[data-key="jammengajar"]');
+        if (nav) nav.click(); else guruJamMengajar();
+      };
+    }).catch(function(){ if (el) el.innerHTML = ''; });
+  }
+
+  function guruJamMengajar(){
+    var c = getContentEl();
+    var now = new Date();
+    c.innerHTML = '<p>Memuat...</p>';
+
+    c.innerHTML =
+      '<div class="card"><h3>&#8987; Jam Mengajar Saya</h3>' +
+      warnBox('Jam dihitung otomatis dari catatan Absensi (mata pelajaran) dan Isi Hafalan (halaqoh) yang Anda isi sendiri -- setiap sesi yang Anda absen otomatis terhitung sesuai jumlah jam yang diatur Admin untuk mapel/halaqoh tersebut.') +
+      '<div class="grid2"><div><label>Bulan</label><select id="jmBulan">' +
+        [['1','Januari'],['2','Februari'],['3','Maret'],['4','April'],['5','Mei'],['6','Juni'],
+         ['7','Juli'],['8','Agustus'],['9','September'],['10','Oktober'],['11','November'],['12','Desember']]
+          .map(function(m){ return '<option value="'+m[0]+'"'+(Number(m[0])===now.getMonth()+1?' selected':'')+'>'+m[1]+'</option>'; }).join('') +
+      '</select></div><div><label>Tahun</label><input id="jmTahun" value="'+now.getFullYear()+'"></div></div>' +
+      '<button class="small" id="btnJmTampil" style="margin-top:6px">Tampilkan</button></div>' +
+      '<div id="jmHasil"><p class="muted">Memuat bulan berjalan...</p></div>';
+
+    function muat(){
+      var bulan = document.getElementById('jmBulan').value;
+      var tahun = document.getElementById('jmTahun').value;
+      var el = document.getElementById('jmHasil');
+      el.innerHTML = '<p class="muted">Memuat...</p>';
+      api('getRekapJamMengajarGuru', {pengampu: STATE.user.nama, bulan: bulan, tahun: tahun}).then(function(res){
+        if (!res.ok) { el.innerHTML = errBox(res.error); return; }
+        var d = res.data;
+        if (!d.riwayat.length) {
+          el.innerHTML = '<div class="card"><p class="muted">Belum ada sesi mengajar tercatat pada bulan ini.</p></div>';
+          return;
+        }
+        el.innerHTML =
+          '<div class="card">' +
+            '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px">' +
+              '<div><div class="muted" style="font-size:11.5px">TOTAL JAM</div><b style="font-size:24px;color:#0d9488">'+d.totalJam+' jam</b></div>' +
+              '<div><div class="muted" style="font-size:11.5px">JUMLAH SESI</div><b style="font-size:24px;color:#0d9488">'+d.jumlahSesi+'</b></div>' +
+              '<div><div class="muted" style="font-size:11.5px">HARI MENGAJAR</div><b style="font-size:24px;color:#0d9488">'+Object.keys(d.perHari).length+'</b></div>' +
+            '</div>' +
+            '<div style="overflow-x:auto"><table><tr><th>Tanggal</th><th>Jenis</th><th>Keterangan</th><th>Jam</th></tr>' +
+            d.riwayat.map(function(r){
+              return '<tr><td>'+esc(r.tanggal)+'</td><td>'+esc(r.jenis)+'</td><td>'+esc(r.keterangan)+'</td><td><b>'+r.jam+'</b></td></tr>';
+            }).join('') + '</table></div>' +
+          '</div>';
+      }).catch(function(){ el.innerHTML = errBox('Gagal memuat data. Periksa koneksi lalu coba lagi.'); });
+    }
+    document.getElementById('btnJmTampil').onclick = muat;
+    muat();
+  }
+
   function guruJadwal(){
     var c = getContentEl();
     c.innerHTML = '<p>Memuat jadwal...</p>';
@@ -4720,7 +4879,8 @@
         return;
       }
 
-      var html = '<div class="card"><h3>&#128197; Jadwal Mengajar</h3>'+
+      var html = '<div id="widgetJamMengajarTop"></div>' +
+        '<div class="card"><h3>&#128197; Jadwal Mengajar</h3>'+
         '<p class="muted">Hari ini: <b>'+hariIni+'</b>. Jadwal hari ini aktif (bisa diisi absen). Jadwal hari lain ditampilkan samar.</p></div>';
 
       // Jadwal hari ini -- AKTIF dan mencolok
@@ -4786,6 +4946,7 @@
       c.querySelectorAll('.btnIsiAbsen').forEach(function(btn){
         btn.onclick = function(){ formAbsen(window.__jadwalGuru[Number(btn.dataset.idx)]); };
       });
+      widgetJamMengajarRingkas('widgetJamMengajarTop');
     });
   }
 
@@ -11667,7 +11828,7 @@
         '<div id="hasilRekapGuru"></div></div>';
 
       var lastHasil = null, lastLabel = '';
-      document.getElementById('btnRekapGuru').onclick = function(){
+      function muatRekap(){
         var rawGuru = document.getElementById('rgGuru').value.trim();
         var guru = rawGuru ? resolveGuruExact(rawGuru, daftarNamaGuru) : '';
         if (rawGuru && !guru) { document.getElementById('hasilRekapGuru').innerHTML = errBox('Nama guru tidak dikenali. Pilih salah satu saran yang muncul saat mengetik, atau kosongkan untuk lihat semua guru.'); return; }
@@ -11685,14 +11846,15 @@
             html += '<p style="font-size:16px;margin-top:10px">Total Jam Mengajar: <b>'+d.totalJam+' jam</b></p>';
             document.getElementById('hasilRekapGuru').innerHTML = html;
           } else {
-            var html2 = '<h4>Total Jam Mengajar Semua Guru</h4>';
+            var html2 = '<h4>Total Jam Mengajar Semua Guru &mdash; ' + ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][Number(bulan)-1] + ' ' + tahun + '</h4>';
             if (!d.daftar.length) html2 += '<p class="muted">Belum ada data mengajar pada bulan ini.</p>';
             else html2 += '<table><tr><th>Nama Guru</th><th>Total Jam</th></tr>' +
-              d.daftar.map(function(r){return '<tr><td>'+esc(r.pengampu)+'</td><td>'+r.totalJam+'</td></tr>';}).join('') + '</table>';
+              d.daftar.map(function(r){return '<tr><td>'+esc(r.pengampu)+'</td><td><b>'+r.totalJam+' jam</b></td></tr>';}).join('') + '</table>';
             document.getElementById('hasilRekapGuru').innerHTML = html2;
           }
         });
-      };
+      }
+      document.getElementById('btnRekapGuru').onclick = muatRekap;
       document.getElementById('btnPdfRekapGuru').onclick = function(){
         if (!lastHasil) return alert('Tampilkan rekap dulu.');
         if (lastHasil.mode === 'detail') {
@@ -11705,6 +11867,9 @@
           }).then(unduhPdf);
         }
       };
+      // Muat otomatis begitu halaman dibuka (semua guru, bulan berjalan) -- Mudir
+      // langsung melihat rekap tanpa perlu menekan Tampilkan dulu.
+      muatRekap();
     });
   }
 

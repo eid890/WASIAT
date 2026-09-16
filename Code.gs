@@ -5390,65 +5390,84 @@ function getRekapJamMengajarGuru(pengampu, bulan, tahun, tahunAjaranId) {
   const tz = Session.getScriptTimeZone();
   const jamList = getJamPelajaranList(tahunAjaranId);
   const jamMapel = {}, jamHalaqoh = {};
-  jamList.forEach(j => { if (j.jenis === 'Halaqoh') jamHalaqoh[j.nama] = j.jumlahJam; else if (j.jenis === 'Mapel') jamMapel[j.nama] = j.jumlahJam; });
+  jamList.forEach(j => { if (j.jenis === 'Halaqoh') jamHalaqoh[j.nama] = j.jumlahJam; else if (j.jenis === 'Mapel' || j.jenis === 'Mata Pelajaran') jamMapel[j.nama] = j.jumlahJam; });
+  // Jam bawaan untuk mapel yang belum diatur di master JamPelajaran, supaya
+  // rekap tetap terhitung (2 jam pelajaran) daripada diam-diam bernilai 0.
+  const JAM_MAPEL_DEFAULT = 2;
 
   const sesiUnik = {};
-  const absensiRows = ss.getSheetByName(SHEET_ABSENSI).getDataRange().getValues(); absensiRows.shift();
-  absensiRows.forEach(r => {
-    const d = (r[0] instanceof Date) ? r[0] : new Date(r[0]);
-    if (d.getMonth()+1 !== bulan || d.getFullYear() !== tahun) return;
-    const guru = norm(r[5]);
-    if (pengampu && guru !== pengampu) return;
-    const tglStr = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
-    const mapel = norm(r[3]), kelas = norm(r[4]);
-    const key = 'M|'+tglStr+'|'+r[2]+'|'+mapel+'|'+kelas+'|'+guru;
-    if (!sesiUnik[key]) sesiUnik[key] = { tanggal: tglStr, jenis:'Mata Pelajaran', keterangan: mapel+' - '+kelas, pengampu: guru, jam: jamMapel[mapel] || 0 };
-  });
-  const hafalanRows = ss.getSheetByName(SHEET_HAFALAN).getDataRange().getValues(); hafalanRows.shift();
-if (!hafalanRowsHafalan) return {ok:false, data:[]};
+  const shAbsensi = ss.getSheetByName(SHEET_ABSENSI);
+  if (shAbsensi && shAbsensi.getLastRow() > 1) {
+    const absensiRows = shAbsensi.getDataRange().getValues(); absensiRows.shift();
+    absensiRows.forEach(r => {
+      const d = (r[0] instanceof Date) ? r[0] : new Date(r[0]);
+      if (d.getMonth()+1 !== bulan || d.getFullYear() !== tahun) return;
+      const guru = norm(r[5]);
+      if (pengampu && guru !== pengampu) return;
+      const tglStr = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
+      const mapel = norm(r[3]), kelas = norm(r[4]);
+      // Satu sesi mengajar = satu kombinasi tanggal+halaqoh/kelas+mapel+guru, TIDAK
+      // dihitung per santri -- kalau tidak di-unik-kan begini, guru yang mengabsen
+      // 30 santri dalam satu sesi akan tercatat seolah mengajar 30 sesi.
+      const key = 'M|'+tglStr+'|'+r[2]+'|'+mapel+'|'+kelas+'|'+guru;
+      if (!sesiUnik[key]) {
+        const jam = (jamMapel[mapel] !== undefined) ? jamMapel[mapel] : JAM_MAPEL_DEFAULT;
+        sesiUnik[key] = { tanggal: tglStr, jenis:'Mata Pelajaran', keterangan: mapel+' - '+kelas, pengampu: guru, jam: jam };
+      }
+    });
+  }
+
   // Ambil data gender halaqoh untuk koreksi jam Duha Jumat
   const halaqohGenderMap = {};
   try {
     const shH = ss.getSheetByName(SHEET_HALAQOH);
-if (!shH) return {ok:true, data:[]};
-    if (shH) {
+    if (shH && shH.getLastRow() > 1) {
       shH.getDataRange().getValues().slice(1).forEach(r => {
         if (r[0]) halaqohGenderMap[norm(r[0])] = norm(r[3]); // namaHalaqoh → gender
       });
     }
   } catch(e) {}
 
-  hafalanRows.forEach(r => {
-    const d = (r[0] instanceof Date) ? r[0] : new Date(r[0]);
-    if (d.getMonth()+1 !== bulan || d.getFullYear() !== tahun) return;
-    const guru = norm(r[3]);
-    if (pengampu && guru !== pengampu) return;
-    const tglStr = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
-    const waktu = norm(r[1]), halaqoh = norm(r[2]);
-    const key = 'H|'+tglStr+'|'+waktu+'|'+halaqoh+'|'+guru;
-    if (!sesiUnik[key]) {
-      let jam = jamHalaqoh[waktu] || 0;
-      // Koreksi khusus: Halaqoh Duha hari Jumat untuk Putra = 2 jam (bukan 4)
-      const hariSesi = HARI_LIST[d.getDay()];
-      const genderHalaqoh = halaqohGenderMap[halaqoh] || '';
-      if (normNama(waktu) === 'duha' &&
-          normNama(hariSesi) === normNama("Jum'at") &&
-          normNama(genderHalaqoh) === 'laki-laki') {
-        jam = 2;
+  const shHafalan = ss.getSheetByName(SHEET_HAFALAN);
+  if (shHafalan && shHafalan.getLastRow() > 1) {
+    const hafalanRows = shHafalan.getDataRange().getValues(); hafalanRows.shift();
+    hafalanRows.forEach(r => {
+      const d = (r[0] instanceof Date) ? r[0] : new Date(r[0]);
+      if (d.getMonth()+1 !== bulan || d.getFullYear() !== tahun) return;
+      const guru = norm(r[3]);
+      if (pengampu && guru !== pengampu) return;
+      const tglStr = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
+      const waktu = norm(r[1]), halaqoh = norm(r[2]);
+      const key = 'H|'+tglStr+'|'+waktu+'|'+halaqoh+'|'+guru;
+      if (!sesiUnik[key]) {
+        let jam = jamHalaqoh[waktu] || 0;
+        // Koreksi khusus: Halaqoh Duha hari Jumat untuk Putra = 2 jam (bukan 4)
+        const hariSesi = HARI_LIST[d.getDay()];
+        const genderHalaqoh = halaqohGenderMap[halaqoh] || '';
+        if (normNama(waktu) === 'duha' &&
+            normNama(hariSesi) === normNama("Jum'at") &&
+            normNama(genderHalaqoh) === 'laki-laki') {
+          jam = 2;
+        }
+        sesiUnik[key] = { tanggal: tglStr, jenis:'Halaqoh ('+waktu+')', keterangan: halaqoh, pengampu: guru, jam: jam };
       }
-      sesiUnik[key] = { tanggal: tglStr, jenis:'Halaqoh ('+waktu+')', keterangan: halaqoh, pengampu: guru, jam: jam };
-    }
-  });
+    });
+  }
 
   const daftar = Object.keys(sesiUnik).map(k => sesiUnik[k]).sort((a,b) => a.tanggal.localeCompare(b.tanggal));
   if (pengampu) {
     const totalJam = daftar.reduce((s,x) => s + x.jam, 0);
-    return { mode:'detail', pengampu: pengampu, riwayat: daftar, totalJam: totalJam };
+    // Rekap per hari juga disertakan -- dipakai dashboard guru untuk menampilkan
+    // "sudah X jam bulan ini" tanpa harus menjumlahkan sendiri di sisi klien.
+    const perHari = {};
+    daftar.forEach(x => { perHari[x.tanggal] = (perHari[x.tanggal]||0) + x.jam; });
+    return { ok:true, mode:'detail', pengampu: pengampu, riwayat: daftar, totalJam: totalJam,
+             jumlahSesi: daftar.length, perHari: perHari };
   }
   const perGuru = {};
   daftar.forEach(x => { perGuru[x.pengampu] = (perGuru[x.pengampu]||0) + x.jam; });
   const ringkasan = Object.keys(perGuru).map(g => ({pengampu:g, totalJam: perGuru[g]})).sort((a,b) => b.totalJam - a.totalJam);
-  return { mode:'ringkasan', daftar: ringkasan };
+  return { ok:true, mode:'ringkasan', daftar: ringkasan };
 }
 
 function getDashboardAdmin() {
