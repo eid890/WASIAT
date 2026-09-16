@@ -353,7 +353,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbw5BJuyob3T3NGo3f0Ar-8WWLy3ZKBN0SvlnCnZsJRDPFjQ2xw1bImc_C2ReOI9eulC/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -653,7 +653,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.09.15-b';
+  var VERSI_APP = '2026.09.16-a';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -4287,48 +4287,91 @@
   // ---------------- CATAT PELANGGARAN & PRESTASI (dipakai Guru, Admin, Mudir) ----------------
   function renderFormCatatPelanggaran(containerId){
     var c = document.getElementById(containerId);
+    if (!c) { console.error('renderFormCatatPelanggaran: container tidak ditemukan:', containerId); return; }
     c.innerHTML = '<p>Memuat...</p>';
-    Promise.all([api('getSemuaSantri', {}), api('getMasterPelanggaran', {}), api('getMasterPrestasi', {})]).then(function(hasil){
+    Promise.all([
+      api('getSemuaSantri', {}),
+      api('getMasterPelanggaran', {}),
+      api('getMasterPrestasi', {})
+    ]).then(function(hasil){
+      if (!c || !document.body.contains(c)) return;
       var daftarSantri = hasil[0].ok ? hasil[0].data : [];
-      var daftarPel = hasil[1].ok ? hasil[1].data : [];
-      var daftarPres = hasil[2].ok ? hasil[2].data : [];
-      if (!hasil[1].ok) { c.innerHTML = errBox(hasil[1].error); return; }
-      c.innerHTML = '<div class="card"><h3>Catat Pelanggaran / Prestasi Santri</h3>' +
+      var daftarPel    = hasil[1].ok ? hasil[1].data : [];
+      var daftarPres   = hasil[2].ok ? hasil[2].data : [];
+      if (!hasil[1].ok) { c.innerHTML = errBox(hasil[1].error || 'Gagal memuat master pelanggaran.'); return; }
+
+      c.innerHTML =
+        '<div class="card"><h3>&#128221; Catat Pelanggaran / Prestasi Santri</h3>' +
         '<label>Tanggal</label><input type="date" id="cpTanggal" value="'+todayStr()+'">' +
-        fieldAutocomplete('cpSantri','Nama Santri', daftarSantri.map(labelSantri), '', 'Ketik nama/NISN santri...') +
-        '<div class="grid2">' +
-        '<div>' + fieldAutocomplete('cpPelanggaran','Pelanggaran (opsional)', daftarPel.map(function(x){return x.nama+' (-'+x.poin+' poin)';}), '', 'Ketik pelanggaran...') + '</div>' +
-        '<div>' + fieldAutocomplete('cpPrestasi','Prestasi (opsional)', daftarPres.map(function(x){return x.nama+' (+'+x.poin+' poin)';}), '', 'Ketik prestasi...') + '</div>' +
+        fieldAutocomplete('cpSantri','Nama Santri', daftarSantri.map(labelSantri), '', 'Ketik nama atau NISN santri...') +
+        '<div class="grid2" style="margin-top:10px">' +
+          '<div>'+fieldAutocomplete('cpPelanggaran','Pelanggaran (opsional)', daftarPel.map(function(x){return x.nama+' (-'+x.poin+' poin)';}), '', 'Ketik jenis pelanggaran...')+'</div>' +
+          '<div>'+fieldAutocomplete('cpPrestasi','Prestasi (opsional)', daftarPres.map(function(x){return x.nama+' (+'+x.poin+' poin)';}), '', 'Ketik jenis prestasi...')+'</div>' +
         '</div>' +
-        '<button id="btnSimpanPelanggaran">Simpan Pencatatan</button><div id="pesanCatatPelanggaran"></div></div>';
+        '<div id="cpPoinPreview" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:8px 12px;font-size:13px;margin:8px 0;display:none"></div>' +
+        '<button id="btnSimpanPelanggaran" style="margin-top:8px">Simpan Pencatatan</button>' +
+        '<div id="pesanCatatPelanggaran"></div></div>';
+
+      function perbaruiPoinPreview(){
+        var rawPel  = document.getElementById('cpPelanggaran').value.trim();
+        var rawPres = document.getElementById('cpPrestasi').value.trim();
+        var pelObj  = daftarPel.find(function(x){ return (x.nama+' (-'+x.poin+' poin)')===rawPel; });
+        var presObj = daftarPres.find(function(x){ return (x.nama+' (+'+x.poin+' poin)')===rawPres; });
+        var el = document.getElementById('cpPoinPreview');
+        if (!el) return;
+        if (!pelObj && !presObj) { el.style.display='none'; return; }
+        var net = (presObj ? Number(presObj.poin) : 0) - (pelObj ? Number(pelObj.poin) : 0);
+        el.style.display='block';
+        el.innerHTML =
+          (pelObj  ? 'Pelanggaran: <b style="color:#dc2626">-'+pelObj.poin+' poin</b><br>' : '') +
+          (presObj ? 'Prestasi: <b style="color:#16a34a">+'+presObj.poin+' poin</b><br>' : '') +
+          'Bersih: <b style="color:'+(net>=0?'#16a34a':'#dc2626')+'">'+(net>=0?'+':'')+net+' poin</b>';
+      }
+      document.getElementById('cpPelanggaran').addEventListener('change', perbaruiPoinPreview);
+      document.getElementById('cpPrestasi').addEventListener('change', perbaruiPoinPreview);
 
       document.getElementById('btnSimpanPelanggaran').onclick = function(){
+        var elPesan = document.getElementById('pesanCatatPelanggaran');
         var nisn = resolveSantriNisn(document.getElementById('cpSantri').value.trim(), daftarSantri);
-        if (!nisn) { document.getElementById('pesanCatatPelanggaran').innerHTML = errBox('Pilih santri yang valid dari saran yang muncul.'); return; }
+        if (!nisn) { elPesan.innerHTML = errBox('Pilih santri dari saran yang muncul saat mengetik.'); return; }
         var santriObj = daftarSantri.find(function(s){ return String(s.nisn)===String(nisn); });
-        var rawPel = document.getElementById('cpPelanggaran').value.trim();
+        var rawPel  = document.getElementById('cpPelanggaran').value.trim();
         var rawPres = document.getElementById('cpPrestasi').value.trim();
-        var pelObj = daftarPel.find(function(x){ return (x.nama+' (-'+x.poin+' poin)') === rawPel; });
-        var presObj = daftarPres.find(function(x){ return (x.nama+' (+'+x.poin+' poin)') === rawPres; });
-        if (rawPel && !pelObj) { document.getElementById('pesanCatatPelanggaran').innerHTML = errBox('Pelanggaran tidak dikenali, pilih dari saran yang muncul.'); return; }
-        if (rawPres && !presObj) { document.getElementById('pesanCatatPelanggaran').innerHTML = errBox('Prestasi tidak dikenali, pilih dari saran yang muncul.'); return; }
-        if (!pelObj && !presObj) { document.getElementById('pesanCatatPelanggaran').innerHTML = errBox('Isi minimal satu Pelanggaran atau Prestasi.'); return; }
-        var btn = document.getElementById('btnSimpanPelanggaran'); btn.disabled = true; btn.innerText = 'Menyimpan...';
+        var pelObj  = daftarPel.find(function(x){ return (x.nama+' (-'+x.poin+' poin)')===rawPel; });
+        var presObj = daftarPres.find(function(x){ return (x.nama+' (+'+x.poin+' poin)')===rawPres; });
+        if (rawPel  && !pelObj)  { elPesan.innerHTML = errBox('Pelanggaran tidak dikenali. Pilih dari saran yang muncul.'); return; }
+        if (rawPres && !presObj) { elPesan.innerHTML = errBox('Prestasi tidak dikenali. Pilih dari saran yang muncul.'); return; }
+        if (!pelObj && !presObj) { elPesan.innerHTML = errBox('Isi minimal satu Pelanggaran atau Prestasi.'); return; }
+        var btn = document.getElementById('btnSimpanPelanggaran');
+        loadingBtn(btn, 'Menyimpan...');
         api('savePencatatanPelanggaran', {
-          tanggal: document.getElementById('cpTanggal').value, nisn: nisn, namaSantri: santriObj.nama,
-          pelanggaran: pelObj ? pelObj.nama : '', poinPelanggaran: pelObj ? pelObj.poin : 0,
-          prestasi: presObj ? presObj.nama : '', poinPrestasi: presObj ? presObj.poin : 0,
+          tanggal: document.getElementById('cpTanggal').value,
+          nisn: nisn, namaSantri: santriObj ? santriObj.nama : nisn,
+          pelanggaran:   pelObj  ? pelObj.nama  : '', poinPelanggaran: pelObj  ? pelObj.poin  : 0,
+          prestasi:      presObj ? presObj.nama : '', poinPrestasi:    presObj ? presObj.poin : 0,
           namaPencatat: STATE.user.nama
         }).then(function(res){
-          btn.disabled = false; btn.innerText = 'Simpan Pencatatan';
-          if (!res.ok) { document.getElementById('pesanCatatPelanggaran').innerHTML = errBox(res.error); return; }
-          document.getElementById('cpSantri').value=''; document.getElementById('cpPelanggaran').value=''; document.getElementById('cpPrestasi').value='';
-          document.getElementById('pesanCatatPelanggaran').innerHTML = '<p class="muted">Tersimpan. Sisa poin '+santriObj.nama+' bulan ini: '+res.poinTerbaru+' ('+res.status+').</p>';
+          resetBtn(btn, 'Simpan Pencatatan');
+          if (!res.ok) { elPesan.innerHTML = errBox(res.error); return; }
+          document.getElementById('cpSantri').value = '';
+          document.getElementById('cpPelanggaran').value = '';
+          document.getElementById('cpPrestasi').value = '';
+          var prev = document.getElementById('cpPoinPreview');
+          if (prev) prev.style.display = 'none';
+          elPesan.innerHTML =
+            '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;font-size:13px;color:#16a34a;margin-top:8px">' +
+            '&#9989; Tersimpan. Sisa poin <b>'+esc(santriObj ? santriObj.nama : nisn)+'</b>: <b>'+res.poinTerbaru+'</b> ('+esc(res.status)+').'+
+            (res.status==='Habis' ? ' <b style="color:#dc2626">&#9888;&#65039; Poin habis — santri perlu pembinaan.</b>' : '') +
+            '</div>';
+        }).catch(function(){
+          resetBtn(btn, 'Simpan Pencatatan');
+          elPesan.innerHTML = errBox('Gagal menyimpan. Periksa koneksi lalu coba lagi.');
         });
       };
+    }).catch(function(err){
+      if (c) c.innerHTML = errBox('Gagal memuat data: '+(err && err.message ? err.message : 'periksa koneksi.'));
     });
   }
-
   function guruCatatPelanggaran(){
     renderFormCatatPelanggaran('dg-content');
   }
@@ -7231,6 +7274,7 @@
 
       var totalSantri = data.length, totalDue = 0, totalPaid = 0, totalTunggakanRp = 0;
       data.forEach(function(s){
+        if (s.bebas) return; // santri dibebaskan tidak dihitung sebagai wajib bayar
         var due = bulanJatuhTempoSppFE(s.tahunMasuk);
         for (var m=1; m<=due; m++){ totalDue++; if (s.months[m-1]) totalPaid++; else totalTunggakanRp += s.biaya; }
       });
@@ -7301,7 +7345,9 @@
 
       html += '<div id="sppSeksi_biaya" style="display:none"><div class="card"><h3>Atur Biaya SPP Santri</h3>' +
         '<div class="grid2">' + fieldAutocomplete('sppNisnBiaya','Nama Santri', daftarSantri.map(function(s){return s.nisn+' - '+s.nama;}), '', 'Ketik nama santri...') + fieldText('sppBiayaInput','Biaya SPP per Bulan (Rp)', '') + '</div>' +
-        '<button id="btnSimpanBiayaSpp">Simpan Biaya SPP</button><div id="pesanBiayaSpp"></div></div>' +
+        '<label style="display:flex;align-items:center;gap:8px;margin-top:6px"><input type="checkbox" id="sppBebasInput" style="width:auto"> &#127891; Bebaskan santri ini dari kewajiban SPP (beasiswa/dhuafa/kebijakan Mudir)</label>' +
+        '<p class="muted" style="font-size:12px;margin-top:-4px">Kalau dicentang, santri ini tidak akan pernah muncul di daftar tunggakan dan wali santrinya tidak akan melihat tagihan SPP apa pun.</p>' +
+        '<button id="btnSimpanBiayaSpp" style="margin-top:8px">Simpan</button><div id="pesanBiayaSpp"></div></div>' +
         '</div>'; // tutup sppSeksi_biaya
 
       html += '<div id="sppSeksi_tabel"><div class="card"><h3>Tabel Pembayaran (36 Bulan)</h3>'+
@@ -7462,21 +7508,37 @@
       };
 
       // Atur biaya SPP
+      // Isi ulang biaya & status bebas saat santri dipilih, supaya Admin melihat
+      // data yang sudah ada sebelum mengubahnya (bukan selalu mulai dari kosong).
+      var elNisnBiaya = document.getElementById('sppNisnBiaya');
+      if (elNisnBiaya) elNisnBiaya.addEventListener('change', function(){
+        var nisnDipilih = resolveSantriNisn(this.value.trim(), daftarSantri);
+        var existing = data.find(function(s){ return String(s.nisn) === String(nisnDipilih); });
+        document.getElementById('sppBiayaInput').value = existing ? existing.biaya : '';
+        document.getElementById('sppBebasInput').checked = existing ? !!existing.bebas : false;
+      });
+
       document.getElementById('btnSimpanBiayaSpp').onclick = function(){
         var btn = this;
         var raw = document.getElementById('sppNisnBiaya').value.trim();
         var nisnDipilih = resolveSantriNisn(raw, daftarSantri);
         if (!nisnDipilih) { document.getElementById('pesanBiayaSpp').innerHTML = errBox('Pilih santri dari saran yang muncul.'); return; }
+        var bebas = document.getElementById('sppBebasInput').checked;
         var biaya = document.getElementById('sppBiayaInput').value.trim();
-        if (!biaya || Number(biaya) <= 0) { document.getElementById('pesanBiayaSpp').innerHTML = errBox('Isi biaya SPP yang valid.'); return; }
+        // Biaya boleh dikosongkan kalau santri ini dibebaskan -- tidak relevan lagi
+        if (!bebas && (!biaya || Number(biaya) <= 0)) { document.getElementById('pesanBiayaSpp').innerHTML = errBox('Isi biaya SPP yang valid.'); return; }
         loadingBtn(btn, 'Menyimpan...');
         document.getElementById('pesanBiayaSpp').innerHTML = '';
-        api('setBiayaSpp', {nisn: nisnDipilih, biaya: biaya}).then(function(r){
-          resetBtn(btn, 'Simpan Biaya SPP');
-          if(!r.ok){ document.getElementById('pesanBiayaSpp').innerHTML = errBox(r.error); return; }
-          document.getElementById('pesanBiayaSpp').innerHTML = '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px;color:#16a34a;font-size:13px">✅ Biaya SPP berhasil disimpan.</div>';
+        Promise.all([
+          (biaya && Number(biaya) > 0) ? api('setBiayaSpp', {nisn: nisnDipilih, biaya: biaya}) : Promise.resolve({ok:true}),
+          api('setBebasSpp', {nisn: nisnDipilih, bebas: bebas, oleh: STATE.user.nama})
+        ]).then(function(hasil){
+          resetBtn(btn, 'Simpan');
+          var gagal = hasil.find(function(h){ return !h.ok; });
+          if (gagal) { document.getElementById('pesanBiayaSpp').innerHTML = errBox(gagal.error); return; }
+          document.getElementById('pesanBiayaSpp').innerHTML = '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px;color:#16a34a;font-size:13px">✅ Tersimpan.'+(bebas?' Santri ini dibebaskan dari SPP.':'')+'</div>';
           renderSppSantri(containerId);
-        }).catch(function(){ resetBtn(btn, 'Simpan Biaya SPP'); });
+        }).catch(function(){ resetBtn(btn, 'Simpan'); });
       };
 
       // Tabel 36 bulan
@@ -7509,21 +7571,22 @@
 
       var tbody = data.map(function(s){
         var due = bulanJatuhTempoSppFE(s.tahunMasuk);
-        var row = '<td style="position:sticky;left:0;background:#fff;text-align:left;white-space:nowrap;font-weight:600;padding:6px 8px">'+esc(s.nama)+'</td>'+
+        var lencanaBebas = s.bebas ? ' <span style="background:#dcfce7;color:#166534;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;white-space:nowrap">&#127891; BEBAS SPP</span>' : '';
+        var row = '<td style="position:sticky;left:0;background:#fff;text-align:left;white-space:nowrap;font-weight:600;padding:6px 8px">'+esc(s.nama)+lencanaBebas+'</td>'+
                   '<td style="position:sticky;left:120px;background:#fff;text-align:center;padding:6px 8px;font-size:11px;color:#64748b">'+esc(s.tahunMasuk)+'</td>';
         for (var m=1; m<=36; m++){
           var isFuture = m > due;
           var paid = !!s.months[m-1];
-          var warna = isFuture ? '#94a3b8' : (paid ? '#16a34a' : '#d97706');
-          var bg = isFuture ? '#f8fafc' : (paid ? '#eafaf0' : '#fff7ed');
-          var label = paid ? '✓' : (isFuture ? '·' : '○');
+          var warna = s.bebas ? '#94a3b8' : (isFuture ? '#94a3b8' : (paid ? '#16a34a' : '#d97706'));
+          var bg = s.bebas ? '#f8fafc' : (isFuture ? '#f8fafc' : (paid ? '#eafaf0' : '#fff7ed'));
+          var label = s.bebas ? '—' : (paid ? '✓' : (isFuture ? '·' : '○'));
           var borderKanan = ((m===12 || m===24) ? ';border-right:2px solid #94a3b8' : ';border:1px solid #e2e8f0');
-          var clickAttr = isFuture ? '' : ' class="sppCell" data-nisn="'+esc(s.nisn)+'" data-bulan="'+m+'"';
+          var clickAttr = (isFuture || s.bebas) ? '' : ' class="sppCell" data-nisn="'+esc(s.nisn)+'" data-bulan="'+m+'"';
           // Tooltip: nama santri + bulan konkret + status
           var tooltipBulan = labelBulanSingkatSpp(m, s.tahunMasuk);
-          var tooltipStatus = paid ? 'LUNAS' : (isFuture ? 'Belum jatuh tempo' : 'BELUM BAYAR — klik untuk tandai lunas');
+          var tooltipStatus = s.bebas ? 'Dibebaskan dari SPP' : (paid ? 'LUNAS' : (isFuture ? 'Belum jatuh tempo' : 'BELUM BAYAR — klik untuk tandai lunas'));
           var tooltip = s.nama + ' — ' + tooltipBulan + '\n' + tooltipStatus;
-          row += '<td'+clickAttr+' style="cursor:'+(isFuture?'default':'pointer')+';color:'+warna+';background:'+bg+';font-weight:700;text-align:center;padding:6px 4px'+borderKanan+'" title="'+esc(tooltip)+'">'+label+'</td>';
+          row += '<td'+clickAttr+' style="cursor:'+((isFuture||s.bebas)?'default':'pointer')+';color:'+warna+';background:'+bg+';font-weight:700;text-align:center;padding:6px 4px'+borderKanan+'" title="'+esc(tooltip)+'">'+label+'</td>';
         }
         return '<tr>'+row+'</tr>';
       }).join('');
@@ -10381,13 +10444,34 @@
     activeNisn = activeNisn || listAnak[0] || '';
     _waliNisn = activeNisn;
 
-    render('<div id="dw-top"></div>' +
+    render('<div id="dw-top" style="position:sticky;top:0;z-index:90;background:#fff;border-bottom:1px solid #e2e8f0"></div>' +
+           '<div id="dw-slide"></div>' +
            '<div id="dw-pilihanak"></div>' +
-           '<div id="dw-nav" style="position:sticky;top:0;z-index:80;background:#fff;border-bottom:1px solid #e2e8f0;padding:0 16px"></div>' +
+           '<div id="dw-nav" style="position:sticky;top:52px;z-index:80;background:#fff;border-bottom:1px solid #e2e8f0;padding:0 16px"></div>' +
            '<div id="dw-body" style="padding-bottom:32px"></div>');
 
-    document.getElementById('dw-top').innerHTML = topbar('Dashboard Wali Santri'); bindLogout();
-    renderSlideBar('dw-top');
+    // Topbar dengan tombol Keluar
+    document.getElementById('dw-top').innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px">' +
+        '<div style="display:flex;align-items:center;gap:8px">' +
+          '<div id="logoTopWali"></div>' +
+          '<span style="font-weight:700;color:#0f766e;font-size:15px">WASIAT</span>' +
+        '</div>' +
+        '<button class="secondary small" id="btnLogoutWali" style="padding:7px 14px">&#128682; Keluar</button>' +
+      '</div>';
+    document.getElementById('btnLogoutWali').onclick = function(){
+      STATE.user = null; hapusSesiTersimpan(); showBeranda();
+    };
+    // Logo kecil
+    api('getPengaturan',{}).then(function(r){
+      if (r.ok && r.data.LogoUrl) {
+        var el = document.getElementById('logoTopWali');
+        if (el) el.innerHTML = '<img src="'+esc(r.data.LogoUrl)+'" style="height:28px;width:28px;object-fit:contain;border-radius:4px">';
+      }
+    });
+
+    // Slideshow di bawah topbar (wadah terpisah agar tidak menimpa tombol Keluar)
+    renderSlideBar('dw-slide');
 
     // Tab pilih anak
     if (listAnak.length > 1) {
@@ -10494,12 +10578,14 @@
         '<div class="grid2" style="margin-top:12px">' +
           kartuRingkasan('&#128176;', rupiah(saldo), 'Saldo Kantin', '#0d9488') +
           kartuRingkasan('&#128197;', k.persen+'%', 'Kehadiran 30 Hari ('+(k.total||0)+' hari)', k.persen>=80?'#16a34a':k.persen>=60?'#d97706':'#dc2626') +
-          kartuRingkasan('&#9888;&#65039;', spp.totalTunggakan>0?rupiah(spp.totalTunggakan):'Lunas', 'Tunggakan SPP', spp.totalTunggakan>0?'#dc2626':'#16a34a') +
+          (spp.bebas
+            ? kartuRingkasan('&#127891;', 'Bebas SPP', 'Dibebaskan dari kewajiban SPP', '#16a34a')
+            : kartuRingkasan('&#9888;&#65039;', spp.totalTunggakan>0?rupiah(spp.totalTunggakan):'Lunas', 'Tunggakan SPP', spp.totalTunggakan>0?'#dc2626':'#16a34a')) +
           (k.alpa>0 ? kartuRingkasan('&#128308;', k.alpa+' hari', 'Alpa 30 Hari', '#dc2626') :
            kartuRingkasan('&#128994;', 'Hadir '+k.hadir, 'dari '+k.total+' hari', '#16a34a')) +
         '</div>' +
 
-        (spp.totalTunggakan > 0 ?
+        (!spp.bebas && spp.totalTunggakan > 0 ?
           '<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:12px 14px;margin-top:12px;font-size:13.5px">' +
           '&#128680; Tunggakan SPP: <b>'+rupiah(spp.totalTunggakan)+'</b> ('+spp.bulanTunggakan.join(', ')+'). '+
           'Harap segera diselesaikan di loket pembayaran.</div>' : '') +
@@ -10727,22 +10813,29 @@
     body.innerHTML = '<div style="padding:16px"><div class="card"><p class="muted">Memuat data SPP...</p></div></div>';
     api('getSppSaya', {nisn:nisn}).then(function(res){
       if (!res.ok){ body.innerHTML = '<div style="padding:16px">'+errBox(res.error)+'</div>'; return; }
-      var spp = res;
+      // getSppSaya mengembalikan {ok, data:{...}} -- bug sebelumnya mengakses res
+      // langsung sebagai data, sehingga spp.totalTunggakan selalu undefined.
+      var spp = res.data;
       if (!spp.adaSpp){
         body.innerHTML = '<div style="padding:16px"><div class="card"><p class="muted">Data SPP santri ini belum diatur. Hubungi Admin.</p></div></div>';
         return;
       }
       var html = '<div style="padding:16px">' +
         '<div class="card"><h3>&#128179; Status Pembayaran SPP</h3>' +
-        '<p>Biaya SPP: <b>'+rupiah(spp.biaya)+' / bulan</b></p>' +
-        (spp.totalTunggakan > 0
-          ? '<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:12px;margin:10px 0">' +
-            '&#128680; <b>Total Tunggakan: '+rupiah(spp.totalTunggakan)+'</b><br>' +
-            'Bulan yang belum dibayar:<br>' +
-            spp.bulanTunggakan.map(function(b){ return '&nbsp;&bull; '+esc(b); }).join('<br>') +
+        (spp.bebas
+          ? '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px;margin:10px 0">' +
+            '&#127891; <b>Santri ini dibebaskan dari kewajiban SPP</b><br>' +
+            '<span style="font-size:12.5px;color:#475569">Sesuai kebijakan pondok (beasiswa/dhuafa/lainnya). Tidak ada tagihan yang perlu dibayar.</span>' +
             '</div>'
-          : '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px;margin:10px 0">' +
-            '&#9989; Semua pembayaran SPP sudah lunas. Jazakumullah khairan.</div>') +
+          : '<p>Biaya SPP: <b>'+rupiah(spp.biaya)+' / bulan</b></p>' +
+            (spp.totalTunggakan > 0
+              ? '<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:12px;margin:10px 0">' +
+                '&#128680; <b>Total Tunggakan: '+rupiah(spp.totalTunggakan)+'</b><br>' +
+                'Bulan yang belum dibayar:<br>' +
+                spp.bulanTunggakan.map(function(b){ return '&nbsp;&bull; '+esc(b); }).join('<br>') +
+                '</div>'
+              : '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px;margin:10px 0">' +
+                '&#9989; Semua pembayaran SPP sudah lunas. Jazakumullah khairan.</div>')) +
         '<p class="muted" style="font-size:12.5px">Untuk konfirmasi atau pertanyaan seputar pembayaran, hubungi Bendahara pondok.</p>' +
         '</div></div>';
       body.innerHTML = html;

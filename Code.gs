@@ -261,6 +261,7 @@ function route(action, p) {
     case 'ajukanPenarikanSaldo': return apiAjukanPenarikanSaldo(p);
     case 'getSppList': return {ok:true, data: getSppList()};
     case 'setBiayaSpp': return apiSetBiayaSpp(p);
+    case 'setBebasSpp': return apiSetBebasSpp(p);
     case 'toggleSppBulan': return apiToggleSppBulan(p);
     case 'importSpp': return apiImportSpp(p);
     case 'getRiwayatPenarikanSaya': return {ok:true, data: getRiwayatPenarikanSaya(p.pemilik)};
@@ -813,6 +814,10 @@ function getTunggakanSantri() {
   const sppList = getSppList();
   const result = [];
   sppList.forEach(s => {
+    // Santri yang dibebaskan (beasiswa/dhuafa/kebijakan Mudir) tidak pernah dianggap
+    // menunggak -- dilewati di sini supaya tidak muncul di daftar tunggakan Admin,
+    // tidak menerima pengingat WA/push, dan tidak ikut dihitung ke total tunggakan pondok.
+    if (s.bebas) return;
     const due = bulanJatuhTempoSPP(s.tahunMasuk);
     let tunggakanSPP = 0;
     const bulanTunggak = [];
@@ -3199,6 +3204,20 @@ function headerSPP(){
   return h;
 }
 
+// Kolom "BebasSPP" ditambahkan otomatis di posisi terakhir (setelah 36 kolom bulan)
+// kalau belum ada. Dipakai untuk santri yang dibebaskan dari kewajiban SPP (misal
+// beasiswa, dhuafa, atau kebijakan Mudir) -- sengaja disimpan sebagai kolom terpisah,
+// bukan menghapus data biaya/bulan yang sudah ada, supaya kalau status bebasnya
+// dicabut suatu saat, riwayat pembayaran sebelumnya tidak hilang.
+function pastikanKolomBebasSPP(sh) {
+  var header = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0];
+  var idx = header.indexOf('BebasSPP');
+  if (idx !== -1) return idx + 1;
+  var kolomBaru = header.length + 1;
+  sh.getRange(1, kolomBaru).setValue('BebasSPP');
+  return kolomBaru;
+}
+
 /** Label "Agustus 2026" dari nomor bulan (1-36) relatif ke TahunMasuk santri */
 /** Bulan 1 = Juli tahun masuk (awal tahun ajaran pesantren)
  *  Bulan 12 = Juni tahun berikutnya
@@ -3249,11 +3268,13 @@ function getSppList(){
   }
   const shSpp = getAktifSppSS().getSheetByName(SHEET_SPP);
   if (!shSpp) return [];
+  const iBebas = pastikanKolomBebasSPP(shSpp) - 1; // index 0-based
   const rows = shSpp.getDataRange().getValues(); rows.shift();
   return rows.filter(function(r){ return r[0]; }).map(function(r){
     const nisn = norm(r[0]);
     const info = santriMap[nisn] || { nama:'(NISN tidak ditemukan di data Santri)', tahunMasuk: new Date().getFullYear(), noWa:'' };
-    return { nisn: nisn, nama: info.nama, noWa: info.noWa, tahunMasuk: info.tahunMasuk, biaya: Number(r[1])||0, months: r.slice(2, 38) };
+    return { nisn: nisn, nama: info.nama, noWa: info.noWa, tahunMasuk: info.tahunMasuk, biaya: Number(r[1])||0,
+             months: r.slice(2, 38), bebas: String(r[iBebas]).toUpperCase() === 'TRUE' };
   });
 }
 
@@ -3804,18 +3825,59 @@ function getSppSaya(nisn) {
   for (let i=1;i<santriRows.length;i++) { if (norm(santriRows[i][0]) === nisn) { tahunMasuk = santriRows[i][2]; break; } }
 
   const shSpp = getAktifSppSS().getSheetByName(SHEET_SPP);
+  const iBebas = pastikanKolomBebasSPP(shSpp) - 1;
   const rows = shSpp.getDataRange().getValues();
   for (let i=1;i<rows.length;i++) {
     if (norm(rows[i][0]) === nisn) {
+      const bebas = String(rows[i][iBebas]).toUpperCase() === 'TRUE';
       const biaya = Number(rows[i][1]) || 0;
+      // Santri yang dibebaskan TIDAK PERNAH ditampilkan sebagai menunggak, terlepas
+      // dari isi tabel 36 bulannya -- inilah perbaikan untuk santri yang seharusnya
+      // dibebaskan (beasiswa/dhuafa) tapi sebelumnya tetap tercatat menunggak.
+      if (bebas) {
+        return { adaSpp:true, bebas:true, biaya:biaya, bulanTunggakan:[], totalTunggakan:0 };
+      }
       const months = rows[i].slice(2, 38);
       const due = bulanJatuhTempoSPP(tahunMasuk);
       const bulanTunggakan = [];
       for (let m=1;m<=due;m++) { if (!months[m-1]) bulanTunggakan.push(labelBulanSPP(m, tahunMasuk)); }
-      return { adaSpp:true, biaya:biaya, bulanTunggakan:bulanTunggakan, totalTunggakan: bulanTunggakan.length*biaya };
+      return { adaSpp:true, bebas:false, biaya:biaya, bulanTunggakan:bulanTunggakan, totalTunggakan: bulanTunggakan.length*biaya };
     }
   }
-  return { adaSpp:false, biaya:0, bulanTunggakan:[], totalTunggakan:0 };
+  return { adaSpp:false, bebas:false, biaya:0, bulanTunggakan:[], totalTunggakan:0 };
+}
+
+// Tandai/cabut status bebas SPP seorang santri. Hanya Admin/Mudir yang boleh
+// mengubah ini -- diverifikasi di server, bukan sekadar disembunyikan di tampilan.
+// Kalau santri belum punya baris SPP sama sekali, baris baru dibuat dengan biaya 0
+// supaya status bebasnya tetap bisa disimpan.
+function apiSetBebasSpp(p) {
+  if (!adminAtauMudir(p.oleh)) {
+    return {ok:false, error:'Hanya Admin/Mudir yang boleh mengatur pembebasan SPP.'};
+  }
+  const nisn = norm(p.nisn);
+  if (!nisn) return {ok:false, error:'Santri wajib dipilih.'};
+  const bebas = (p.bebas === true || p.bebas === 'true');
+
+  const sh = getAktifSppSS().getSheetByName(SHEET_SPP);
+  if (!sh) return {ok:false, error:'Sheet SPP tidak ditemukan.'};
+  const iBebas = pastikanKolomBebasSPP(sh);
+  const rows = sh.getDataRange().getValues();
+  let rowIdx = -1;
+  for (let i=1;i<rows.length;i++) { if (norm(rows[i][0]) === nisn) { rowIdx = i+1; break; } }
+
+  if (rowIdx === -1) {
+    // Belum ada baris SPP untuk santri ini -- buat baru dengan biaya 0 supaya status
+    // bebasnya tetap tersimpan. Admin tetap bisa mengisi biaya normal nanti kalau
+    // status bebasnya dicabut.
+    const barisBaru = new Array(38).fill('');
+    barisBaru[0] = nisn;
+    barisBaru[1] = 0;
+    sh.appendRow(barisBaru);
+    rowIdx = sh.getLastRow();
+  }
+  sh.getRange(rowIdx, iBebas).setValue(bebas ? 'TRUE' : 'FALSE');
+  return {ok:true, bebas: bebas};
 }
 
 // ============ KANTIN: "PINJAM LAYAR" -- Pemilik Barang bisa cek akun santri (Tahap 6) ============
