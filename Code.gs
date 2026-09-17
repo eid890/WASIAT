@@ -24,6 +24,41 @@
  **************************************************************/
 
 const PROP = PropertiesService.getScriptProperties();
+
+// ============================================================
+// CACHE RINGAN UNTUK DATA YANG SERING DIBACA, JARANG BERUBAH
+//
+// Optimasi murni -- tidak mengubah perilaku fitur apa pun. Beberapa data (Pengaturan,
+// daftar Slide, daftar Template Flyer) dibaca ulang dari Spreadsheet di HAMPIR SETIAP
+// permintaan (Pengaturan misalnya dibaca di nyaris semua halaman), padahal isinya jarang
+// berubah -- hanya saat Admin menyimpan sesuatu. CacheService menyimpan salinannya di
+// memori selama beberapa menit, jadi permintaan berikutnya tidak perlu membaca ulang
+// seluruh sheet dari awal.
+//
+// Prinsip keamanan yang dijaga ketat di sini:
+// 1. Setiap fungsi cache dibungkus try/catch penuh. Kalau CacheService gagal (kuota,
+//    data terlalu besar, dll), fungsi mengembalikan null/false secara diam-diam --
+//    pemanggilnya lalu membaca Sheet seperti biasa. Caching TIDAK PERNAH bisa membuat
+//    fitur berhenti bekerja, paling buruk hanya secepat sebelum ada cache.
+// 2. Setiap data yang di-cache PASTI dihapus cache-nya (invalidasi) tepat saat ada
+//    fungsi yang menyimpan perubahan pada data itu -- sehingga perubahan Admin selalu
+//    terlihat SEKETIKA di permintaan berikutnya, tidak pernah menunggu kedaluwarsa.
+// 3. TTL (masa berlaku) di bawah ini hanya jaring pengaman kalau langkah 2 di atas
+//    entah bagaimana terlewat -- bukan mekanisme utama.
+function cacheAmbil(key) {
+  try {
+    const teks = CacheService.getScriptCache().get(key);
+    return teks ? JSON.parse(teks) : null;
+  } catch (e) { return null; }
+}
+function cacheSimpan(key, data, ttlDetik) {
+  try {
+    CacheService.getScriptCache().put(key, JSON.stringify(data), ttlDetik || 300);
+  } catch (e) { /* diam-diam gagal -- data tetap benar, hanya tidak ter-cache */ }
+}
+function cacheHapus(key) {
+  try { CacheService.getScriptCache().remove(key); } catch (e) { /* aman diabaikan */ }
+}
 const MASTER_KEY = 'MASTER_SS_ID';
 const AKTIF_KEY  = 'TAHUN_AJARAN_AKTIF_ID'; // ID spreadsheet Absensi semester aktif
 const KANTIN_AKTIF_KEY = 'KANTIN_SS_AKTIF_ID'; // ID spreadsheet Kantin semester aktif
@@ -251,6 +286,8 @@ function route(action, p) {
     // Perbaikan kolom Kategori
     case 'cekKategoriKosong':        return apiCekKategoriKosong(p);
     case 'perbaikiKategoriTransaksi': return apiPerbaikiKategoriTransaksi(p);
+    case 'getDiagnostikUkuranData': return apiGetDiagnostikUkuranData(p);
+    case 'getInfoLayarMasjid': return apiGetInfoLayarMasjid(p);
     case 'getSantriUntukTransaksiKantin': return {ok:true, data: getSantriUntukTransaksiKantin()};
     case 'prosesTransaksiKantin': return apiProsesTransaksiKantin(p);
     case 'getRiwayatTransaksiPemilik': return {ok:true, data: getRiwayatTransaksiPemilik(p.pemilik, p.tglMulai, p.tglAkhir)};
@@ -1781,6 +1818,8 @@ function getAktifSppSS() {
 
 // ============ PENGATURAN ============
 function getPengaturan() {
+  const cached = cacheAmbil('pengaturan_v1');
+  if (cached) return cached;
   const sh = getMasterSS().getSheetByName(SHEET_PENGATURAN);
   const rows = sh.getDataRange().getValues(); rows.shift();
   const obj = {}; rows.forEach(r => obj[r[0]] = r[1]);
@@ -1788,21 +1827,23 @@ function getPengaturan() {
   // Admin belum mengisi LogoURL sendiri lewat menu Tampilan/Logo -- sama seperti yang
   // dipakai default di setiap PDF, supaya identitas visual konsisten di mana-mana.
   obj.LogoDataUriDefault = 'data:image/jpeg;base64,' + LOGO_DEFAULT_BASE64;
+  cacheSimpan('pengaturan_v1', obj, 300);
   return obj;
 }
 function apiSimpanPengaturan(p) {
   const sh = getMasterSS().getSheetByName(SHEET_PENGATURAN);
   const rows = sh.getDataRange().getValues();
-  for (let i=1;i<rows.length;i++) { if (rows[i][0] === p.key) { sh.getRange(i+1,2).setValue(p.value); return {ok:true}; } }
+  for (let i=1;i<rows.length;i++) { if (rows[i][0] === p.key) { sh.getRange(i+1,2).setValue(p.value); cacheHapus('pengaturan_v1'); return {ok:true}; } }
   sh.appendRow([p.key, p.value]);
+  cacheHapus('pengaturan_v1'); // invalidasi seketika -- perubahan Admin langsung terlihat, tidak menunggu TTL
   return {ok:true};
 }
 
-// Ambil banyak key sekaligus
+// Ambil banyak key sekaligus. Memakai getPengaturan() (yang sudah ter-cache) sebagai
+// sumber datanya, bukan membaca sheet lagi secara terpisah -- menghindari dua kali baca
+// sheet yang sama untuk kebutuhan yang identik.
 function apiGetPengaturanBatch(p) {
-  const sh = getMasterSS().getSheetByName(SHEET_PENGATURAN);
-  const rows = sh.getDataRange().getValues(); rows.shift();
-  const obj = {}; rows.forEach(r => obj[r[0]] = r[1]);
+  const obj = getPengaturan();
   const keys = p.keys || [];
   const hasil = {};
   keys.forEach(function(k){
@@ -1829,6 +1870,7 @@ function apiSimpanPengaturanBatch(p) {
     }
     if (!found) { sh.appendRow([key, String(val)]); rows.push([key, String(val)]); }
   });
+  cacheHapus('pengaturan_v1'); // invalidasi seketika, sama seperti apiSimpanPengaturan
   return {ok:true};
 }
 
@@ -1836,14 +1878,18 @@ function apiSimpanPengaturanBatch(p) {
 // Disimpan di Master (bukan per tahun ajaran) karena pengumuman sifatnya berlaku umum
 // saat ini, bukan riwayat historis per tahun ajaran.
 function getSlideList() {
+  const cached = cacheAmbil('slidelist_v1');
+  if (cached) return cached;
   const sh = getMasterSS().getSheetByName(SHEET_SLIDE);
   if (!sh) return [];
   const rows = sh.getDataRange().getValues(); rows.shift();
-  return rows.map((r,i) => ({
+  const hasil = rows.map((r,i) => ({
     rowIndex: i+2, judul: norm(r[0]), gambar: norm(r[1]), tautan: norm(r[2]),
     tampilUntuk: norm(r[3]) || 'Semua', urutan: Number(r[4])||0,
     aktif: r[5] === true || norm(r[5]).toLowerCase() === 'true'
   })).sort((a,b) => a.urutan - b.urutan);
+  cacheSimpan('slidelist_v1', hasil, 300);
+  return hasil;
 }
 
 // Dipakai frontend untuk menampilkan slide sesuai role yang sedang login. Hanya
@@ -1864,11 +1910,13 @@ function apiSaveSlide(p) {
   } else {
     sh.appendRow(baris.concat([new Date()]));
   }
+  cacheHapus('slidelist_v1'); // invalidasi seketika
   return {ok:true};
 }
 
 function apiDeleteSlide(p) {
   getMasterSS().getSheetByName(SHEET_SLIDE).deleteRow(Number(p.rowIndex));
+  cacheHapus('slidelist_v1');
   return {ok:true};
 }
 
@@ -9162,12 +9210,15 @@ function getOrCreateSheetTemplateFlyer() {
 }
 
 function apiGetTemplateFlyer() {
+  const cached = cacheAmbil('templateflyer_v1');
+  if (cached) return {ok:true, data:cached};
   const sh = getOrCreateSheetTemplateFlyer();
   const rows = sh.getDataRange().getValues(); rows.shift();
   const data = rows.map(function(r,i){
     return { rowIndex:i+2, nama:norm(r[0]), url:norm(r[1]), keterangan:norm(r[2]),
              aktif: String(r[3]).toLowerCase() !== 'false' };
   }).filter(function(x){ return x.nama && x.url; });
+  cacheSimpan('templateflyer_v1', data, 300);
   return {ok:true, data:data};
 }
 
@@ -9187,6 +9238,7 @@ function apiSaveTemplateFlyer(p) {
   } else {
     sh.appendRow(baris);
   }
+  cacheHapus('templateflyer_v1');
   return {ok:true};
 }
 
@@ -9198,6 +9250,7 @@ function apiHapusTemplateFlyer(p) {
   const baris = Number(p.rowIndex);
   if (!(baris > 1) || baris > sh.getLastRow()) return {ok:false, error:'Template tidak ditemukan.'};
   sh.deleteRow(baris);
+  cacheHapus('templateflyer_v1');
   return {ok:true};
 }
 
@@ -9630,4 +9683,176 @@ function apiGetRiwayatHafalanBulan(p) {
 
   data.sort(function(a,b){ return a.tanggal.localeCompare(b.tanggal); });
   return {ok:true, data:data, namaSantri:namaSantri, bulan:bulan, tahun:tahun};
+}
+
+
+// ============================================================
+// DIAGNOSTIK UKURAN DATA (murni informasi, tidak mengubah apa pun)
+//
+// Menampilkan jumlah baris tiap sheet penting, supaya Admin/Mudir bisa memantau
+// pertumbuhan data dari waktu ke waktu -- terutama sheet yang SENGAJA dibiarkan
+// tumbuh lintas semester (SPP, RiwayatTasmi, SaldoPemilik) dan sheet semester
+// berjalan (untuk mendeteksi kejanggalan, misal baris menumpuk tidak wajar
+// akibat bug, jauh sebelum itu terasa sebagai aplikasi melambat).
+//
+// SANGAT PENTING soal keamanan: fungsi ini HANYA memanggil getLastRow(), tidak
+// pernah getDataRange().getValues() -- artinya tidak pernah membaca isi selnya
+// sama sekali, apalagi menulis. Sifatnya murni membaca metadata ukuran sheet,
+// jadi mustahil fungsi ini mengubah atau merusak data apa pun.
+function apiGetDiagnostikUkuranData(p) {
+  if (!adminAtauMudir(p.oleh)) {
+    return {ok:false, error:'Hanya Admin/Mudir yang boleh melihat diagnostik ini.'};
+  }
+
+  // Baris = jumlah baris berisi data (getLastRow() - 1 baris header), 0 kalau sheet
+  // kosong/tidak ada. Dibungkus try/catch per sheet supaya satu sheet yang gagal
+  // dibaca (misal terhapus manual) tidak menggagalkan seluruh laporan.
+  function baris(ss, namaSheet) {
+    try {
+      const sh = ss.getSheetByName(namaSheet);
+      if (!sh) return null; // sheet tidak ditemukan -- ditampilkan beda dari 0
+      return Math.max(0, sh.getLastRow() - 1);
+    } catch (e) { return null; }
+  }
+
+  const hasil = [];
+
+  try {
+    const ssAktif = getAktifSS();
+    hasil.push({kelompok:'Semester Berjalan (Absensi)', catatan:'Kosong lagi tiap ganti semester', baris:[
+      {sheet:'Absensi (mapel)', jumlah: baris(ssAktif, SHEET_ABSENSI)},
+      {sheet:'Hafalan', jumlah: baris(ssAktif, SHEET_HAFALAN)},
+      {sheet:'Nilai', jumlah: baris(ssAktif, SHEET_NILAI)},
+      {sheet:'JurnalMengajar', jumlah: baris(ssAktif, SHEET_JURNAL_MENGAJAR)},
+      {sheet:'KasKelas', jumlah: baris(ssAktif, SHEET_KAS_KELAS)},
+    ]});
+    hasil.push({kelompok:'Data Master (Semester Berjalan)', catatan:'Dibatasi jumlah orang, bukan jumlah kejadian', baris:[
+      {sheet:'Santri', jumlah: baris(ssAktif, SHEET_SANTRI)},
+      {sheet:'Guru', jumlah: baris(ssAktif, SHEET_GURU)},
+      {sheet:'RoleAkses', jumlah: baris(ssAktif, SHEET_ROLE)},
+    ]});
+    hasil.push({kelompok:"Lintas Semester (sengaja tidak direset)", catatan:'Rekam jejak jangka panjang -- dipantau, bukan dikhawatirkan', baris:[
+      {sheet:"RiwayatTasmi'", jumlah: baris(ssAktif, SHEET_RIWAYAT_TASMI)},
+    ]});
+  } catch (e) { hasil.push({kelompok:'Absensi (aktif)', error: e.message}); }
+
+  try {
+    const ssKantin = getAktifKantinSS();
+    hasil.push({kelompok:'Semester Berjalan (Kantin)', catatan:'Kosong lagi tiap ganti semester', baris:[
+      {sheet:'TransaksiKantin', jumlah: baris(ssKantin, SHEET_TRANSAKSI_KANTIN)},
+      {sheet:'RiwayatSaldoPemilik', jumlah: baris(ssKantin, SHEET_RIWAYAT_SALDO_PEMILIK)},
+      {sheet:'PengajuanTopUpSaldo', jumlah: baris(ssKantin, SHEET_PENGAJUAN_TOPUP)},
+      {sheet:'PengajuanPenarikanSaldo', jumlah: baris(ssKantin, SHEET_PENGAJUAN_TARIK)},
+    ]});
+    hasil.push({kelompok:'Lintas Semester (Kantin)', catatan:'Dibatasi jumlah barang/pemilik, bukan jumlah transaksi', baris:[
+      {sheet:'Barang', jumlah: baris(ssKantin, SHEET_BARANG)},
+      {sheet:'SaldoPemilik', jumlah: baris(ssKantin, SHEET_SALDO_PEMILIK)},
+    ]});
+  } catch (e) { hasil.push({kelompok:'Kantin (aktif)', error: e.message}); }
+
+  try {
+    const ssSpp = getAktifSppSS();
+    hasil.push({kelompok:'Lintas Tahun (SPP)', catatan:'Satu baris per santri (bukan per transaksi) -- tumbuh sangat lambat', baris:[
+      {sheet:'SPP', jumlah: baris(ssSpp, SHEET_SPP)},
+    ]});
+  } catch (e) { hasil.push({kelompok:'SPP (aktif)', error: e.message}); }
+
+  return {ok:true, kelompok:hasil, dicekPada: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm')};
+}
+
+
+// ============================================================
+// INFO LAYAR MASJID (untuk display Jam Sholat di masjid putra/putri)
+//
+// Endpoint publik, murni baca, TANPA login -- dipanggil langsung oleh halaman
+// jam-sholat/index.html yang berjalan sebagai aplikasi terpisah. Sengaja hanya
+// mengembalikan data agregat yang aman ditampilkan di layar publik masjid:
+// jumlah santri, papan setoran hafalan terbanyak (pengakuan positif -- lazim
+// ditampilkan di pesantren, seperti papan prestasi), dan JUMLAH pelanggaran
+// (bukan nama).
+//
+// Keputusan yang sengaja diambil, bukan kelalaian:
+// - Nama santri yang melakukan PELANGGARAN TIDAK PERNAH dikirim endpoint ini.
+//   Layar ini dilihat semua jamaah -- termasuk santri lain dan orang tua santri
+//   lain. Menampilkan nama pelaku pelanggaran di layar publik berisiko menjadi
+//   bentuk mempermalukan di depan umum, yang bisa melukai martabat dan kondisi
+//   psikologis santri (apalagi mereka masih di bawah umur). Hanya JUMLAHNYA
+//   yang dikirim -- cukup untuk informasi/evaluasi tanpa menyasar individu.
+// - Nama untuk papan setoran terbanyak AMAN ditampilkan karena sifatnya
+//   pengakuan atas pencapaian (positif), bukan penyingkapan kesalahan --
+//   setara papan prestasi yang memang lazim dipasang fisik di banyak pesantren.
+function apiGetInfoLayarMasjid(p) {
+  const genderFilter = norm(p.gender); // 'Laki-laki' | 'Perempuan' | '' (kosong = semua)
+  const tz = Session.getScriptTimeZone();
+  const todayStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  const ss = getAktifSS();
+
+  // Peta NISN -> gender, dipakai untuk memfilter hafalan/pelanggaran per gender
+  // tanpa perlu mengulang pembacaan sheet Santri.
+  let jumlahSantri = 0;
+  const genderMap = {};
+  try {
+    const shSantri = ss.getSheetByName(SHEET_SANTRI);
+    const rows = shSantri.getDataRange().getValues();
+    const header = rows[0];
+    const iGender = header.indexOf('Jenis Kelamin');
+    for (let i=1;i<rows.length;i++){
+      const nisn = norm(rows[i][0]);
+      if (!nisn) continue;
+      const g = iGender!==-1 ? norm(rows[i][iGender]) : '';
+      genderMap[nisn] = g;
+      if (!genderFilter || g === genderFilter) jumlahSantri++;
+    }
+  } catch(e) { Logger.log('apiGetInfoLayarMasjid - santri: ' + e.message); }
+
+  // Papan setoran hafalan terbanyak HARI INI (top 3), hanya jenis setoran nyata
+  // (Sabaq/Sabqi/Manzil/Murojaah/Tahsin) -- Ghaib/Sakit/Izin tidak dihitung
+  // karena bukan bentuk setoran.
+  let topSetoran = [];
+  try {
+    const shH = ss.getSheetByName(SHEET_HAFALAN);
+    if (shH && shH.getLastRow() > 1) {
+      const rows = shH.getDataRange().getValues(); rows.shift();
+      const hitung = {};
+      rows.forEach(function(r){
+        const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
+        if (tgl !== todayStr) return;
+        if (JENIS_HAFALAN_SETOR.indexOf(norm(r[6])) === -1) return;
+        const nisn = norm(r[4]);
+        if (!nisn) return;
+        if (genderFilter && genderMap[nisn] !== genderFilter) return;
+        if (!hitung[nisn]) hitung[nisn] = {nama: norm(r[5]), jumlah: 0};
+        hitung[nisn].jumlah++;
+      });
+      topSetoran = Object.keys(hitung).map(function(k){ return hitung[k]; })
+        .sort(function(a,b){ return b.jumlah - a.jumlah; }).slice(0, 3);
+    }
+  } catch(e) { Logger.log('apiGetInfoLayarMasjid - hafalan: ' + e.message); }
+
+  // Jumlah pelanggaran & prestasi HARI INI -- keduanya cuma angka (lihat catatan
+  // di atas soal kenapa nama pelanggaran tidak pernah dikirim).
+  let jumlahPelanggaran = 0, jumlahPrestasi = 0;
+  try {
+    const shPel = getPelanggaranAktifSS().getSheetByName(SHEET_PENCATATAN_PEL);
+    if (shPel && shPel.getLastRow() > 1) {
+      const rows = shPel.getDataRange().getValues(); rows.shift();
+      rows.forEach(function(r){
+        const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
+        if (tgl !== todayStr) return;
+        const nisn = norm(r[1]);
+        if (genderFilter && nisn && genderMap[nisn] !== genderFilter) return;
+        const pel = norm(r[3]); if (pel && pel !== '-') jumlahPelanggaran++;
+        const pres = norm(r[5]); if (pres && pres !== '-') jumlahPrestasi++;
+      });
+    }
+  } catch(e) { Logger.log('apiGetInfoLayarMasjid - pelanggaran: ' + e.message); }
+
+  return {
+    ok: true,
+    tanggal: todayStr,
+    jumlahSantri: jumlahSantri,
+    topSetoran: topSetoran,
+    jumlahPelanggaran: jumlahPelanggaran,
+    jumlahPrestasi: jumlahPrestasi
+  };
 }

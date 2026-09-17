@@ -353,7 +353,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwh41Ko_osCIGAnBroQVMvPHxy3Z_HTKtLdKwDmhPKnaYrPbJeTYuA2SIGPzFG2BHfY/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -653,7 +653,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.09.16-c';
+  var VERSI_APP = '2026.09.17-a';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -1843,6 +1843,7 @@
         '<div class="brand2">'+(logo?'<img src="'+esc(logo)+'">':'')+'<span>'+esc(p.NamaPesantren)+'</span></div>' +
         '<div class="site-nav-links">' +
           '<a id="navTentang">Tentang</a><a id="navProgram">Program</a><a id="navPPDB">PPDB</a><a id="navBerita">Berita</a><a id="navKontak">Kontak</a>' +
+          '<a class="btn-masuk" href="jam-sholat/" target="_blank" rel="noopener" style="background:#0A2621;text-decoration:none;display:inline-flex;align-items:center">&#128992; Jam Sholat</a>' +
           '<button class="btn-masuk" id="btnBukaKantin" style="background:#f59e0b">&#128717; Kantin</button>' +
           '<button class="btn-masuk" id="btnBukaLogin">Masuk</button>' +
         '</div>' +
@@ -11068,7 +11069,8 @@
       {key:'progresshafalan', label:'Progres Hafalan', icon:'&#128218;'},
       {key:'spreadsheet', label:'File Spreadsheet', icon:'&#128196;'},
       {key:'tampilan', label:'Tampilan / Logo', icon:'&#127912;'},
-      {key:'pengaturanwali', label:'Pengaturan Akun Wali', icon:'&#128100;'}
+      {key:'pengaturanwali', label:'Pengaturan Akun Wali', icon:'&#128100;'},
+      {key:'diagnostikdata', label:'Diagnostik Ukuran Data', icon:'&#128202;'}
     ];
     var map = {ringkasan:adminRingkasan, tahun:adminTahunAjaran, rombel:adminRombel, halaqoh:adminHalaqoh, santri:adminDataSantri,
       data:adminDataMaster, pengganti:adminPenggantian, rekapguru:adminRekapGuru, rekapsantri:adminRekapSantri, rapor:adminRaporSantri,
@@ -11082,7 +11084,7 @@
       progresshafalan: function(){ renderRekapProgressHafalan(''); },
       kelolatugas: adminKelolaTugasPembina,
       rekaptugas: adminRekapTugasPembina,
-      pengaturanwali: adminPengaturanWali,
+      pengaturanwali: adminPengaturanWali, diagnostikdata: adminDiagnostikData,
       tampilan:adminTampilan};
     activeKey = activeKey && map[activeKey] ? activeKey : 'ringkasan';
     renderSidebarShell({title:'Dashboard '+STATE.user.level, navItems:navItems, activeKey:activeKey, contentId:'da-content',
@@ -12117,6 +12119,57 @@
 
   // ---------------- KELOLA ARTIKEL / BERITA (untuk halaman depan) ----------------
   // ---------------- ADMIN: PENGATURAN NOTIFIKASI PUSH ----------------
+  // ---------------- DIAGNOSTIK UKURAN DATA (Admin/Mudir, murni informasi) ----------------
+  // Halaman ini HANYA membaca jumlah baris tiap sheet -- tidak ada tombol simpan, hapus,
+  // atau ubah apa pun. Tujuannya semata memantau pertumbuhan data dari waktu ke waktu,
+  // supaya kalau suatu saat ada yang menumpuk tidak wajar (misal karena bug), Admin
+  // melihatnya lebih awal -- jauh sebelum itu terasa sebagai aplikasi melambat.
+  function adminDiagnostikData(){
+    var c = getContentEl();
+    c.innerHTML = '<div class="card"><p class="muted">Memeriksa ukuran data...</p></div>';
+    api('getDiagnostikUkuranData', {oleh: STATE.user.nama}).then(function(res){
+      if (!res.ok){ c.innerHTML = '<div class="card">'+errBox(res.error)+'</div>'; return; }
+
+      // Ambang batas HANYA untuk pewarnaan informatif -- tidak membatasi atau memblokir
+      // apa pun. Sekadar isyarat visual: hijau = aman, kuning = mulai besar, merah =
+      // sebaiknya diperiksa (biasanya tanda ada yang tidak wajar, bukan otomatis error).
+      function warna(n){
+        if (n === null) return '#94a3b8';
+        if (n < 5000) return '#16a34a';
+        if (n < 20000) return '#d97706';
+        return '#dc2626';
+      }
+      function labelJumlah(n){
+        return n === null ? '<span class="muted">sheet tidak ditemukan</span>' : n.toLocaleString('id-ID') + ' baris';
+      }
+
+      var html = '<div class="card"><h3>&#128202; Diagnostik Ukuran Data</h3>' +
+        warnBox('Halaman ini hanya MEMBACA jumlah baris tiap sheet, tidak pernah mengubah data apa pun. Gunakan untuk memantau pertumbuhan data dari waktu ke waktu -- terutama sheet yang sengaja dibiarkan tumbuh lintas semester (SPP, RiwayatTasmi\', SaldoPemilik).') +
+        '<p class="muted" style="font-size:12px">Diperiksa pada: '+esc(res.dicekPada)+' &middot; <button class="small secondary" id="btnMuatUlangDiag">Periksa Ulang</button></p>' +
+        '</div>';
+
+      res.kelompok.forEach(function(grp){
+        if (grp.error) {
+          html += '<div class="card"><h4>'+esc(grp.kelompok)+'</h4>'+errBox('Gagal diperiksa: '+grp.error)+'</div>';
+          return;
+        }
+        html += '<div class="card"><h4 style="margin-bottom:2px">'+esc(grp.kelompok)+'</h4>' +
+          (grp.catatan ? '<p class="muted" style="font-size:12px;margin-top:0">'+esc(grp.catatan)+'</p>' : '') +
+          '<table><tr><th>Sheet</th><th>Jumlah Baris</th></tr>' +
+          grp.baris.map(function(b){
+            return '<tr><td>'+esc(b.sheet)+'</td>' +
+              '<td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:'+warna(b.jumlah)+';margin-right:7px;vertical-align:middle"></span>' +
+              '<b>'+labelJumlah(b.jumlah)+'</b></td></tr>';
+          }).join('') + '</table></div>';
+      });
+
+      c.innerHTML = html;
+      document.getElementById('btnMuatUlangDiag').onclick = adminDiagnostikData;
+    }).catch(function(){
+      c.innerHTML = '<div class="card">'+errBox('Gagal memuat diagnostik. Periksa koneksi lalu coba lagi.')+'</div>';
+    });
+  }
+
   function adminNotifikasiPush(){
     var c = getContentEl();
     c.innerHTML = '<div class="card"><p>Memuat...</p></div>';
