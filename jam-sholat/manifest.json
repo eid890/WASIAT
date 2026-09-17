@@ -1,0 +1,10 @@
+{
+  "name": "Jadwal Sholat Digital Masjid",
+  "short_name": "Jam Sholat",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0A2621",
+  "theme_color": "#0A2621",
+  "icons": []
+}

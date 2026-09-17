@@ -1,0 +1,2316 @@
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#0A2621">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://www.youtube.com/iframe_api"></script>
+<script src="https://player.vimeo.com/api/player.js"></script>
+
+<style>
+  :root{
+    --ink:#0A2621; --panel:#0F3129; --panel-2:#123A31;
+    --brass:#C9A227; --brass-bright:#E3B23C; --parchment:#F3EFE6;
+    --muted:#8FB3AC; --line:rgba(201,162,39,0.22); --danger:#C1503A; --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    background: radial-gradient(1200px 700px at 15% -10%, rgba(201,162,39,0.10), transparent 60%),
+      radial-gradient(1000px 600px at 110% 10%, rgba(201,162,39,0.06), transparent 55%), var(--ink);
+    color:var(--parchment); font-family:'Inter',sans-serif; min-height:100vh; overflow-x:hidden; position:relative;
+  }
+  .weave{ position:fixed; inset:0; pointer-events:none; z-index:0; opacity:0.5; }
+  .app{ position:relative; z-index:1; display:flex; flex-direction:column; min-height:100vh; }
+
+  .topbar{ display:flex; justify-content:space-between; align-items:flex-end; padding: clamp(16px,2.2vw,30px) clamp(20px,3vw,48px) clamp(6px,1vw,10px); }
+  .mosque-id{ display:flex; align-items:center; gap:14px; }
+  .mosque-logo{ width:clamp(46px,4.4vw,68px); height:clamp(46px,4.4vw,68px); border-radius:50%; object-fit:cover; border:2px solid var(--brass); background:var(--parchment); display:none; box-shadow:0 0 0 3px rgba(201,162,39,0.15); }
+  .mosque-id .eyebrow{ font-family:'JetBrains Mono',monospace; letter-spacing:.14em; text-transform:uppercase; font-size:clamp(11px,1vw,13px); color:var(--brass-bright); margin:0 0 4px; }
+  .mosque-id h1{ font-family:'Fraunces',serif; font-weight:600; font-size:clamp(20px,2.4vw,32px); margin:0; color:var(--parchment); letter-spacing:.01em; }
+  .mosque-id .loc{ font-size:clamp(12px,1.05vw,14px); color:var(--muted); margin-top:3px; }
+  .datebox{ text-align:right; }
+  .datebox .hijri{ font-family:'Fraunces',serif; font-size:clamp(16px,1.7vw,22px); color:var(--brass-bright); }
+  .datebox .masehi{ font-size:clamp(12px,1.05vw,14px); color:var(--muted); margin-top:2px; }
+  .divider{ height:1px; margin: 0 clamp(20px,3vw,48px); background:linear-gradient(90deg, transparent, var(--line) 15%, var(--line) 85%, transparent); }
+  .clockwrap{ text-align:center; padding: clamp(10px,2vw,22px) 20px clamp(4px,1vw,8px); }
+  .clock{ font-family:'JetBrains Mono',monospace; font-weight:700; font-size:clamp(56px,10vw,132px); line-height:1; letter-spacing:.02em; color:var(--parchment); text-shadow:0 0 40px rgba(201,162,39,0.18); }
+  .clock .colon{ color:var(--brass); animation:blink 2s steps(1) infinite; }
+  @keyframes blink{ 50%{opacity:.25;} }
+  .clock .sec{ font-size:.38em; color:var(--muted); vertical-align:super; margin-left:6px; }
+  .tz{ font-family:'JetBrains Mono',monospace; font-size:clamp(11px,.9vw,13px); color:var(--muted); letter-spacing:.12em; }
+
+  .grid{ flex:1; display:grid; grid-template-columns:repeat(6,1fr); gap:clamp(10px,1.2vw,18px); padding: clamp(16px,2.4vw,32px) clamp(20px,3vw,48px); align-content:center; }
+  .card{ background:linear-gradient(180deg, var(--panel), var(--panel-2)); border:1px solid var(--line); border-radius:var(--radius); padding: clamp(14px,1.6vw,26px) 10px; text-align:center; position:relative; transition:transform .3s ease; }
+  .card .name{ font-family:'Fraunces',serif; font-size:clamp(14px,1.3vw,20px); color:var(--muted); margin:0 0 8px; font-weight:500; }
+  .card .time{ font-family:'JetBrains Mono',monospace; font-weight:700; font-size:clamp(22px,2.6vw,38px); color:var(--parchment); }
+  .card.active{ background:linear-gradient(180deg, rgba(201,162,39,0.20), rgba(201,162,39,0.06)); border-color:var(--brass); }
+  .card.active .name{ color:var(--brass-bright); }
+  .card.next::before{ content:'BERIKUTNYA'; position:absolute; top:-11px; left:50%; transform:translateX(-50%); background:var(--brass); color:var(--ink); font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:700; letter-spacing:.1em; padding:3px 9px; border-radius:20px; }
+  .card .countdown{ margin-top:6px; font-family:'JetBrains Mono',monospace; font-size:clamp(11px,1vw,13px); color:var(--brass-bright); }
+
+  .ticker{ background:var(--brass); color:var(--ink); overflow:hidden; white-space:nowrap; display:flex; align-items:center; height:clamp(38px,4.4vh,52px); }
+  .ticker-track{ display:inline-block; padding-left:100%; animation:scroll 28s linear infinite; }
+  .ticker-track span{ font-family:'Inter',sans-serif; font-weight:600; font-size:clamp(13px,1.15vw,17px); padding:0 3em; }
+  @keyframes scroll{ from{transform:translateX(0);} to{transform:translateX(-100%);} }
+
+  .ann-fullscreen{ position:fixed; inset:0; z-index:40; background:var(--ink); display:flex; align-items:center; justify-content:center; opacity:0; visibility:hidden; transition:opacity .6s ease; }
+  .ann-fullscreen.show{ opacity:1; visibility:visible; }
+  .ann-fullscreen img{ max-width:100%; max-height:100%; object-fit:contain; }
+  .ann-fullscreen .ann-caption{ position:absolute; left:0; right:0; bottom:0; background:linear-gradient(0deg, rgba(10,38,33,0.85), transparent); color:var(--parchment); font-family:'Inter',sans-serif; font-weight:600; font-size:clamp(14px,1.4vw,20px); text-align:center; padding:22px 40px 26px; }
+
+  .sheet-box{ width:100%; height:100%; overflow:hidden; padding:clamp(30px,5vw,70px); box-sizing:border-box; }
+  .sheet-scroll{ display:inline-block; }
+  @keyframes sheetScrollUp{ from{ transform:translateY(100%); } to{ transform:translateY(-100%); } }
+  .sheet-row-view{ display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; text-align:center; gap:16px; }
+  .sheet-row-line{ font-family:'Inter',sans-serif; color:var(--parchment); font-size:clamp(20px,3vw,42px); }
+  .sheet-row-line b{ color:var(--brass-bright); font-family:'Fraunces',serif; font-weight:600; }
+  .sheet-table{ width:100%; border-collapse:collapse; font-family:'Inter',sans-serif; }
+  .sheet-table th,.sheet-table td{ border:1px solid var(--line); padding:clamp(8px,1vw,16px); font-size:clamp(13px,1.4vw,22px); color:var(--parchment); text-align:center; }
+  .sheet-table th{ background:var(--panel-2); color:var(--brass-bright); font-family:'Fraunces',serif; }
+  .sheet-table tr:nth-child(even) td{ background:rgba(201,162,39,0.05); }
+
+  .info-santri-box{ width:100%; height:100%; overflow:hidden; padding:clamp(24px,4vw,60px); box-sizing:border-box; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:clamp(18px,2.4vw,34px); }
+  .info-santri-title{ font-family:'Fraunces',serif; font-weight:600; font-size:clamp(24px,3vw,46px); color:var(--brass-bright); text-align:center; }
+  .info-santri-sub{ font-family:'Inter',sans-serif; font-size:clamp(12px,1.1vw,16px); color:var(--muted); margin-top:-14px; text-align:center; }
+  .info-santri-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:clamp(14px,1.6vw,26px); width:100%; max-width:1200px; }
+  .info-santri-card{ background:linear-gradient(180deg, var(--panel), var(--panel-2)); border:1px solid var(--line); border-radius:var(--radius); padding:clamp(18px,2vw,30px) clamp(12px,1.4vw,20px); text-align:center; }
+  .info-santri-card .isc-label{ font-family:'Inter',sans-serif; font-weight:600; font-size:clamp(12px,1.1vw,16px); color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:10px; }
+  .info-santri-card .isc-value{ font-family:'JetBrains Mono',monospace; font-weight:700; font-size:clamp(28px,3.6vw,56px); color:var(--parchment); line-height:1.1; }
+  .info-santri-card.brass{ background:linear-gradient(180deg, rgba(201,162,39,0.20), rgba(201,162,39,0.06)); border-color:var(--brass); }
+  .info-santri-card.brass .isc-value{ color:var(--brass-bright); }
+  .info-santri-leaderboard{ list-style:none; margin:6px 0 0; padding:0; text-align:left; }
+  .info-santri-leaderboard li{ font-family:'Inter',sans-serif; font-size:clamp(13px,1.3vw,19px); color:var(--parchment); padding:5px 0; display:flex; justify-content:space-between; gap:10px; border-bottom:1px solid var(--line); }
+  .info-santri-leaderboard li:last-child{ border-bottom:none; }
+  .info-santri-leaderboard .rank{ color:var(--brass-bright); font-family:'JetBrains Mono',monospace; font-weight:700; margin-right:8px; }
+
+  /* prayer automation overlay - higher priority than banners */
+  .pa-fullscreen{ position:fixed; inset:0; z-index:55; background:var(--ink); display:flex; flex-direction:column; align-items:center; justify-content:center; opacity:0; visibility:hidden; transition:opacity .5s ease; text-align:center; }
+  .pa-fullscreen.show{ opacity:1; visibility:visible; }
+  .pa-fullscreen.blackout{ background:#000; }
+  .pa-icon{ font-size:clamp(48px,7vw,88px); margin-bottom:10px; }
+  .pa-title{ font-family:'Fraunces',serif; font-weight:600; font-size:clamp(30px,5vw,64px); color:var(--brass-bright); }
+  .pa-sub{ font-family:'Inter',sans-serif; font-size:clamp(14px,1.6vw,22px); color:var(--muted); margin-top:10px; }
+  .pa-countdown{ font-family:'JetBrains Mono',monospace; font-weight:700; font-size:clamp(64px,11vw,150px); color:var(--parchment); margin-top:14px; }
+  .pa-fullscreen.blackout .pa-icon,.pa-fullscreen.blackout .pa-title,.pa-fullscreen.blackout .pa-sub,.pa-fullscreen.blackout .pa-countdown{ display:none; }
+  .pa-fullscreen.imam-absent .pa-title{ color:var(--danger); }
+
+  .gear-btn{ position:fixed; left:14px; bottom:14px; z-index:60; width:34px; height:34px; border-radius:50%; border:1px solid var(--line); background:rgba(15,49,41,0.7); color:var(--muted); cursor:pointer; display:flex; align-items:center; justify-content:center; opacity:.18; transition:opacity .2s ease, transform .2s ease; }
+  .gear-btn:hover{ opacity:1; transform:rotate(35deg); }
+  .gear-btn svg{ width:17px; height:17px; }
+
+  .install-btn{ position:fixed; right:14px; bottom:14px; z-index:60; border:1px solid var(--brass); background:var(--panel-2); color:var(--brass-bright); font-family:'Inter',sans-serif; font-weight:600; font-size:12.5px; padding:9px 14px; border-radius:20px; cursor:pointer; opacity:.55; transition:opacity .2s ease; }
+  .install-btn:hover{ opacity:1; }
+
+  .lapor-btn{ position:fixed; left:58px; bottom:14px; z-index:60; border:1px solid var(--danger); background:rgba(193,80,58,0.12); color:#E8846F; font-family:'Inter',sans-serif; font-weight:600; font-size:12px; padding:9px 12px; border-radius:20px; cursor:pointer; opacity:.35; transition:opacity .2s ease; display:none; }
+  .lapor-btn:hover{ opacity:1; }
+
+  .shadow-link{ position:fixed; top:10px; right:16px; z-index:60; color:var(--muted); font-family:'JetBrains Mono',monospace; font-size:10px; text-decoration:none; opacity:.25; transition:opacity .2s ease; }
+  .shadow-link:hover{ opacity:.9; }
+
+  .sound-unlock{ position:fixed; top:0; left:0; right:0; z-index:90; background:var(--brass); color:var(--ink); border:none; font-family:'Inter',sans-serif; font-weight:700; font-size:13px; padding:10px; cursor:pointer; }
+
+  .overlay{ position:fixed; inset:0; background:rgba(5,15,13,0.72); backdrop-filter:blur(3px); display:none; align-items:center; justify-content:center; z-index:70; padding:20px; }
+  .overlay.open{ display:flex; }
+  .modal{ width:min(880px,95vw); max-height:90vh; overflow:auto; background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:28px 28px 24px; font-family:'Inter',sans-serif; color:var(--parchment); position:relative; }
+  .modal h2{ font-family:'Fraunces',serif; margin:0 0 4px; font-size:22px; }
+  .modal .sub{ color:var(--muted); font-size:13px; margin-bottom:18px; }
+  .tabs{ display:flex; gap:6px; margin-bottom:20px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .tab-btn{ background:none; border:none; color:var(--muted); font-family:'Inter',sans-serif; font-weight:600; font-size:13.5px; padding:9px 4px; margin-right:16px; cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap; }
+  .tab-btn.active{ color:var(--brass-bright); border-bottom-color:var(--brass-bright); }
+  .tab-panel{ display:none; } .tab-panel.active{ display:block; }
+
+  .field-label{ display:block; font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:14px 0 6px; }
+  .row-actions{ display:flex; gap:10px; flex-wrap:wrap; margin-top:6px;}
+  .btn{ font-family:'Inter',sans-serif; font-weight:600; font-size:13.5px; cursor:pointer; border-radius:9px; padding:10px 16px; border:1px solid var(--line); background:var(--panel-2); color:var(--parchment); }
+  .btn:hover{ border-color:var(--brass); }
+  .btn.primary{ background:var(--brass); color:var(--ink); border-color:var(--brass); }
+  .btn.primary:hover{ background:var(--brass-bright); }
+  .btn.small{ padding:6px 10px; font-size:12px; }
+  .btn.danger{ background:transparent; color:var(--danger); border-color:var(--danger); }
+  input[type=file]{ color:var(--muted); font-size:13px; }
+  textarea, input[type=text], input[type=url], input[type=number], select{ width:100%; background:var(--ink); border:1px solid var(--line); color:var(--parchment); border-radius:9px; padding:10px 12px; font-family:'Inter',sans-serif; font-size:14px; resize:vertical; }
+  .two-col{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .three-col{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; }
+  .status-msg{ font-size:13px; margin-top:10px; min-height:16px; }
+  .status-msg.ok{ color:#7FC29B; } .status-msg.err{ color:var(--danger); }
+  table.preview{ width:100%; border-collapse:collapse; margin-top:10px; font-size:12.5px; font-family:'JetBrains Mono',monospace;}
+  table.preview th, table.preview td{ border-bottom:1px solid var(--line); padding:5px 6px; text-align:center;}
+  table.preview th{ color:var(--brass-bright); font-family:'Inter',sans-serif; text-transform:uppercase; font-size:10px; letter-spacing:.06em;}
+  .preview-wrap{ max-height:220px; overflow:auto; border:1px solid var(--line); border-radius:9px; margin-top:6px;}
+  .close-x{ position:absolute; top:16px; right:20px; background:none; border:none; color:var(--muted); font-size:22px; cursor:pointer; }
+
+  .banner-item{ background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:12px; margin-top:10px; }
+  .banner-item .bi-top{ display:flex; gap:12px; }
+  .banner-item img{ width:90px; height:56px; object-fit:cover; border-radius:6px; flex-shrink:0; border:1px solid var(--line); }
+  .banner-item .bi-body{ flex:1; display:flex; flex-direction:column; gap:8px; }
+  .banner-item input[type=text]{ font-size:13px; padding:7px 9px; }
+  .bi-row{ display:flex; gap:8px; align-items:center; }
+  .bi-mode-fields{ margin-top:10px; padding-top:10px; border-top:1px dashed var(--line); }
+  .day-toggles{ display:flex; gap:5px; margin-top:6px; flex-wrap:wrap; }
+  .day-btn{ width:34px; height:30px; border-radius:7px; border:1px solid var(--line); background:var(--ink); color:var(--muted); font-size:11px; cursor:pointer; font-family:'Inter',sans-serif; font-weight:600; }
+  .day-btn.active{ background:var(--brass); color:var(--ink); border-color:var(--brass); }
+  .empty-note{ color:var(--muted); font-size:13px; padding:10px 0; }
+  .hint{ color:var(--muted); font-size:12px; margin-top:4px; }
+  .prayer-check-row{ display:flex; gap:14px; flex-wrap:wrap; margin-top:6px; }
+  .prayer-check-row label{ display:flex; align-items:center; gap:6px; font-size:13.5px; cursor:pointer; }
+  .img-preview-logo{ width:90px; height:90px; border-radius:50%; object-fit:cover; border:2px solid var(--brass); background:#fff; margin-top:8px; }
+</style>
+
+<div class="app">
+  <svg class="weave" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <pattern id="star8" width="120" height="120" patternUnits="userSpaceOnUse">
+        <g stroke="#C9A227" stroke-width="1" fill="none" opacity="0.35">
+          <path d="M60 10 L75 45 L110 60 L75 75 L60 110 L45 75 L10 60 L45 45 Z"/>
+          <circle cx="60" cy="60" r="4"/>
+        </g>
+      </pattern>
+    </defs>
+    <rect width="100%" height="100%" fill="url(#star8)" opacity="0.06"/>
+  </svg>
+
+  <div class="topbar">
+    <div class="mosque-id">
+      <img class="mosque-logo" id="mosqueLogo" src="" alt="Logo">
+      <div>
+        <p class="eyebrow">Jadwal Waktu Sholat</p>
+        <h1 id="locName">Masjid</h1>
+        <div class="loc" id="locSub">—</div>
+      </div>
+    </div>
+    <div class="datebox">
+      <div class="hijri" id="hijriDate">—</div>
+      <div class="masehi" id="masehiDate">—</div>
+    </div>
+  </div>
+  <div class="divider"></div>
+
+  <div class="clockwrap">
+    <div class="clock" id="clock">--<span class="colon">:</span>--</div>
+    <div class="tz">WAKTU INDONESIA TENGAH (WITA)</div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="ticker">
+    <div class="ticker-track" id="tickerTrack"><span id="tickerText">Selamat datang, jamaah rahimakumullah.</span></div>
+  </div>
+</div>
+
+<div class="ann-fullscreen" id="annFullscreen">
+  <img id="annFullscreenImg" src="" alt="Pengumuman">
+  <div id="annVideoBox" style="display:none; width:100%; height:100%; align-items:center; justify-content:center;"></div>
+  <div id="annSheetBox" class="sheet-box" style="display:none;"></div>
+  <div id="annInfoBox" class="info-santri-box" style="display:none;"></div>
+  <div class="ann-caption" id="annFullscreenCaption"></div>
+</div>
+
+<div class="pa-fullscreen" id="paFullscreen">
+  <div class="pa-icon">🕌</div>
+  <div class="pa-title" id="paTitle">—</div>
+  <div class="pa-sub" id="paSub"></div>
+  <div class="pa-countdown" id="paCountdown" style="display:none;"></div>
+</div>
+
+<button class="gear-btn" id="gearBtn" title="Pengaturan">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+</button>
+
+<button class="install-btn" id="installBtn" title="Install Aplikasi" style="display:none;">📲 Install Aplikasi</button>
+
+<button class="lapor-btn" id="laporBtn" title="Lapor Imam Berhalangan">🚫 Lapor Berhalangan</button>
+
+<a class="shadow-link" id="shadowLink" href="https://salat.markazsunnah.com/" target="_blank" rel="noopener">Jadwal Wahdah Islamiyah ↗</a>
+
+<button class="sound-unlock" id="soundUnlockBtn" style="display:none;">🔊 Ketuk untuk mengaktifkan suara notifikasi</button>
+
+<div class="overlay" id="laporOverlay">
+  <div class="modal" style="max-width:420px;">
+    <button class="close-x" id="closeLapor">&times;</button>
+    <h2>Lapor Imam Berhalangan</h2>
+    <p class="sub">Tandai sholat yang Anda tidak bisa hadiri. Layar akan menampilkan "Silakan Qomat" untuk sholat itu. Kalau ternyata bisa hadir lagi, tekan sekali lagi untuk membatalkan.</p>
+    <div id="laporList"></div>
+    <div id="laporStatus" class="status-msg"></div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <button class="close-x" id="closeModal">&times;</button>
+    <h2>Pengaturan Layar Masjid</h2>
+    <p class="sub">Perubahan tersimpan otomatis di perangkat/browser ini dan langsung tampil di layar.</p>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="jadwal">Jadwal Sholat</button>
+      <button class="tab-btn" data-tab="banner">Banner, Video &amp; Teks</button>
+      <button class="tab-btn" data-tab="adzan">Adzan &amp; Iqomah</button>
+      <button class="tab-btn" data-tab="identitas">Identitas</button>
+      <button class="tab-btn" data-tab="cadangan">Cadangan</button>
+    </div>
+
+    <div class="tab-panel active" id="tab-jadwal">
+      <p class="sub" style="margin-bottom:6px;">Jadwal saat ini: <strong id="curMonthLabel" style="color:var(--brass-bright)">—</strong> (<span id="curRowCount">0</span> hari)</p>
+      <span class="field-label">Unggah jadwal baru (.xlsx / .csv)</span>
+      <p class="sub" style="margin:-2px 0 8px;">Gunakan format yang sama dengan template. Belum unggah file baru? Layar tetap memakai jadwal yang ada.</p>
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv">
+      <div class="row-actions">
+        <button class="btn" id="downloadTemplateBtn">Unduh Template Excel</button>
+        <button class="btn primary" id="saveScheduleBtn" disabled>Simpan Jadwal Ini</button>
+      </div>
+      <div id="scheduleStatus" class="status-msg"></div>
+      <div class="preview-wrap" id="previewWrap" style="display:none;">
+        <table class="preview" id="previewTable"></table>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="tab-banner">
+      <span class="field-label">Teks berjalan (di bawah layar)</span>
+      <textarea id="annTextInput" rows="2" placeholder="Contoh: Kajian rutin Ba'da Maghrib bersama Ustadz ..."></textarea>
+
+      <span class="field-label" style="margin-top:20px;">Banner &amp; Video Full Screen</span>
+      <p class="sub" style="margin:-2px 0 8px;">Campur bebas gambar dan video (dari link YouTube/Vimeo/atau file .mp4). Tiap item bisa diatur waktu tampilnya sendiri — susun beberapa video berurutan untuk bikin "playlist" terjadwal.</p>
+      <div class="two-col">
+        <div>
+          <span class="field-label" style="margin-top:0;">Durasi tampil default (detik)</span>
+          <input type="number" id="bannerDuration" min="2" value="8">
+        </div>
+        <div>
+          <span class="field-label" style="margin-top:0;">Jeda antar item "siklus umum" (detik)</span>
+          <input type="number" id="bannerGap" min="0" value="60">
+        </div>
+      </div>
+      <p class="hint" id="cycleHint"></p>
+
+      <div class="row-actions" style="margin-top:14px;">
+        <button class="btn" id="addBannerBtn">+ Tambah Banner Gambar</button>
+        <button class="btn" id="addVideoBtn">+ Tambah Video (Link)</button>
+        <button class="btn" id="addPdfDailyBtn">+ Set Harian dari PDF 🗓️</button>
+        <button class="btn" id="addPdfViewerBtn">+ Penampil PDF 📖</button>
+        <button class="btn" id="addSheetBtn">+ Dari Google Sheets 📊</button>
+        <button class="btn" id="addInfoSantriBtn">+ Info Santri (Live dari WASIAT) 📿</button>
+        <input type="file" id="bannerFileInput" accept="image/*" multiple style="display:none;">
+        <input type="file" id="pdfDailyFileInput" accept="application/pdf" style="display:none;">
+        <input type="file" id="pdfViewerFileInput" accept="application/pdf" style="display:none;">
+      </div>
+      <p class="hint" style="margin-top:4px;">"Set Harian dari PDF" = tiap halaman diubah jadi gambar & diunggah satu-satu — lebih lambat di awal, tapi paling andal untuk PDF besar/berat gambar. "Penampil PDF" = file PDF diunggah utuh sekali, halamannya dirender langsung saat tampil — jauh lebih cepat diproses, tapi disarankan untuk file di bawah ±20MB (buku/teks biasa). <strong>Keduanya wajib isi URL Sinkronisasi dulu</strong> (tab Adzan &amp; Iqomah).</p>
+      <div class="overlay" id="pdfDailyOverlay">
+        <div class="modal" style="max-width:440px;">
+          <button class="close-x" id="closePdfDaily">&times;</button>
+          <h2>Set Harian dari PDF</h2>
+          <p class="sub" id="pdfDailyStatus">Memproses...</p>
+          <div style="background:var(--ink); border:1px solid var(--line); border-radius:8px; height:10px; overflow:hidden; margin-top:10px;">
+            <div id="pdfDailyBar" style="background:var(--brass); height:100%; width:0%; transition:width .2s;"></div>
+          </div>
+          <p class="hint" id="pdfDailyDetail" style="margin-top:8px;"></p>
+        </div>
+      </div>
+      <div class="overlay" id="pdfViewerOverlay">
+        <div class="modal" style="max-width:480px;">
+          <button class="close-x" id="closePdfViewer">&times;</button>
+          <h2>Penampil PDF Harian</h2>
+          <p class="sub" id="pdfViewerIntro">Pilih file PDF — 1 halaman tampil per hari, terjadwal, lalu ulang dari awal setelah rentang halaman habis.</p>
+          <div id="pdfViewerUploadStep">
+            <button class="btn primary" id="pdfViewerPickBtn">Pilih File PDF...</button>
+            <p class="hint" id="pdfViewerUploadStatus" style="margin-top:8px;"></p>
+          </div>
+          <div id="pdfViewerConfigStep" style="display:none;">
+            <p class="hint" id="pdfViewerFileInfo" style="margin:6px 0 12px;"></p>
+            <div class="two-col">
+              <div>
+                <span class="field-label" style="margin-top:0;">Mulai dari halaman</span>
+                <input type="number" id="pdfViewerStartPage" min="1" value="1">
+              </div>
+              <div>
+                <span class="field-label" style="margin-top:0;">Sampai halaman</span>
+                <input type="number" id="pdfViewerEndPage" min="1" placeholder="halaman terakhir">
+              </div>
+            </div>
+            <span class="field-label">Durasi tampil (detik)</span>
+            <input type="number" id="pdfViewerDuration" min="3" value="20" style="max-width:140px;">
+            <span class="field-label">Jam tampil (bisa lebih dari satu)</span>
+            <div id="pdfViewerTimesList"></div>
+            <div class="row-actions" style="margin-top:8px;">
+              <button class="btn small" id="pdfViewerAddTimeBtn">+ Tambah Jadwal</button>
+            </div>
+            <span class="field-label" style="margin-top:16px;">Hari tampil</span>
+            <div class="day-toggles" id="pdfViewerDays"></div>
+            <div class="row-actions" style="margin-top:16px;">
+              <button class="btn primary" id="pdfViewerConfirmBtn">Tambahkan</button>
+            </div>
+          </div>
+          <div id="pdfViewerStatus" class="status-msg"></div>
+        </div>
+      </div>
+      <div class="overlay" id="sheetAddOverlay">
+        <div class="modal" style="max-width:460px;">
+          <button class="close-x" id="closeSheetAdd">&times;</button>
+          <h2>Pengumuman dari Google Sheets</h2>
+          <p class="sub">Tampilkan data dari spreadsheet Anda — misalnya daftar nilai santri. Sheet harus bisa diakses oleh akun Google yang dipakai untuk Apps Script.</p>
+          <span class="field-label" style="margin-top:0;">Link Google Sheets</span>
+          <input type="text" id="sheetUrlInput" placeholder="https://docs.google.com/spreadsheets/d/....">
+          <span class="field-label">Nama tab/sheet (opsional)</span>
+          <input type="text" id="sheetTabInput" placeholder="Kosongkan = tab pertama">
+          <span class="field-label">Mode Tampilan</span>
+          <div class="radio-row">
+            <label><input type="radio" name="sheetMode" value="rotate" checked> Baris bergantian tiap hari</label>
+            <label><input type="radio" name="sheetMode" value="table"> Tampilkan tabel utuh</label>
+          </div>
+          <p class="hint" id="sheetAddHint" style="margin-top:8px;">Mode "baris bergantian": tiap hari menampilkan 1 baris data berbeda (kolom pertama dianggap header/label). Kalau teks panjang & tak muat layar, otomatis scroll dari bawah ke atas.</p>
+          <div class="row-actions" style="margin-top:12px;">
+            <button class="btn" id="testSheetBtn">Tes Baca Sheet</button>
+            <button class="btn primary" id="confirmAddSheetBtn">Tambahkan</button>
+          </div>
+          <div id="sheetAddStatus" class="status-msg"></div>
+        </div>
+      </div>
+      <div class="overlay" id="infoSantriAddOverlay">
+        <div class="modal" style="max-width:460px;">
+          <button class="close-x" id="closeInfoSantri">&times;</button>
+          <h2>Info Santri (Live dari WASIAT)</h2>
+          <p class="sub">Menampilkan data langsung dari aplikasi WASIAT: jumlah santri, papan setoran hafalan terbanyak hari ini, dan jumlah pelanggaran/prestasi tercatat. Data diambil ulang setiap kali giliran tampilnya tiba.</p>
+          <span class="field-label" style="margin-top:0;">URL Web App WASIAT</span>
+          <input type="text" id="infoSantriUrlInput" placeholder="https://script.google.com/macros/s/.../exec">
+          <p class="hint" style="margin-top:-6px;">Alamat ini sama dengan yang dipakai aplikasi WASIAT itu sendiri (WEBAPP_URL di index.html-nya). Bukan alamat sinkronisasi layar ini.</p>
+          <span class="field-label">Data yang Ditampilkan</span>
+          <label style="display:flex;align-items:center;gap:8px;margin:4px 0;"><input type="checkbox" id="isJumlahSantri" checked> Jumlah Santri Aktif</label>
+          <label style="display:flex;align-items:center;gap:8px;margin:4px 0;"><input type="checkbox" id="isTopSetoran" checked> Papan Setoran Hafalan Terbanyak Hari Ini (Top 3)</label>
+          <label style="display:flex;align-items:center;gap:8px;margin:4px 0;"><input type="checkbox" id="isPelanggaran" checked> Jumlah Pelanggaran Tercatat Hari Ini</label>
+          <label style="display:flex;align-items:center;gap:8px;margin:4px 0;"><input type="checkbox" id="isPrestasi" checked> Jumlah Prestasi Tercatat Hari Ini</label>
+          <p class="hint" style="margin-top:2px;">Nama santri yang melakukan pelanggaran TIDAK PERNAH ditampilkan di sini — sengaja hanya jumlahnya, demi menjaga martabat santri di layar publik.</p>
+          <div class="row-actions" style="margin-top:12px;">
+            <button class="btn" id="testInfoSantriBtn">Tes Koneksi</button>
+            <button class="btn primary" id="confirmAddInfoSantriBtn">Tambahkan</button>
+          </div>
+          <div id="infoSantriAddStatus" class="status-msg"></div>
+        </div>
+      </div>
+      <div class="row-actions" id="videoAddForm" style="display:none; margin-top:10px; background:var(--ink); border:1px solid var(--line); border-radius:9px; padding:12px; flex-direction:column; align-items:stretch;">
+        <span class="field-label" style="margin-top:0;">Link video (YouTube, Vimeo, atau file .mp4 langsung)</span>
+        <input type="text" id="videoUrlInput" placeholder="https://www.youtube.com/watch?v=...">
+        <p class="hint" id="videoUrlHint"></p>
+        <div class="row-actions" style="margin-top:8px;">
+          <button class="btn primary small" id="confirmAddVideoBtn">Tambahkan</button>
+          <button class="btn small" id="cancelAddVideoBtn">Batal</button>
+        </div>
+      </div>
+      <div class="banner-list" id="bannerList"><p class="empty-note">Belum ada banner/video ditambahkan.</p></div>
+
+      <div class="row-actions" style="margin-top:16px;">
+        <button class="btn primary" id="saveAnnBtn">Simpan Teks, Banner &amp; Video</button>
+      </div>
+      <div id="annStatus" class="status-msg"></div>
+    </div>
+
+    <div class="tab-panel" id="tab-adzan">
+      <label class="prayer-check-row" style="margin-top:4px;">
+        <input type="checkbox" id="paEnabled"> <strong>Aktifkan notifikasi Adzan → Iqomah → layar hitam</strong>
+      </label>
+      <p class="sub" style="margin:4px 0 10px;">Saat masuk waktu sholat, layar otomatis menampilkan notifikasi adzan, lalu hitung mundur iqomah, lalu layar hitam sejenak, sebelum kembali normal.</p>
+
+      <span class="field-label">Berlaku untuk waktu sholat</span>
+      <div class="prayer-check-row" id="paPrayerChecks"></div>
+
+      <div class="three-col" style="margin-top:16px;">
+        <div>
+          <span class="field-label" style="margin-top:0;">Notifikasi Adzan tampil (menit)</span>
+          <input type="number" id="paGap" min="1" value="5">
+          <p class="hint">Sejak masuk waktu sholat sampai hitung mundur iqomah dimulai.</p>
+        </div>
+        <div>
+          <span class="field-label" style="margin-top:0;">Hitung mundur Iqomah (menit)</span>
+          <input type="number" id="paCountdownMin" min="1" value="15">
+        </div>
+        <div>
+          <span class="field-label" style="margin-top:0;">Layar hitam setelah itu (menit)</span>
+          <input type="number" id="paBlackout" min="1" value="10">
+        </div>
+      </div>
+      <p class="hint" id="paTimelineHint"></p>
+
+      <div class="row-actions" style="margin-top:16px;">
+        <button class="btn primary" id="savePaBtn">Simpan Pengaturan Adzan</button>
+      </div>
+      <div id="paStatus" class="status-msg"></div>
+
+      <div style="margin-top:26px; padding-top:20px; border-top:1px solid var(--line);">
+        <span class="field-label" style="margin-top:0;">🔊 Suara Notifikasi Adzan</span>
+        <p class="sub" style="margin:4px 0 10px;">Bunyi otomatis saat masuk waktu sholat (seperti "tiiit...").</p>
+        <div class="two-col">
+          <div>
+            <span class="field-label" style="margin-top:0;">Nada</span>
+            <select id="soundAdzanTone">
+              <option value="880">Nada Tinggi</option>
+              <option value="587">Nada Sedang</option>
+              <option value="392">Nada Rendah</option>
+            </select>
+          </div>
+          <div>
+            <span class="field-label" style="margin-top:0;">Pola Bunyi</span>
+            <select id="soundAdzanPattern">
+              <option value="steady">Berkelanjutan (tiiiit)</option>
+              <option value="pulse">Berdenyut (tit... tit... tit)</option>
+            </select>
+          </div>
+        </div>
+        <span class="field-label">Durasi (detik)</span>
+        <input type="number" id="soundAdzanDuration" min="1" max="30" value="5" style="max-width:140px;">
+        <div class="row-actions" style="margin-top:10px;">
+          <button class="btn small" id="testAdzanSoundBtn">▶ Tes Suara</button>
+        </div>
+
+        <span class="field-label" style="margin-top:18px;">Atau unggah suara sendiri (opsional)</span>
+        <input type="file" id="soundAdzanFile" accept="audio/*">
+        <div class="row-actions" id="soundAdzanFileRow" style="margin-top:8px; display:none;">
+          <button class="btn small danger" id="removeAdzanSoundBtn">Hapus suara custom</button>
+        </div>
+        <p class="hint" id="soundAdzanFileStatus"></p>
+
+        <label class="prayer-check-row" style="margin-top:18px;">
+          <input type="checkbox" id="soundIqomahBeep" checked> <strong>Bunyi hitung mundur Iqomah 10 detik terakhir</strong>
+        </label>
+
+        <div class="row-actions" style="margin-top:14px;">
+          <button class="btn primary" id="saveSoundBtn">Simpan Pengaturan Suara</button>
+        </div>
+        <div id="soundStatus" class="status-msg"></div>
+      </div>
+
+      <div style="margin-top:26px; padding-top:20px; border-top:1px solid var(--line);">
+        <label class="prayer-check-row" style="margin-top:0;">
+          <input type="checkbox" id="imamEnabled"> <strong>Aktifkan pelaporan "Imam Berhalangan"</strong>
+        </label>
+        <p class="sub" style="margin:4px 0 10px;">Layar berjalan normal seperti biasa (hanya hitung mundur iqomah). Tidak ada info apa pun soal kehadiran imam yang ditampilkan — <em>kecuali</em> ada laporan "berhalangan" yang masuk, barulah layar menampilkan peringatan "Silakan Qomat".</p>
+        <span class="field-label">Berlaku untuk waktu sholat</span>
+        <div class="prayer-check-row" id="imamPrayerChecks"></div>
+
+        <span class="field-label" style="margin-top:20px;">URL Sinkronisasi (Google Apps Script)</span>
+        <p class="sub" style="margin:-2px 0 8px;">Isi URL ini agar <strong>semua pengaturan</strong> (jadwal, banner/video, pengumuman, identitas, dll) otomatis tersinkron ke semua perangkat. <strong>Penting:</strong> mengisi kolom ini saja hanya berlaku di perangkat/browser ini. Supaya berlaku otomatis di SEMUA perangkat sejak awal dibuka (tanpa perlu diatur satu-satu), klik "Unduh config.json" di bawah lalu upload file itu ke GitHub (timpa yang lama).</p>
+        <input type="text" id="imamSyncUrl" placeholder="https://script.google.com/macros/s/xxxxx/exec">
+        <p class="hint" id="imamSyncTestResult"></p>
+
+        <div class="row-actions" style="margin-top:14px;">
+          <button class="btn" id="testImamSyncBtn">Tes Koneksi</button>
+          <button class="btn" id="downloadConfigBtn">⬇ Unduh config.json</button>
+          <button class="btn primary" id="saveImamBtn">Simpan (perangkat ini saja)</button>
+        </div>
+        <div id="imamStatus" class="status-msg"></div>
+        <p class="hint" id="configSyncStatus"></p>
+
+        <span class="field-label" style="margin-top:20px;">Link Khusus untuk HP Imam</span>
+        <p class="sub" style="margin:-2px 0 8px;">Kirim link ini ke imam (WhatsApp, dll). Link ini yang memunculkan tombol "🚫 Lapor Berhalangan" — tombol itu <strong>tidak</strong> muncul di TV/perangkat lain.</p>
+        <div class="row-actions">
+          <input type="text" id="imamLinkOutput" readonly style="flex:1;">
+          <button class="btn small" id="copyImamLinkBtn">Salin Link</button>
+        </div>
+        <p class="hint">Imam buka link ini sekali di HP-nya → tekan "📲 Install Aplikasi" supaya jadi app tersendiri → sejak itu tombol Lapor Berhalangan selalu tersedia di HP-nya, walau dibuka lewat ikon app (bukan link lagi).</p>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="tab-identitas">
+      <span class="field-label" style="margin-top:0;">Layar Ini Menampilkan Untuk</span>
+      <select id="screenAudienceInput">
+        <option value="Semua">Semua (Putra &amp; Putri)</option>
+        <option value="Putra">Khusus Putra</option>
+        <option value="Putri">Khusus Putri</option>
+      </select>
+      <p class="hint" style="margin-top:4px;">Pengaturan ini HANYA berlaku di perangkat/layar ini sendiri, tidak ikut tersinkron ke layar lain. Kalau dipasang di dua lokasi (masjid putra dan putri), atur masing-masing layar sesuai lokasinya. Banner/pengumuman/data santri yang ditandai "Semua" tetap tampil di kedua layar; yang ditandai khusus Putra/Putri hanya tampil di layar yang sesuai.</p>
+      <div class="row-actions">
+        <button class="btn primary small" id="saveScreenAudienceBtn">Simpan Pengaturan Layar Ini</button>
+      </div>
+      <div id="screenAudienceStatus" class="status-msg"></div>
+
+      <span class="field-label" style="margin-top:22px;">Logo Masjid</span>
+      <img id="logoPreview" class="img-preview-logo" style="display:none;">
+      <input type="file" id="logoInput" accept="image/*">
+      <div class="row-actions" style="margin-top:8px;">
+        <button class="btn small danger" id="removeLogoBtn">Hapus Logo</button>
+      </div>
+      <span class="field-label">Nama Masjid</span>
+      <input type="text" id="mosqueNameInput" placeholder="Masjid Jami' ...">
+      <span class="field-label">Lokasi (ditampilkan di bawah nama masjid)</span>
+      <input type="text" id="mosqueLocInput" placeholder="Poso, Sulawesi Tengah">
+      <div class="row-actions">
+        <button class="btn primary" id="saveIdBtn">Simpan Identitas</button>
+      </div>
+      <div id="idStatus" class="status-msg"></div>
+    </div>
+
+    <div class="tab-panel" id="tab-cadangan">
+      <p class="sub">Dipakai di beberapa perangkat (mis. atur di HP, tampilkan di TV/Blogger)? Pengaturan disimpan per-browser, jadi unduh cadangan di sini lalu impor di perangkat/browser lain.</p>
+      <div class="row-actions">
+        <button class="btn" id="exportBtn">Unduh Cadangan Pengaturan</button>
+        <button class="btn" id="importTriggerBtn">Impor dari File</button>
+        <input type="file" id="importInput" accept="application/json" style="display:none;">
+      </div>
+      <div id="backupStatus" class="status-msg"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const PRAYERS = [
+    {key:'subuh', label:'Subuh'}, {key:'duha', label:'Duha'}, {key:'dzuhur', label:'Dzuhur'},
+    {key:'ashar', label:'Ashar'}, {key:'maghrib', label:'Maghrib'}, {key:'isya', label:'Isya'},
+  ];
+  const DAY_LABELS = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
+
+  const DEFAULT_SCHEDULE = {
+    monthLabel: "Safar 1448 H",
+    location: "Poso, Poso Regency, Central Sulawesi, Indonesia",
+    rows: [
+      ["01 Safar","2026-07-16","04:51","06:17","12:08","15:28","18:07","19:19"],
+      ["02 Safar","2026-07-17","04:51","06:17","12:08","15:28","18:07","19:19"],
+      ["03 Safar","2026-07-18","04:51","06:17","12:08","15:28","18:07","19:19"],
+      ["04 Safar","2026-07-19","04:51","06:17","12:08","15:28","18:07","19:19"],
+      ["05 Safar","2026-07-20","04:51","06:17","12:08","15:28","18:07","19:19"],
+      ["06 Safar","2026-07-21","04:51","06:18","12:08","15:28","18:08","19:19"],
+      ["07 Safar","2026-07-22","04:51","06:18","12:08","15:28","18:08","19:19"],
+      ["08 Safar","2026-07-23","04:52","06:18","12:08","15:28","18:08","19:19"],
+      ["09 Safar","2026-07-24","04:52","06:18","12:08","15:28","18:08","19:19"],
+      ["10 Safar","2026-07-25","04:52","06:18","12:08","15:28","18:08","19:19"],
+      ["11 Safar","2026-07-26","04:52","06:18","12:08","15:28","18:08","19:19"],
+      ["12 Safar","2026-07-27","04:52","06:18","12:08","15:28","18:08","19:18"],
+      ["13 Safar","2026-07-28","04:52","06:17","12:08","15:27","18:08","19:18"],
+      ["14 Safar","2026-07-29","04:52","06:17","12:08","15:27","18:08","19:18"],
+      ["15 Safar","2026-07-30","04:52","06:17","12:08","15:27","18:08","19:18"],
+      ["16 Safar","2026-07-31","04:52","06:17","12:08","15:27","18:08","19:18"],
+      ["17 Safar","2026-08-01","04:52","06:17","12:08","15:27","18:08","19:18"],
+      ["18 Safar","2026-08-02","04:52","06:17","12:08","15:26","18:08","19:18"],
+      ["19 Safar","2026-08-03","04:52","06:17","12:08","15:26","18:08","19:18"],
+      ["20 Safar","2026-08-04","04:52","06:17","12:08","15:26","18:07","19:17"],
+      ["21 Safar","2026-08-05","04:52","06:17","12:08","15:26","18:07","19:17"],
+      ["22 Safar","2026-08-06","04:52","06:17","12:07","15:25","18:07","19:17"],
+      ["23 Safar","2026-08-07","04:52","06:17","12:07","15:25","18:07","19:17"],
+      ["24 Safar","2026-08-08","04:52","06:16","12:07","15:25","18:07","19:17"],
+      ["25 Safar","2026-08-09","04:52","06:16","12:07","15:25","18:07","19:16"],
+      ["26 Safar","2026-08-10","04:52","06:16","12:07","15:24","18:07","19:16"],
+      ["27 Safar","2026-08-11","04:52","06:16","12:07","15:24","18:07","19:16"],
+      ["28 Safar","2026-08-12","04:52","06:16","12:07","15:23","18:07","19:16"],
+      ["29 Safar","2026-08-13","04:52","06:15","12:06","15:23","18:06","19:15"]
+    ]
+  };
+  const DEFAULT_LOGO = "data:image/jpeg;base64,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cBovceYsxhtx2g01BQUkr43SFlttsbu4gZzkeeGeWrnnQDQacesth+yu0bNbD1ce5V3qpaPR1du6uPHcZ4rAeXPifJU10PBe7ENllo2a2DqotyrvNS0Guri3V58Rnixg8Bz4nySGiIsIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiItJ2v7OLJtHw2623JogrIs3UVaxoMlO/7Wnm3n58it2REXAlquGN9hG0mSKWLqpmECop3E+h6+DPQg8x2O4tOh5hdq7Ncb2PH2GYb5Y595h7meB5HWU8nNjxyPl4EahWO13ZzZNo+G3Wy5t6mrizdRVrG5yU7+0drTzbz8+RXHFsrcb7B9pT4pYzFNGQJ4SSaevgz0IPMHk7i0++ERdx4zxNZsIYdqb9fattLRU7cyeLnu5MaPXOPABcQ4+xdi/bhtApqC30czo3SFlstkbu5hbzkeeG9lq550A0GnFj7GOMNt+PKS30NHKY3SFlttkT82wj10j3cCctXPOgGg049X7DNlVp2a2HdHV1d7qmD0dW7vHn1bM+DAfhOp8hZwX1sO2VWnZrYdxm5WXqqaPR1du6u59WzxWA8ufE+SRURFhERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERFpm1vZ1Y9o2G32u6MEVVHm6irGNzkp5O0drTzbwI8uRW5oiKONhuyi07NLIWtcytvdU0eja7cy3v8A+bAdWsHZxJ1PLKR0REREREREREREREREREREREREREREREREREREREX/2Q==";
+  const DEFAULT_TICKER = { text:"Selamat datang, jamaah rahimakumullah. Mari makmurkan masjid dengan sholat berjamaah." };
+  const DEFAULT_BANNERS = { duration:8, gap:60, items:[] };
+  const DEFAULT_ID = { name:"Masjid", loc: DEFAULT_SCHEDULE.location, logo: DEFAULT_LOGO };
+  const DEFAULT_PA = { enabled:true, prayers:{subuh:true,duha:false,dzuhur:true,ashar:true,maghrib:true,isya:true}, gapToIqomah:5, iqomahCountdown:15, blackoutMinutes:10 };
+  const DEFAULT_IMAM = { enabled:true, prayers:{subuh:true,duha:false,dzuhur:true,ashar:true,maghrib:true,isya:true}, syncUrl:'' };
+  const DEFAULT_SOUND = { adzanTone:880, adzanPattern:'steady', adzanDuration:5, adzanCustom:'', iqomahBeep:true };
+
+  let schedule = DEFAULT_SCHEDULE;
+  let ticker = DEFAULT_TICKER;
+  let bannersCfg = DEFAULT_BANNERS;
+  let identity = DEFAULT_ID;
+  let prayerAuto = DEFAULT_PA;
+  let imamCfg = DEFAULT_IMAM;
+  let imamReports = { date:'', status:{} }; // per-day map: prayerKey -> true if imam reported "berhalangan"
+  let soundCfg = DEFAULT_SOUND;
+  let parsedUpload = null;
+  let tempBanners = [];
+  let lastInfoSantriUrl = ''; // memudahkan kalau menambah item Info Santri lagi, tidak perlu ketik ulang URL
+  // "Layar ini untuk siapa" -- SENGAJA lokal per perangkat, TIDAK disinkronkan lewat
+  // apps-script-sync.gs. Supaya layar putra & putri bisa berbeda konten walau
+  // memakai satu pusat pengaturan (banner/pengumuman) yang sama.
+  let screenAudience = 'Semua';
+  try { screenAudience = localStorage.getItem('mosque_screen_audience_v1') || 'Semua'; } catch(e) {}
+  function itemMatchesAudience(b){
+    if (screenAudience === 'Semua') return true; // layar umum: tampilkan semua konten
+    return !b.tampilUntuk || b.tampilUntuk === 'Semua' || b.tampilUntuk === screenAudience;
+  }
+  let prayerActive = false; // true while adzan/iqomah/blackout overlay is showing
+
+  const $ = (id)=>document.getElementById(id);
+
+  // ---- PWA: service worker + install button (works on both the TV view and the imam view) ----
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
+  }
+  let deferredInstallPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e)=>{
+    e.preventDefault(); deferredInstallPrompt = e;
+    const btn = $('installBtn'); if(btn) btn.style.display = 'inline-flex';
+  });
+  window.addEventListener('appinstalled', ()=>{ const btn=$('installBtn'); if(btn) btn.style.display='none'; });
+  const installBtnEl = $('installBtn');
+  if(installBtnEl){
+    installBtnEl.addEventListener('click', async ()=>{
+      if(deferredInstallPrompt){
+        deferredInstallPrompt.prompt();
+        await deferredInstallPrompt.userChoice;
+        deferredInstallPrompt = null;
+        installBtnEl.style.display = 'none';
+      } else {
+        alert('Untuk iPhone/iPad (Safari): tekan tombol Share (ikon kotak dengan panah ke atas), lalu pilih "Add to Home Screen".\n\nUntuk Android/Chrome yang belum menampilkan tombol install: buka menu titik tiga di browser → "Install app" / "Add to Home screen".');
+      }
+    });
+  }
+
+  // ---- detect whether this device is "the imam's device" (opened via the special link) ----
+  const urlParams = new URLSearchParams(location.search);
+  if(urlParams.get('imam') === '1'){
+    try{
+      localStorage.setItem('imam_device', '1');
+      const syncFromUrl = urlParams.get('sync');
+      if(syncFromUrl) localStorage.setItem('imam_sync_url', syncFromUrl);
+    }catch(e){}
+  }
+  let isImamDevice = false;
+  try{ isImamDevice = urlParams.get('imam')==='1' || localStorage.getItem('imam_device')==='1'; }catch(e){}
+
+  // ---- config.json: the sync URL baked in here is the default for EVERY device that opens
+  // this site, so settings sync automatically without any per-device setup. ----
+  let configSyncUrl = '';
+  async function loadConfig(){
+    try{
+      const r = await fetch('./config.json', { cache:'no-store' });
+      if(r.ok){ const j = await r.json(); configSyncUrl = (j && j.syncUrl) || ''; }
+    }catch(e){}
+  }
+  function effectiveSyncUrl(){
+    if(imamCfg.syncUrl) return imamCfg.syncUrl; // explicit per-device override, entered in Settings
+    if(configSyncUrl) return configSyncUrl; // default for every device, from config.json
+    try{ return localStorage.getItem('imam_sync_url') || ''; }catch(e){ return ''; } // legacy imam-link fallback
+  }
+
+  const hasCloud = (typeof window.storage !== 'undefined');
+  async function storeGet(key){
+    if(hasCloud){ try{ const r = await window.storage.get(key, true); return r ? r.value : null; }catch(e){ return null; } }
+    try{ return localStorage.getItem(key); }catch(e){ return null; }
+  }
+  async function storeSet(key, value){
+    if(hasCloud){ try{ await window.storage.set(key, value, true); }catch(e){} }
+    try{ localStorage.setItem(key, value); }catch(e){}
+  }
+
+  async function loadAll(){
+    const s = await storeGet('mosque_schedule_v1');
+    if(s) schedule = JSON.parse(s); else await storeSet('mosque_schedule_v1', JSON.stringify(DEFAULT_SCHEDULE));
+    const t = await storeGet('mosque_ticker_v1'); if(t) ticker = JSON.parse(t);
+    const b = await storeGet('mosque_banners_v1'); if(b) bannersCfg = JSON.parse(b);
+    const i = await storeGet('mosque_identity_v1'); if(i) identity = {...DEFAULT_ID, ...JSON.parse(i)};
+    const p = await storeGet('mosque_prayer_auto_v1'); if(p) prayerAuto = JSON.parse(p);
+    const im = await storeGet('mosque_imam_cfg_v1'); if(im) imamCfg = JSON.parse(im);
+    const ic = await storeGet('mosque_imam_reports_v1'); if(ic) imamReports = JSON.parse(ic);
+    const sc = await storeGet('mosque_sound_cfg_v1'); if(sc) soundCfg = {...DEFAULT_SOUND, ...JSON.parse(sc)};
+
+    renderIdentity();
+    renderTickerAndBannersUI();
+    renderPaUI();
+    renderImamUI();
+    renderSoundUI();
+    renderGridSkeleton();
+    initBannerEngine();
+    tick();
+  }
+
+  function renderIdentity(){
+    const audEl = $('screenAudienceInput');
+    if(audEl) audEl.value = screenAudience;
+    $('locName').textContent = identity.name || 'Masjid';
+    $('locSub').textContent = identity.loc || schedule.location || '';
+    $('mosqueNameInput').value = identity.name || '';
+    $('mosqueLocInput').value = identity.loc || schedule.location || '';
+    const logoEl = $('mosqueLogo'), previewEl = $('logoPreview');
+    if(identity.logo){
+      logoEl.src = identity.logo; logoEl.style.display = 'block';
+      previewEl.src = identity.logo; previewEl.style.display = '';
+    } else {
+      logoEl.style.display = 'none'; previewEl.style.display = 'none';
+    }
+  }
+
+  /* =====================================================================
+     BANNER ENGINE — supports 3 modes per banner:
+       cycle     : rotates with other 'cycle' banners using global duration/gap
+       interval  : shows every N minutes, for its own (or default) duration
+       scheduled : shows at specific HH:MM times on specific weekdays
+     Priority when multiple are ready at once: scheduled > interval > cycle.
+     Everything pauses while prayerActive (adzan/iqomah/blackout) is showing.
+  ===================================================================== */
+  let engine = { showingUntil:0, cycleIdx:0, cycleNextDue:0, current:null, subQueue:[], pendingSheetFetch:false };
+
+  function initBannerEngine(){
+    const now = Date.now();
+    engine = { showingUntil:0, cycleIdx:0, cycleNextDue:now, current:null, subQueue:[], pendingSheetFetch:false };
+    (bannersCfg.items||[]).forEach(b=>{
+      b._nextDue = now + (Number(b.intervalMinutes)||15)*60000;
+      b._lastTriggerKey = null;
+    });
+  }
+
+  function parseTimes(str){
+    return (str||'').split(',').map(s=>s.trim()).filter(Boolean)
+      .map(s=>{ const m = s.match(/^(\d{1,2}):(\d{2})$/); return m ? `${m[1].padStart(2,'0')}:${m[2]}` : null; })
+      .filter(Boolean);
+  }
+
+  // ---- video link -> embeddable player ----
+  function parseVideoUrl(url){
+    url = (url||'').trim();
+    let m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([\w-]{6,})/);
+    if(m) return {type:'youtube', id:m[1]};
+    m = url.match(/vimeo\.com\/(\d+)/);
+    if(m) return {type:'vimeo', id:m[1]};
+    if(/\.(mp4|webm|ogg)(\?.*)?$/i.test(url)) return {type:'file', url};
+    if(url) return {type:'iframe', url};
+    return null;
+  }
+  function describeVideoUrl(url){
+    const v = parseVideoUrl(url);
+    if(!v) return '';
+    if(v.type==='youtube') return 'Terdeteksi: YouTube ✓';
+    if(v.type==='vimeo') return 'Terdeteksi: Vimeo ✓';
+    if(v.type==='file') return 'Terdeteksi: file video langsung (.mp4/.webm) ✓';
+    return 'Link umum — akan dicoba ditampilkan langsung. Beberapa situs memblokir penyematan (embed); YouTube/Vimeo/link .mp4 paling andal.';
+  }
+  let ytApiReady = false;
+  window.onYouTubeIframeAPIReady = function(){ ytApiReady = true; };
+  let currentPlayerCleanup = null;
+
+  function embedVideo(container, item, onEnded){
+    if(currentPlayerCleanup){ try{ currentPlayerCleanup(); }catch(e){} currentPlayerCleanup = null; }
+    const muted = item.muted !== false;
+    const v = parseVideoUrl(item.url);
+    container.innerHTML = '';
+    if(!v) return;
+
+    if(v.type==='youtube'){
+      const holderId = 'yt-holder-'+Date.now();
+      container.innerHTML = `<div id="${holderId}" style="width:100%;height:100%;"></div>`;
+      let handled = false; // guards against the fallback iframe and the real player racing each other
+      const useFallback = ()=>{
+        if(handled) return;
+        handled = true;
+        container.innerHTML = `<iframe src="https://www.youtube.com/embed/${v.id}?autoplay=1&mute=${muted?1:0}&controls=1&rel=0&playsinline=1&modestbranding=1" frameborder="0" allow="autoplay; encrypted-media; fullscreen" allowfullscreen style="width:100%;height:100%;"></iframe>`;
+      };
+      const createPlayer = ()=>{
+        if(handled) return;
+        handled = true;
+        try{
+          const player = new YT.Player(holderId, {
+            videoId: v.id,
+            playerVars:{ autoplay:1, mute: muted?1:0, controls:1, rel:0, playsinline:1, modestbranding:1 },
+            events:{
+              onStateChange:(e)=>{ if(e.data === YT.PlayerState.ENDED) onEnded(); },
+              onError:()=> onEnded()
+            }
+          });
+          currentPlayerCleanup = ()=>{ try{ player.destroy(); }catch(e){} };
+        }catch(e){
+          handled = false; useFallback();
+        }
+      };
+      if(ytApiReady && window.YT && YT.Player){
+        createPlayer();
+      } else {
+        const waitId = setInterval(()=>{
+          if(handled){ clearInterval(waitId); return; }
+          if(ytApiReady && window.YT && YT.Player){ clearInterval(waitId); createPlayer(); }
+        }, 200);
+        setTimeout(()=>{ clearInterval(waitId); useFallback(); }, 7000); // generous window before giving up on the API
+      }
+    } else if(v.type==='vimeo'){
+      const iframeId = 'vimeo-holder-'+Date.now();
+      container.innerHTML = `<iframe id="${iframeId}" src="https://player.vimeo.com/video/${v.id}?autoplay=1&muted=${muted?1:0}" frameborder="0" allow="autoplay; fullscreen" allowfullscreen style="width:100%;height:100%;"></iframe>`;
+      try{
+        const player = new Vimeo.Player(document.getElementById(iframeId));
+        player.on('ended', onEnded);
+        currentPlayerCleanup = ()=>{ try{ player.unload(); }catch(e){} };
+      }catch(e){ /* Vimeo API unavailable — plays, but falls back to the safety-cap/manual duration */ }
+    } else if(v.type==='file'){
+      container.innerHTML = `<video autoplay ${muted?'muted':''} playsinline style="max-width:100%;max-height:100%;"></video>`;
+      const vid = container.querySelector('video');
+      vid.src = v.url;
+      vid.addEventListener('ended', onEnded);
+    } else {
+      container.innerHTML = `<iframe src="${v.url}" frameborder="0" allow="autoplay; fullscreen" allowfullscreen style="width:100%;height:100%;"></iframe>`;
+      /* generic sites rarely expose an end event — relies on the safety-cap/manual duration */
+    }
+  }
+
+
+  function bannerTick(nowMs, nowHM, nowDay, nowIso){
+    const overlayEl = $('annFullscreen');
+    if(prayerActive){
+      overlayEl.classList.remove('show');
+      if(currentPlayerCleanup){ try{currentPlayerCleanup();}catch(e){} currentPlayerCleanup=null; }
+      $('annVideoBox').innerHTML=''; $('annSheetBox').innerHTML=''; $('annSheetBox').style.display='none';
+      $('annInfoBox').innerHTML=''; $('annInfoBox').style.display='none';
+      engine.showingUntil=0; engine.current=null; engine.videoEnded=false; engine.subQueue=[]; engine.pendingSheetFetch=false;
+      return;
+    }
+    if(engine.pendingSheetFetch) return; // a sheet fetch/render is in flight; wait for it to resolve
+
+    if(engine.current && engine.videoEnded) engine.showingUntil = 0; // video reported it finished — end now
+    if(engine.current && nowMs < engine.showingUntil) return; // still showing, wait
+
+    if(engine.current && nowMs >= engine.showingUntil){
+      if(engine.subQueue.length){
+        // more pages queued for this session — show the next one immediately, no gap
+        const nextSrc = engine.subQueue.shift();
+        const durSec = Number(engine.current.duration) || Number(bannersCfg.duration) || 8;
+        $('annFullscreenImg').src = nextSrc;
+        engine.showingUntil = nowMs + durSec*1000;
+        return;
+      }
+      // just finished showing everything — bookkeeping, then hide
+      overlayEl.classList.remove('show');
+      if(currentPlayerCleanup){ try{currentPlayerCleanup();}catch(e){} currentPlayerCleanup=null; }
+      $('annVideoBox').innerHTML = ''; // stop any playing video
+      $('annSheetBox').innerHTML = ''; $('annSheetBox').style.display = 'none';
+      $('annInfoBox').innerHTML = ''; $('annInfoBox').style.display = 'none';
+      const b = engine.current;
+      if(b.mode === 'interval') b._nextDue = nowMs + Math.max(1,Number(b.intervalMinutes)||15)*60000;
+      if(b.mode === 'scheduled') b._lastTriggerKey = nowHM + '#' + b._matchedTime;
+      if(b.mode === 'cycle') engine.cycleNextDue = nowMs + Math.max(0,Number(bannersCfg.gap)||0)*1000;
+      engine.current = null; engine.videoEnded = false;
+    }
+
+    const items = bannersCfg.items || [];
+    // 1) scheduled candidates
+    let candidate = items.find(b=>{
+      if(b.mode !== 'scheduled') return false;
+      if(!itemMatchesAudience(b)) return false;
+      const times = parseTimes(b.times);
+      const days = (b.days && b.days.length) ? b.days : [0,1,2,3,4,5,6];
+      if(!days.includes(nowDay)) return false;
+      const matched = times.find(t=>t===nowHM);
+      if(!matched) return false;
+      if(b._lastTriggerKey === nowHM+'#'+matched) return false;
+      b._matchedTime = matched;
+      return true;
+    });
+    // 2) interval candidates
+    if(!candidate) candidate = items.find(b=> b.mode==='interval' && itemMatchesAudience(b) && nowMs >= (b._nextDue||0));
+    // 3) cycle candidates
+    if(!candidate){
+      const cycleItems = items.filter(b=> (b.mode==='cycle'||!b.mode) && itemMatchesAudience(b));
+      if(cycleItems.length && nowMs >= engine.cycleNextDue){
+        candidate = cycleItems[engine.cycleIdx % cycleItems.length];
+        engine.cycleIdx++;
+      }
+    }
+
+    if(candidate && candidate.kind === 'sheet'){
+      engine.pendingSheetFetch = true;
+      $('annFullscreenImg').style.display = 'none';
+      $('annVideoBox').style.display = 'none'; $('annVideoBox').innerHTML = '';
+      $('annInfoBox').style.display = 'none';
+      const sheetBox = $('annSheetBox');
+      sheetBox.style.display = 'block';
+      sheetBox.innerHTML = '<div class="sheet-row-view"><div class="sheet-row-line">Memuat data...</div></div>';
+      $('annFullscreenCaption').textContent = candidate.caption || '';
+      overlayEl.classList.add('show');
+      engine.current = candidate; engine.videoEnded = false; engine.subQueue = [];
+      engine.showingUntil = nowMs + 6000; // temporary floor while loading, extended below once real duration is known
+      showSheetCandidate(candidate).then((durSec)=>{
+        engine.pendingSheetFetch = false;
+        if(engine.current !== candidate) return; // interrupted meanwhile (e.g. prayer time) — abandon
+        engine.showingUntil = Date.now() + (durSec||15)*1000;
+      });
+      return;
+    }
+
+    if(candidate && candidate.kind === 'infosantri'){
+      engine.pendingSheetFetch = true; // guard dipakai bersama 'sheet' -- hanya satu kandidat aktif per waktu, aman
+      $('annFullscreenImg').style.display = 'none';
+      $('annVideoBox').style.display = 'none'; $('annVideoBox').innerHTML = '';
+      $('annSheetBox').style.display = 'none';
+      const infoBox = $('annInfoBox');
+      infoBox.style.display = 'flex';
+      infoBox.innerHTML = '<div class="info-santri-title">Memuat data...</div>';
+      $('annFullscreenCaption').textContent = candidate.caption || '';
+      overlayEl.classList.add('show');
+      engine.current = candidate; engine.videoEnded = false; engine.subQueue = [];
+      engine.showingUntil = nowMs + 6000; // batas sementara selagi memuat, diperbarui di bawah setelah durasi asli diketahui
+      showInfoSantriCandidate(candidate).then((durSec)=>{
+        engine.pendingSheetFetch = false;
+        if(engine.current !== candidate) return; // terganggu di tengah jalan (misal masuk waktu sholat) -- batalkan
+        engine.showingUntil = Date.now() + (durSec||18)*1000;
+      });
+      return;
+    }
+
+    if(candidate && candidate.kind === 'pdfbook'){
+      engine.pendingSheetFetch = true;
+      $('annVideoBox').style.display = 'none'; $('annVideoBox').innerHTML = '';
+      $('annSheetBox').style.display = 'none'; $('annSheetBox').innerHTML = '';
+      $('annInfoBox').style.display = 'none'; $('annInfoBox').innerHTML = '';
+      const imgEl = $('annFullscreenImg');
+      imgEl.style.display = 'block'; imgEl.src = '';
+      $('annFullscreenCaption').textContent = candidate.caption || candidate.pdfFilename || '';
+      overlayEl.classList.add('show');
+      engine.current = candidate; engine.videoEnded = false; engine.subQueue = [];
+      const durSec = Number(candidate.duration) || 20;
+      engine.showingUntil = nowMs + Math.max(durSec, 10)*1000; // floor while loading; corrected below if load fails
+      (async ()=>{
+        const doc = await loadPdfBookDoc(candidate.pdfFileId);
+        if(engine.current !== candidate) return; // interrupted meanwhile — abandon
+        engine.pendingSheetFetch = false;
+        if(!doc){ engine.showingUntil = Date.now(); return; } // couldn't load — hide on next tick, will retry later
+        const pageNum = resolvePdfBookPage(candidate, nowIso);
+        try{
+          const dataUrl = await renderPdfBookPage(doc, pageNum);
+          if(engine.current !== candidate) return;
+          imgEl.src = dataUrl;
+          engine.showingUntil = Date.now() + durSec*1000;
+        }catch(e){ engine.showingUntil = Date.now(); }
+      })();
+      return;
+    }
+
+    if(candidate){
+      const isAutoVideo = candidate.kind==='video' && candidate.autoDuration !== false;
+      const defaultDur = candidate.kind==='video' ? 300 : 8;
+      const SAFETY_CAP_SEC = Number(candidate.duration) || 20*60; // ceiling in case the end-of-video signal never arrives
+      const durSec = isAutoVideo ? SAFETY_CAP_SEC : (Number(candidate.duration) || Number(bannersCfg.duration) || defaultDur);
+      const imgEl = $('annFullscreenImg'), videoBox = $('annVideoBox');
+      engine.videoEnded = false;
+      engine.subQueue = [];
+      if(candidate.kind === 'video'){
+        imgEl.style.display = 'none'; videoBox.style.display = 'flex';
+        embedVideo(videoBox, candidate, ()=>{ engine.videoEnded = true; });
+      } else {
+        let imgSrc = candidate.image;
+        if(candidate.dailySetId){
+          const todayPages = resolveDailyImages(candidate.dailySetId, candidate.rangeStart, candidate.rangeEnd, candidate.pagesPerDay, nowIso);
+          if(!todayPages || !todayPages.length) return; // daily set not loaded from server yet — try again next tick
+          imgSrc = todayPages[0];
+          engine.subQueue = todayPages.slice(1); // remaining pages for today, shown back-to-back
+        }
+        videoBox.style.display = 'none'; videoBox.innerHTML=''; imgEl.style.display = 'block';
+        imgEl.src = imgSrc;
+      }
+      $('annFullscreenCaption').textContent = candidate.caption || candidate.title || '';
+      overlayEl.classList.add('show');
+      engine.current = candidate;
+      engine.showingUntil = nowMs + durSec*1000;
+    }
+  }
+
+
+  function renderTickerAndBannersUI(){
+    $('tickerText').textContent = ticker.text || '';
+    $('annTextInput').value = ticker.text || '';
+    $('bannerDuration').value = bannersCfg.duration;
+    $('bannerGap').value = bannersCfg.gap;
+    tempBanners = (bannersCfg.items||[]).map(b=>({...b}));
+    renderBannerList();
+  }
+
+  function renderBannerList(){
+    const wrap = $('bannerList');
+    if(tempBanners.length === 0){ wrap.innerHTML = '<p class="empty-note">Belum ada banner/video ditambahkan.</p>'; return; }
+    wrap.innerHTML = '';
+    tempBanners.forEach((b,idx)=>{
+      if(!b.mode) b.mode = 'cycle';
+      if(!b.days) b.days = [0,1,2,3,4,5,6];
+      if(!b.kind) b.kind = 'image';
+      if(!b.tampilUntuk) b.tampilUntuk = 'Semua'; // item lama tanpa field ini dianggap tampil di semua layar
+      const el = document.createElement('div');
+      el.className = 'banner-item';
+      const thumb = b.kind === 'video'
+        ? `<div style="width:90px;height:56px;border-radius:6px;flex-shrink:0;border:1px solid var(--line);background:var(--ink);display:flex;align-items:center;justify-content:center;font-size:22px;">🎬</div>`
+        : b.kind === 'sheet'
+        ? `<div style="width:90px;height:56px;border-radius:6px;flex-shrink:0;border:1px solid var(--line);background:var(--ink);display:flex;align-items:center;justify-content:center;font-size:22px;">📊</div>`
+        : b.kind === 'pdfbook'
+        ? `<div style="width:90px;height:56px;border-radius:6px;flex-shrink:0;border:1px solid var(--line);background:var(--ink);display:flex;align-items:center;justify-content:center;font-size:22px;">📖</div>`
+        : b.kind === 'infosantri'
+        ? `<div style="width:90px;height:56px;border-radius:6px;flex-shrink:0;border:1px solid var(--line);background:var(--ink);display:flex;align-items:center;justify-content:center;font-size:22px;">📿</div>`
+        : b.dailySetId
+        ? `<div style="width:90px;height:56px;border-radius:6px;flex-shrink:0;border:1px solid var(--line);background:var(--ink);display:flex;align-items:center;justify-content:center;font-size:22px;">🗓️</div>`
+        : `<img src="${b.image}">`;
+      const muteToggle = b.kind === 'video'
+        ? `<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);white-space:nowrap;"><input type="checkbox" class="bi-muted" data-idx="${idx}" ${b.muted!==false?'checked':''}> Bisu</label>`
+        : '';
+      const autoDurToggle = b.kind === 'video'
+        ? `<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);white-space:nowrap;"><input type="checkbox" class="bi-autodur" data-idx="${idx}" ${b.autoDuration!==false?'checked':''}> Durasi otomatis (ikuti video)</label>`
+        : '';
+      el.innerHTML = `
+        <div class="bi-top">
+          ${thumb}
+          <div class="bi-body">
+            ${b.kind==='video' ? `<div class="hint" style="margin:0;word-break:break-all;">${(b.url||'').slice(0,60)}</div>` : ''}
+            ${b.kind==='sheet' ? `<div class="hint" style="margin:0;word-break:break-all;">${b.sheetMode==='table'?'Tabel utuh':'Baris bergantian/hari'} — ${(b.sheetUrl||'').slice(0,50)}...</div>` : ''}
+            ${b.kind==='pdfbook' ? `<div class="hint" style="margin:0;">${(b.pdfFilename||'PDF').slice(0,40)} — halaman ${b.startPage}-${b.endPage}, 1 hlm/hari</div>` : ''}
+            ${b.kind==='infosantri' ? `<div class="hint" style="margin:0;word-break:break-all;">Live dari WASIAT — ${[b.showJumlahSantri&&'Jumlah Santri',b.showTopSetoran&&'Top Setoran',b.showPelanggaran&&'Pelanggaran',b.showPrestasi&&'Prestasi'].filter(Boolean).join(', ')||'(pilih data)'}</div>` : ''}
+            ${b.dailySetId ? `<div class="hint" style="margin:0;">Set harian — ${(dailySetsCache[b.dailySetId]||[]).length || '...'} halaman total</div>` : ''}
+            ${b.dailySetId ? `
+              <div class="bi-row">
+                <label style="font-size:12px;color:var(--muted);white-space:nowrap;">Halaman/hari <input type="number" class="bi-pagesperday" data-idx="${idx}" min="1" value="${b.pagesPerDay||1}" style="width:60px;display:inline-block;padding:5px 7px;"></label>
+                <label style="font-size:12px;color:var(--muted);white-space:nowrap;">Dari hlm <input type="number" class="bi-rangestart" data-idx="${idx}" min="1" value="${b.rangeStart||1}" style="width:65px;display:inline-block;padding:5px 7px;"></label>
+                <label style="font-size:12px;color:var(--muted);white-space:nowrap;">s/d hlm <input type="number" class="bi-rangeend" data-idx="${idx}" min="1" value="${b.rangeEnd||''}" placeholder="akhir" style="width:70px;display:inline-block;padding:5px 7px;"></label>
+              </div>` : ''}
+            <input type="text" placeholder="Keterangan (opsional)" value="${(b.caption||'').replace(/"/g,'&quot;')}" data-idx="${idx}" class="bi-caption">
+            ${b.kind==='video' ? `<div class="bi-row">${autoDurToggle}${muteToggle}</div>` : ''}
+            <div class="bi-row">
+              <select class="bi-audience" data-idx="${idx}" title="Layar mana yang menampilkan item ini" style="width:120px;">
+                <option value="Semua">🕌 Semua</option>
+                <option value="Putra">♂ Putra</option>
+                <option value="Putri">♀ Putri</option>
+              </select>
+              <select class="bi-mode" data-idx="${idx}" style="flex:1;">
+                <option value="cycle">Ikuti siklus umum</option>
+                <option value="interval">Setiap beberapa menit</option>
+                <option value="scheduled">Jadwal tertentu (jam &amp; hari)</option>
+              </select>
+              <input type="number" class="bi-duration" data-idx="${idx}" placeholder="${b.kind==='video'&&b.autoDuration!==false?'batas aman (detik)':'detik'}" value="${b.duration||''}" style="width:110px;" title="${b.kind==='video'&&b.autoDuration!==false?'Batas maksimal jaga-jaga kalau sinyal selesai video tidak diterima (kosongkan = 20 menit)':'Durasi tampil (kosongkan = default)'}">
+              <button class="btn small danger" data-idx="${idx}" title="Hapus">Hapus</button>
+            </div>
+          </div>
+        </div>
+        <div class="bi-mode-fields" data-idx="${idx}"></div>`;
+      wrap.appendChild(el);
+      el.querySelector('.bi-mode').value = b.mode;
+      el.querySelector('.bi-audience').value = b.tampilUntuk;
+      renderModeFields(el.querySelector('.bi-mode-fields'), b, idx);
+    });
+
+    wrap.querySelectorAll('.bi-caption').forEach(inp=> inp.addEventListener('input', e=>{ tempBanners[+e.target.dataset.idx].caption = e.target.value; }));
+    wrap.querySelectorAll('.bi-duration').forEach(inp=> inp.addEventListener('input', e=>{ tempBanners[+e.target.dataset.idx].duration = e.target.value; }));
+    wrap.querySelectorAll('.bi-pagesperday').forEach(inp=> inp.addEventListener('input', e=>{ tempBanners[+e.target.dataset.idx].pagesPerDay = e.target.value; }));
+    wrap.querySelectorAll('.bi-rangestart').forEach(inp=> inp.addEventListener('input', e=>{ tempBanners[+e.target.dataset.idx].rangeStart = e.target.value; }));
+    wrap.querySelectorAll('.bi-rangeend').forEach(inp=> inp.addEventListener('input', e=>{ tempBanners[+e.target.dataset.idx].rangeEnd = e.target.value; }));
+    wrap.querySelectorAll('.bi-muted').forEach(inp=> inp.addEventListener('change', e=>{ tempBanners[+e.target.dataset.idx].muted = e.target.checked; }));
+    wrap.querySelectorAll('.bi-autodur').forEach(inp=> inp.addEventListener('change', e=>{
+      const idx = +e.target.dataset.idx;
+      tempBanners[idx].autoDuration = e.target.checked;
+      const durInput = wrap.querySelector(`.bi-duration[data-idx="${idx}"]`);
+      if(durInput){
+        durInput.placeholder = e.target.checked ? 'batas aman (detik)' : 'detik';
+        durInput.title = e.target.checked ? 'Batas maksimal jaga-jaga kalau sinyal selesai video tidak diterima (kosongkan = 20 menit)' : 'Durasi tampil (kosongkan = default)';
+      }
+    }));
+    wrap.querySelectorAll('.bi-mode').forEach(sel=> sel.addEventListener('change', e=>{
+      const idx = +e.target.dataset.idx;
+      tempBanners[idx].mode = e.target.value;
+      renderModeFields(wrap.querySelector(`.bi-mode-fields[data-idx="${idx}"]`), tempBanners[idx], idx);
+    }));
+    wrap.querySelectorAll('.bi-audience').forEach(sel=> sel.addEventListener('change', e=>{
+      tempBanners[+e.target.dataset.idx].tampilUntuk = e.target.value;
+    }));
+    wrap.querySelectorAll('button.danger').forEach(btn=> btn.addEventListener('click', e=>{ tempBanners.splice(+e.target.dataset.idx,1); renderBannerList(); }));
+  }
+
+  function renderModeFields(container, b, idx){
+    if(b.mode === 'interval'){
+      container.style.display='block';
+      container.innerHTML = `
+        <span class="field-label" style="margin-top:0;">Tampil setiap (menit)</span>
+        <input type="number" class="bi-interval" min="1" value="${b.intervalMinutes||15}" style="max-width:140px;">`;
+      container.querySelector('.bi-interval').addEventListener('input', e=>{ tempBanners[idx].intervalMinutes = e.target.value; });
+    } else if(b.mode === 'scheduled'){
+      container.style.display='block';
+      container.innerHTML = `
+        <span class="field-label" style="margin-top:0;">Jam tampil (pisahkan koma, mis. 05:00, 17:00)</span>
+        <input type="text" class="bi-times" value="${b.times||''}" placeholder="05:00, 17:00">
+        <span class="field-label">Hari tampil</span>
+        <div class="day-toggles"></div>`;
+      container.querySelector('.bi-times').addEventListener('input', e=>{ tempBanners[idx].times = e.target.value; });
+      const dt = container.querySelector('.day-toggles');
+      DAY_LABELS.forEach((lbl,d)=>{
+        const btn = document.createElement('button');
+        btn.type='button'; btn.className='day-btn'+(b.days.includes(d)?' active':''); btn.textContent=lbl;
+        btn.addEventListener('click', ()=>{
+          const days = tempBanners[idx].days;
+          const pos = days.indexOf(d);
+          if(pos>=0) days.splice(pos,1); else days.push(d);
+          btn.classList.toggle('active');
+        });
+        dt.appendChild(btn);
+      });
+    } else {
+      container.style.display='none'; container.innerHTML='';
+    }
+  }
+
+  $('addBannerBtn').addEventListener('click', ()=> $('bannerFileInput').click());
+  $('addVideoBtn').addEventListener('click', ()=>{ $('videoAddForm').style.display='flex'; $('videoUrlInput').focus(); });
+  $('cancelAddVideoBtn').addEventListener('click', ()=>{ $('videoAddForm').style.display='none'; $('videoUrlInput').value=''; $('videoUrlHint').textContent=''; });
+  $('videoUrlInput').addEventListener('input', (e)=>{ $('videoUrlHint').textContent = describeVideoUrl(e.target.value); });
+  $('confirmAddVideoBtn').addEventListener('click', ()=>{
+    const url = $('videoUrlInput').value.trim();
+    if(!url || !parseVideoUrl(url)){ $('videoUrlHint').textContent = 'Link belum valid.'; return; }
+    tempBanners.push({kind:'video', url, caption:'', mode:'cycle', duration:'', autoDuration:true, intervalMinutes:15, times:'', days:[0,1,2,3,4,5,6], muted:true});
+    $('videoAddForm').style.display='none'; $('videoUrlInput').value=''; $('videoUrlHint').textContent='';
+    renderBannerList();
+  });
+  $('bannerFileInput').addEventListener('change', async (e)=>{
+    const files = Array.from(e.target.files || []);
+    if(!files.length) return;
+    const usingDrive = !!effectiveSyncUrl();
+    let statusEl = $('annStatus');
+    if(usingDrive){ statusEl.textContent = `Mengunggah ${files.length} gambar ke Google Drive...`; statusEl.className='status-msg'; }
+    let uploaded = 0;
+    for(const file of files){
+      let imageSrc = null;
+      if(usingDrive){ imageSrc = await uploadToDrive(file); }
+      if(!imageSrc){ imageSrc = await fileToBase64(file).then(b64 => `data:${file.type};base64,${b64}`); }
+      tempBanners.push({kind:'image', image: imageSrc, caption:'', mode:'cycle', duration:'', intervalMinutes:15, times:'', days:[0,1,2,3,4,5,6]});
+      uploaded++;
+    }
+    renderBannerList();
+    if(usingDrive){ statusEl.textContent = `${uploaded} gambar siap (diunggah ke Drive).`; statusEl.className='status-msg ok'; }
+    e.target.value = '';
+  });
+
+  function updateCycleHint(){
+    const n = (tempBanners||[]).filter(b=>!b.mode||b.mode==='cycle').length;
+    const dur = Number($('bannerDuration').value)||8, gap = Number($('bannerGap').value)||0;
+    $('cycleHint').textContent = n===0
+      ? 'Tidak ada banner bermode "siklus umum" saat ini.'
+      : `${n} banner "siklus umum" akan tampil bergiliran: ${dur} detik tampil, jeda ${gap} detik. Banner bermode interval/jadwal tertentu tampil sesuai aturannya sendiri.`;
+  }
+  $('bannerDuration').addEventListener('input', updateCycleHint);
+  $('bannerGap').addEventListener('input', updateCycleHint);
+
+  $('saveAnnBtn').addEventListener('click', async ()=>{
+    ticker = { text: $('annTextInput').value.trim() };
+    bannersCfg = { duration: Math.max(2, Number($('bannerDuration').value)||8), gap: Math.max(0, Number($('bannerGap').value)||0), items: tempBanners };
+    try{
+      await storeSet('mosque_ticker_v1', JSON.stringify(ticker));
+      await storeSet('mosque_banners_v1', JSON.stringify(bannersCfg));
+      remotePush('ticker', ticker); remotePush('banners', bannersCfg);
+      renderTickerAndBannersUI(); initBannerEngine();
+      $('annStatus').textContent = 'Tersimpan. Banner & teks langsung berlaku di layar.';
+      $('annStatus').className = 'status-msg ok';
+    }catch(err){
+      $('annStatus').textContent = 'Gagal menyimpan — kemungkinan ukuran gambar terlalu besar untuk browser ini.';
+      $('annStatus').className = 'status-msg err';
+    }
+  });
+
+  /* =====================================================================
+     ADZAN → IQOMAH → BLACKOUT AUTOMATION
+  ===================================================================== */
+  function renderPaUI(){
+    $('paEnabled').checked = !!prayerAuto.enabled;
+    $('paGap').value = prayerAuto.gapToIqomah;
+    $('paCountdownMin').value = prayerAuto.iqomahCountdown;
+    $('paBlackout').value = prayerAuto.blackoutMinutes;
+    const box = $('paPrayerChecks'); box.innerHTML='';
+    PRAYERS.forEach(p=>{
+      const lab = document.createElement('label');
+      lab.innerHTML = `<input type="checkbox" class="pa-prayer-cb" data-key="${p.key}" ${prayerAuto.prayers[p.key]?'checked':''}> ${p.label}`;
+      box.appendChild(lab);
+    });
+    updatePaTimelineHint();
+  }
+  function updatePaTimelineHint(){
+    const g = Number($('paGap').value)||5, c = Number($('paCountdownMin').value)||15, bl = Number($('paBlackout').value)||10;
+    $('paTimelineHint').textContent = `Urutan: waktu sholat masuk → notifikasi Adzan (${g} menit) → hitung mundur Iqomah (${c} menit) → layar hitam (${bl} menit) → kembali normal. Total ± ${g+c+bl} menit.`;
+  }
+  ['paGap','paCountdownMin','paBlackout'].forEach(id=> $(id).addEventListener('input', updatePaTimelineHint));
+
+  function imamLinkUrl(){
+    const base = location.origin + location.pathname;
+    const url = effectiveSyncUrl();
+    if(!url) return '';
+    return `${base}?imam=1&sync=${encodeURIComponent(url)}`;
+  }
+
+  function renderImamUI(){
+    $('imamEnabled').checked = !!imamCfg.enabled;
+    $('imamSyncUrl').value = imamCfg.syncUrl || '';
+    const box = $('imamPrayerChecks'); box.innerHTML='';
+    PRAYERS.forEach(p=>{
+      const lab = document.createElement('label');
+      lab.innerHTML = `<input type="checkbox" class="imam-prayer-cb" data-key="${p.key}" ${imamCfg.prayers[p.key]?'checked':''}> ${p.label}`;
+      box.appendChild(lab);
+    });
+    const link = imamLinkUrl();
+    $('imamLinkOutput').value = link || 'Isi URL Sinkronisasi dulu (atau pastikan config.json sudah diisi)...';
+    $('configSyncStatus').textContent = configSyncUrl
+      ? `✅ config.json aktif dan otomatis berlaku di semua perangkat (${configSyncUrl.slice(0,50)}...).`
+      : '⚠️ config.json belum diisi — pengaturan baru berlaku di perangkat ini saja sampai Anda unduh & upload config.json.';
+    $('configSyncStatus').className = configSyncUrl ? 'status-msg ok' : 'hint';
+  }
+  $('copyImamLinkBtn').addEventListener('click', async ()=>{
+    const link = imamLinkUrl();
+    if(!link){ $('imamStatus').textContent = 'Isi & simpan URL Sinkronisasi dulu.'; $('imamStatus').className='status-msg err'; return; }
+    try{ await navigator.clipboard.writeText(link); $('imamStatus').textContent='Link disalin.'; $('imamStatus').className='status-msg ok'; }
+    catch(e){ $('imamLinkOutput').select(); document.execCommand('copy'); $('imamStatus').textContent='Link disalin.'; $('imamStatus').className='status-msg ok'; }
+  });
+  $('saveImamBtn').addEventListener('click', async ()=>{
+    const prayers = {};
+    document.querySelectorAll('.imam-prayer-cb').forEach(cb=> prayers[cb.dataset.key] = cb.checked);
+    imamCfg = { enabled: $('imamEnabled').checked, prayers, syncUrl: $('imamSyncUrl').value.trim() };
+    await storeSet('mosque_imam_cfg_v1', JSON.stringify(imamCfg));
+    remotePush('imamCfg', imamCfg);
+    renderImamUI();
+    $('imamStatus').textContent = 'Pengaturan imam tersimpan.';
+    $('imamStatus').className = 'status-msg ok';
+  });
+  $('testImamSyncBtn').addEventListener('click', async ()=>{
+    const url = $('imamSyncUrl').value.trim();
+    const el = $('imamSyncTestResult');
+    if(!url){ el.textContent='Isi URL dulu.'; el.className='hint'; return; }
+    el.textContent = 'Menguji koneksi...';
+    try{
+      const r = await fetch(url);
+      if(r.ok){ el.textContent = '✅ Berhasil terhubung ke Apps Script.'; el.className='status-msg ok'; }
+      else { el.textContent = `⚠️ Server merespons tapi statusnya ${r.status}. Cek lagi deployment-nya (akses "Anyone").`; el.className='status-msg err'; }
+    }catch(e){ el.textContent = '❌ Gagal terhubung. Cek URL & pastikan deployment diakses "Anyone".'; el.className='status-msg err'; }
+  });
+  $('downloadConfigBtn').addEventListener('click', ()=>{
+    const url = $('imamSyncUrl').value.trim();
+    if(!url){ $('imamStatus').textContent = 'Isi URL Sinkronisasi dulu sebelum diunduh.'; $('imamStatus').className='status-msg err'; return; }
+    const blob = new Blob([JSON.stringify({ syncUrl: url }, null, 2)], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'config.json'; a.click();
+    URL.revokeObjectURL(a.href);
+    $('imamStatus').textContent = 'config.json terunduh — upload/timpa file itu di GitHub (folder utama/root) supaya berlaku di semua perangkat.';
+    $('imamStatus').className = 'status-msg ok';
+  });
+
+  // ---- remote sync (Google Apps Script) ----
+  async function remoteGet(url){
+    if(!url) return null;
+    try{ const r = await fetch(url); if(!r.ok) return null; return await r.json(); }catch(e){ return null; }
+  }
+  async function remotePost(url, body){
+    if(!url) return false;
+    try{ await fetch(url, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(body)}); return true; }
+    catch(e){ return false; }
+  }
+  async function remoteCall(url, body){
+    if(!url) return null;
+    try{
+      const r = await fetch(url, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(body)});
+      if(!r.ok) return null;
+      return await r.json();
+    }catch(e){ return null; }
+  }
+  function fileToBase64(file){
+    return new Promise((resolve,reject)=>{
+      const reader = new FileReader();
+      reader.onload = ()=> resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+  // Uploads a file to Google Drive via the Apps Script backend (if a sync URL is configured)
+  // and returns its public URL. Returns null if not configured or the upload fails —
+  // callers should fall back to storing the file inline as base64 in that case.
+  async function uploadToDrive(file){
+    const url = effectiveSyncUrl();
+    if(!url) return null;
+    try{
+      const dataBase64 = await fileToBase64(file);
+      const result = await remoteCall(url, { action:'uploadImage', filename:file.name, mimeType:file.type, dataBase64 });
+      return (result && result.ok && result.url) ? result.url : null;
+    }catch(e){ return null; }
+  }
+  function blobToBase64(blob){
+    return new Promise((resolve,reject)=>{
+      const reader = new FileReader();
+      reader.onload = ()=> resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+  async function uploadBlobToDrive(blob, filename, mimeType){
+    const url = effectiveSyncUrl();
+    if(!url) return null;
+    try{
+      const dataBase64 = await blobToBase64(blob);
+      const result = await remoteCall(url, { action:'uploadImage', filename, mimeType, dataBase64 });
+      return (result && result.ok && result.url) ? result.url : null;
+    }catch(e){ return null; }
+  }
+
+  // ---- "Set Harian dari PDF" — one page shown per calendar day, looping ----
+  let dailySetsCache = {}; // { setId: [imageUrl, ...] } refreshed by pollFullSync
+  let pdfJsLoaded = false;
+  async function ensurePdfJs(){
+    if(pdfJsLoaded) return true;
+    if(typeof pdfjsLib === 'undefined') return false;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    pdfJsLoaded = true;
+    return true;
+  }
+  function dailyImageIndex(iso, count){
+    if(!count) return 0;
+    const days = Math.floor(new Date(iso+'T00:00:00Z').getTime() / 86400000);
+    return ((days % count) + count) % count;
+  }
+  // Resolves which page(s) from a daily image set should show "today", honoring
+  // an optional page range and how many pages to show per day (for the book /
+  // learning-material use case — defaults to 1 page/day, full range).
+  function resolveDailyImages(setId, rangeStart, rangeEnd, pagesPerDay, iso){
+    const full = dailySetsCache[setId];
+    if(!full || !full.length) return null;
+    const start = Math.max(1, Number(rangeStart)||1) - 1;
+    const end = rangeEnd ? Math.min(full.length, Number(rangeEnd)) : full.length;
+    const subset = full.slice(start, Math.max(start+1, end));
+    if(!subset.length) return null;
+    const perDay = Math.max(1, Number(pagesPerDay)||1);
+    const totalChunks = Math.ceil(subset.length / perDay);
+    const chunkIdx = dailyImageIndex(iso, totalChunks);
+    return subset.slice(chunkIdx*perDay, chunkIdx*perDay+perDay);
+  }
+
+  // ---- "Pengumuman dari Google Sheets" ----
+  function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  async function fetchSheetData(sheetUrl, tabName){
+    const url = effectiveSyncUrl();
+    if(!url || !sheetUrl) return null;
+    const result = await remoteCall(url, { action:'readSheet', sheetUrl, tabName: tabName||'' });
+    return (result && result.ok) ? result.rows : { __error: (result && result.error) || 'Gagal membaca sheet.' };
+  }
+
+  // If content overflows its box, wraps it for a slow bottom-to-top scroll and
+  // returns a suggested display duration (seconds) long enough to read it all.
+  // Returns null when content already fits (caller keeps its own/default duration).
+  function measureAndApplyScroll(container){
+    const content = container.firstElementChild;
+    if(!content) return null;
+    const contentH = content.scrollHeight, boxH = container.clientHeight;
+    if(contentH <= boxH + 20) return null;
+    const dur = Math.max(8, Math.round(contentH/40)); // ~40px/detik, kecepatan baca nyaman
+    container.innerHTML = '';
+    const wrapper = document.createElement('div');
+    wrapper.className = 'sheet-scroll';
+    wrapper.appendChild(content);
+    container.appendChild(wrapper);
+    wrapper.style.animation = `sheetScrollUp ${dur}s linear`;
+    return dur;
+  }
+
+  function renderSheetRotate(container, rows, iso){
+    if(!rows || rows.__error){ container.innerHTML = `<div class="sheet-row-view"><div class="sheet-row-line">⚠️ ${escapeHtml((rows&&rows.__error)||'Data tidak ditemukan')}</div></div>`; return null; }
+    const header = rows[0]||[];
+    const dataRows = rows.slice(1).filter(r=> r.some(c=> c!==''&&c!==null&&c!==undefined));
+    if(!dataRows.length){ container.innerHTML = '<div class="sheet-row-view"><div class="sheet-row-line">Tidak ada data.</div></div>'; return null; }
+    const idx = dailyImageIndex(iso, dataRows.length);
+    const row = dataRows[idx];
+    const lines = header.map((h,i)=> `<div class="sheet-row-line"><b>${escapeHtml(h)}:</b> ${escapeHtml(row[i]!==undefined&&row[i]!==null?row[i]:'')}</div>`).join('');
+    container.innerHTML = `<div class="sheet-row-view">${lines}</div>`;
+    return measureAndApplyScroll(container);
+  }
+
+  function renderSheetTable(container, rows){
+    if(!rows || rows.__error){ container.innerHTML = `<div class="sheet-row-view"><div class="sheet-row-line">⚠️ ${escapeHtml((rows&&rows.__error)||'Data tidak ditemukan')}</div></div>`; return null; }
+    if(!rows.length){ container.innerHTML = '<div class="sheet-row-view"><div class="sheet-row-line">Tidak ada data.</div></div>'; return null; }
+    const header = rows[0]||[];
+    const body = rows.slice(1);
+    const thead = `<tr>${header.map(h=>`<th>${escapeHtml(h)}</th>`).join('')}</tr>`;
+    const tbody = body.map(r=>`<tr>${header.map((_,i)=>`<td>${escapeHtml(r[i]!==undefined&&r[i]!==null?r[i]:'')}</td>`).join('')}</tr>`).join('');
+    container.innerHTML = `<table class="sheet-table">${thead}${tbody}</table>`;
+    return measureAndApplyScroll(container);
+  }
+
+  async function showSheetCandidate(candidate){
+    const container = $('annSheetBox');
+    const now = wibNow();
+    const rows = await fetchSheetData(candidate.sheetUrl, candidate.tabName);
+    if(candidate.sheetMode === 'table') return renderSheetTable(container, rows) || Number(candidate.duration) || 20;
+    return renderSheetRotate(container, rows, now.iso) || Number(candidate.duration) || 15;
+  }
+
+  // Ambil data live dari WASIAT (jumlah santri, papan setoran, jumlah pelanggaran/
+  // prestasi) lalu render sebagai kartu-kartu bergaya masjid. Gender yang diminta
+  // ke WASIAT mengikuti pengaturan lokal layar ini (screenAudience) -- kalau layar
+  // ini "Semua", data yang diminta juga gabungan semua santri (tanpa filter gender).
+  async function fetchInfoSantri(wasiatUrl){
+    const genderParam = screenAudience === 'Putra' ? 'Laki-laki' : (screenAudience === 'Putri' ? 'Perempuan' : '');
+    const sep = wasiatUrl.includes('?') ? '&' : '?';
+    const url = wasiatUrl + sep + 'action=getInfoLayarMasjid' + (genderParam ? '&gender=' + encodeURIComponent(genderParam) : '');
+    try{
+      const r = await fetch(url);
+      const j = await r.json();
+      return (j && j.ok) ? j : null;
+    }catch(e){ return null; }
+  }
+
+  async function showInfoSantriCandidate(candidate){
+    const container = $('annInfoBox');
+    if(!candidate.wasiatUrl){
+      container.innerHTML = '<div class="info-santri-title">URL WASIAT belum diatur</div>';
+      return Number(candidate.duration) || 8;
+    }
+    const data = await fetchInfoSantri(candidate.wasiatUrl);
+    if(!data){
+      // Gagal terhubung -- ditampilkan singkat lalu lanjut ke item berikutnya,
+      // supaya satu kegagalan jaringan tidak mengganggu jamaah berlama-lama.
+      container.innerHTML = '<div class="info-santri-title">Data santri belum tersedia</div><div class="info-santri-sub">Memeriksa koneksi ke WASIAT...</div>';
+      return 6;
+    }
+
+    let cardsHtml = '';
+    if(candidate.showJumlahSantri !== false){
+      cardsHtml += `<div class="info-santri-card brass">
+        <div class="isc-label">Santri Aktif</div>
+        <div class="isc-value">${(data.jumlahSantri||0).toLocaleString('id-ID')}</div>
+      </div>`;
+    }
+    if(candidate.showPelanggaran !== false){
+      cardsHtml += `<div class="info-santri-card">
+        <div class="isc-label">Pelanggaran Tercatat Hari Ini</div>
+        <div class="isc-value">${(data.jumlahPelanggaran||0).toLocaleString('id-ID')}</div>
+      </div>`;
+    }
+    if(candidate.showPrestasi !== false){
+      cardsHtml += `<div class="info-santri-card">
+        <div class="isc-label">Prestasi Tercatat Hari Ini</div>
+        <div class="isc-value">${(data.jumlahPrestasi||0).toLocaleString('id-ID')}</div>
+      </div>`;
+    }
+
+    let leaderboardHtml = '';
+    if(candidate.showTopSetoran !== false && data.topSetoran && data.topSetoran.length){
+      const medali = ['🥇','🥈','🥉'];
+      leaderboardHtml = `<div class="info-santri-card" style="text-align:left;grid-column:1/-1;max-width:520px;margin:0 auto;">
+        <div class="isc-label" style="text-align:center;margin-bottom:12px;">📿 Setoran Hafalan Terbanyak Hari Ini</div>
+        <ul class="info-santri-leaderboard">
+          ${data.topSetoran.map((s,i)=>`<li><span><span class="rank">${medali[i]||('#'+(i+1))}</span>${escHtml(s.nama)}</span><span>${s.jumlah} setoran</span></li>`).join('')}
+        </ul>
+      </div>`;
+    }
+
+    container.innerHTML = `
+      <div class="info-santri-title">🕌 Info Pondok Hari Ini</div>
+      <div class="info-santri-grid">${cardsHtml}${leaderboardHtml}</div>
+    `;
+    return Number(candidate.duration) || 18;
+  }
+  function escHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  $('addSheetBtn').addEventListener('click', ()=>{
+    if(!effectiveSyncUrl()){
+      $('annStatus').textContent = 'Isi & simpan URL Sinkronisasi dulu (tab Adzan & Iqomah) sebelum memakai fitur ini.';
+      $('annStatus').className = 'status-msg err';
+      return;
+    }
+    $('sheetUrlInput').value=''; $('sheetTabInput').value=''; $('sheetAddStatus').textContent='';
+    $('sheetAddOverlay').classList.add('open');
+  });
+  $('closeSheetAdd').addEventListener('click', ()=> $('sheetAddOverlay').classList.remove('open'));
+  $('sheetAddOverlay').addEventListener('click', (e)=>{ if(e.target===$('sheetAddOverlay')) $('sheetAddOverlay').classList.remove('open'); });
+
+  $('testSheetBtn').addEventListener('click', async ()=>{
+    const sheetUrl = $('sheetUrlInput').value.trim();
+    const tabName = $('sheetTabInput').value.trim();
+    const statusEl = $('sheetAddStatus');
+    if(!sheetUrl){ statusEl.textContent='Isi link Google Sheets dulu.'; statusEl.className='status-msg err'; return; }
+    statusEl.textContent = 'Membaca sheet...'; statusEl.className='status-msg';
+    const rows = await fetchSheetData(sheetUrl, tabName);
+    if(!rows || rows.__error){ statusEl.textContent = '❌ ' + ((rows&&rows.__error)||'Gagal membaca sheet.'); statusEl.className='status-msg err'; return; }
+    statusEl.textContent = `✅ Berhasil — ditemukan ${rows.length} baris (termasuk header), ${(rows[0]||[]).length} kolom.`;
+    statusEl.className='status-msg ok';
+  });
+
+  $('confirmAddSheetBtn').addEventListener('click', ()=>{
+    const sheetUrl = $('sheetUrlInput').value.trim();
+    const tabName = $('sheetTabInput').value.trim();
+    const sheetMode = document.querySelector('input[name=sheetMode]:checked').value;
+    if(!sheetUrl){ $('sheetAddStatus').textContent='Isi link Google Sheets dulu.'; $('sheetAddStatus').className='status-msg err'; return; }
+    tempBanners.push({ kind:'sheet', sheetUrl, tabName, sheetMode, caption:'', mode:'cycle', duration:'', intervalMinutes:15, times:'', days:[0,1,2,3,4,5,6], tampilUntuk:'Semua' });
+    renderBannerList();
+    $('sheetAddOverlay').classList.remove('open');
+  });
+
+  // ---- "Info Santri" -- data live dari aplikasi WASIAT (jumlah santri, papan
+  // setoran terbanyak, jumlah pelanggaran/prestasi). Lihat showInfoSantriCandidate()
+  // untuk logika pengambilan & perender datanya saat giliran tampil tiba. ----
+  $('addInfoSantriBtn').addEventListener('click', ()=>{
+    $('infoSantriUrlInput').value = lastInfoSantriUrl || '';
+    $('infoSantriAddStatus').textContent = '';
+    $('infoSantriAddOverlay').classList.add('open');
+  });
+  $('closeInfoSantri').addEventListener('click', ()=> $('infoSantriAddOverlay').classList.remove('open'));
+  $('infoSantriAddOverlay').addEventListener('click', (e)=>{ if(e.target===$('infoSantriAddOverlay')) $('infoSantriAddOverlay').classList.remove('open'); });
+
+  $('testInfoSantriBtn').addEventListener('click', async ()=>{
+    const url = $('infoSantriUrlInput').value.trim();
+    const el = $('infoSantriAddStatus');
+    if(!url){ el.textContent = 'Isi URL Web App WASIAT dulu.'; el.className = 'status-msg err'; return; }
+    el.textContent = 'Menguji koneksi...'; el.className = 'status-msg';
+    try{
+      const r = await fetch(url + (url.includes('?')?'&':'?') + 'action=getInfoLayarMasjid');
+      const j = await r.json();
+      if(j && j.ok){ el.textContent = `✅ Berhasil — ${j.jumlahSantri} santri terdaftar.`; el.className = 'status-msg ok'; }
+      else{ el.textContent = '⚠️ Server merespons tapi datanya tidak sesuai dugaan. Pastikan Code.gs WASIAT sudah versi terbaru.'; el.className = 'status-msg err'; }
+    }catch(e){ el.textContent = '❌ Gagal terhubung. Cek URL, dan pastikan deployment WASIAT diakses "Anyone".'; el.className = 'status-msg err'; }
+  });
+
+  $('confirmAddInfoSantriBtn').addEventListener('click', ()=>{
+    const wasiatUrl = $('infoSantriUrlInput').value.trim();
+    if(!wasiatUrl){ $('infoSantriAddStatus').textContent = 'Isi URL Web App WASIAT dulu.'; $('infoSantriAddStatus').className = 'status-msg err'; return; }
+    lastInfoSantriUrl = wasiatUrl;
+    tempBanners.push({
+      kind:'infosantri', wasiatUrl, caption:'',
+      showJumlahSantri: $('isJumlahSantri').checked,
+      showTopSetoran: $('isTopSetoran').checked,
+      showPelanggaran: $('isPelanggaran').checked,
+      showPrestasi: $('isPrestasi').checked,
+      mode:'cycle', duration:18, intervalMinutes:15, times:'', days:[0,1,2,3,4,5,6], tampilUntuk:'Semua'
+    });
+    renderBannerList();
+    $('infoSantriAddOverlay').classList.remove('open');
+  });
+
+  // ---- "Penampil PDF" — upload PDF once, render the needed page on the fly each day ----
+  let pdfBookCache = {}; // { fileId: PDFDocumentProxy } — parsed once, reused for every render
+  let pdfViewerUpload = null; // { fileId, url, filename, pageCount }
+
+  async function loadPdfBookDoc(fileId){
+    if(pdfBookCache[fileId]) return pdfBookCache[fileId];
+    const ready = await ensurePdfJs();
+    if(!ready) return null;
+    const url = effectiveSyncUrl();
+    if(!url) return null;
+    const result = await remoteCall(url, { action:'getFile', fileId });
+    if(!result || !result.ok) return null;
+    try{
+      const bytes = Uint8Array.from(atob(result.dataBase64), c=>c.charCodeAt(0));
+      const doc = await pdfjsLib.getDocument({ data: bytes }).promise;
+      pdfBookCache[fileId] = doc;
+      return doc;
+    }catch(e){ return null; }
+  }
+
+  function resolvePdfBookPage(item, iso){
+    const start = Math.max(1, Number(item.startPage)||1);
+    const end = Math.max(start, Number(item.endPage)||start);
+    const count = end - start + 1;
+    return start + dailyImageIndex(iso, count);
+  }
+
+  async function renderPdfBookPage(doc, pageNum){
+    const page = await doc.getPage(Math.min(pageNum, doc.numPages));
+    const viewport = page.getViewport({ scale: 1.6 });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width; canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    return canvas.toDataURL('image/jpeg', 0.85);
+  }
+
+  function pdfViewerTimeRow(value){
+    const row = document.createElement('div');
+    row.className = 'row-actions'; row.style.marginTop = '6px';
+    row.innerHTML = `<input type="time" class="pdf-time-input" value="${value||''}" style="flex:1;"><button class="btn small danger pdf-time-remove" type="button">Hapus</button>`;
+    row.querySelector('.pdf-time-remove').addEventListener('click', ()=>{
+      if($('pdfViewerTimesList').children.length > 1) row.remove();
+    });
+    return row;
+  }
+  $('pdfViewerAddTimeBtn').addEventListener('click', ()=> $('pdfViewerTimesList').appendChild(pdfViewerTimeRow('')));
+
+  function resetPdfViewerModal(){
+    $('pdfViewerUploadStep').style.display = '';
+    $('pdfViewerConfigStep').style.display = 'none';
+    $('pdfViewerUploadStatus').textContent = '';
+    $('pdfViewerStatus').textContent = '';
+    $('pdfViewerTimesList').innerHTML = '';
+    $('pdfViewerTimesList').appendChild(pdfViewerTimeRow('08:00'));
+    const dayBox = $('pdfViewerDays'); dayBox.innerHTML = '';
+    DAY_LABELS.forEach((lbl,d)=>{
+      const btn = document.createElement('button');
+      btn.type='button'; btn.className='day-btn active'; btn.textContent=lbl; btn.dataset.day=d;
+      btn.addEventListener('click', ()=> btn.classList.toggle('active'));
+      dayBox.appendChild(btn);
+    });
+    pdfViewerUpload = null;
+  }
+
+  $('addPdfViewerBtn').addEventListener('click', ()=>{
+    if(!effectiveSyncUrl()){
+      $('annStatus').textContent = 'Isi & simpan URL Sinkronisasi dulu (tab Adzan & Iqomah) sebelum memakai fitur ini.';
+      $('annStatus').className = 'status-msg err';
+      return;
+    }
+    resetPdfViewerModal();
+    $('pdfViewerOverlay').classList.add('open');
+  });
+  $('closePdfViewer').addEventListener('click', ()=> $('pdfViewerOverlay').classList.remove('open'));
+  $('pdfViewerOverlay').addEventListener('click', (e)=>{ if(e.target===$('pdfViewerOverlay')) $('pdfViewerOverlay').classList.remove('open'); });
+  $('pdfViewerPickBtn').addEventListener('click', ()=> $('pdfViewerFileInput').click());
+
+  $('pdfViewerFileInput').addEventListener('change', async (e)=>{
+    const file = e.target.files[0];
+    e.target.value = '';
+    if(!file) return;
+    const statusEl = $('pdfViewerUploadStatus');
+    const sizeMb = file.size/(1024*1024);
+    if(sizeMb > 25){
+      statusEl.textContent = `⚠️ File ini ${sizeMb.toFixed(1)}MB — kemungkinan besar terlalu besar untuk cara ini. Disarankan pakai "Set Harian dari PDF" untuk file sebesar ini.`;
+      statusEl.className = 'status-msg err';
+      return;
+    }
+    statusEl.textContent = `Mengunggah "${file.name}" (${sizeMb.toFixed(1)}MB)...`;
+    statusEl.className = 'status-msg';
+    const url = effectiveSyncUrl();
+    let uploadResult;
+    try{
+      const dataBase64 = await fileToBase64(file);
+      uploadResult = await remoteCall(url, { action:'uploadFile', filename:file.name, mimeType:'application/pdf', dataBase64 });
+    }catch(err){ uploadResult = null; }
+    if(!uploadResult || !uploadResult.ok){
+      statusEl.textContent = '❌ Gagal mengunggah. Cek koneksi & URL Sinkronisasi.';
+      statusEl.className = 'status-msg err';
+      return;
+    }
+    statusEl.textContent = 'Membaca jumlah halaman...';
+    const ready = await ensurePdfJs();
+    let pageCount = null;
+    if(ready){
+      try{
+        const buf = await file.arrayBuffer();
+        const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+        pageCount = doc.numPages;
+        pdfBookCache[uploadResult.fileId] = doc; // cache immediately, avoids re-fetching right after upload
+      }catch(err){ pageCount = null; }
+    }
+    pdfViewerUpload = { fileId: uploadResult.fileId, url: uploadResult.url, filename: file.name, pageCount };
+    $('pdfViewerFileInfo').textContent = pageCount ? `✅ "${file.name}" — ${pageCount} halaman terdeteksi.` : `✅ "${file.name}" terunggah (jumlah halaman tak terbaca, isi manual di bawah).`;
+    $('pdfViewerEndPage').value = pageCount || '';
+    $('pdfViewerEndPage').placeholder = pageCount ? String(pageCount) : 'halaman terakhir';
+    statusEl.textContent = '';
+    $('pdfViewerUploadStep').style.display = 'none';
+    $('pdfViewerConfigStep').style.display = 'block';
+  });
+
+  $('pdfViewerConfirmBtn').addEventListener('click', ()=>{
+    if(!pdfViewerUpload){ $('pdfViewerStatus').textContent='Unggah PDF dulu.'; $('pdfViewerStatus').className='status-msg err'; return; }
+    const times = Array.from(document.querySelectorAll('.pdf-time-input')).map(i=>i.value).filter(Boolean);
+    if(!times.length){ $('pdfViewerStatus').textContent='Isi minimal 1 jam tampil.'; $('pdfViewerStatus').className='status-msg err'; return; }
+    const days = Array.from(document.querySelectorAll('#pdfViewerDays .day-btn.active')).map(b=>+b.dataset.day);
+    const startPage = Math.max(1, Number($('pdfViewerStartPage').value)||1);
+    const endPage = Math.max(startPage, Number($('pdfViewerEndPage').value)|| (pdfViewerUpload.pageCount||startPage));
+    tempBanners.push({
+      kind:'pdfbook', pdfFileId: pdfViewerUpload.fileId, pdfUrl: pdfViewerUpload.url, pdfFilename: pdfViewerUpload.filename,
+      startPage, endPage, caption:'', mode:'scheduled', duration: $('pdfViewerDuration').value || 20,
+      times: times.join(','), days: days.length?days:[0,1,2,3,4,5,6], intervalMinutes:15
+    });
+    renderBannerList();
+    $('pdfViewerOverlay').classList.remove('open');
+  });
+
+  $('addPdfDailyBtn').addEventListener('click', ()=>{
+    if(!effectiveSyncUrl()){
+      $('annStatus').textContent = 'Isi & simpan URL Sinkronisasi dulu (tab Adzan & Iqomah) sebelum memakai fitur ini — halaman PDF perlu diunggah ke Google Drive.';
+      $('annStatus').className = 'status-msg err';
+      return;
+    }
+    $('pdfDailyFileInput').click();
+  });
+  $('closePdfDaily').addEventListener('click', ()=> $('pdfDailyOverlay').classList.remove('open'));
+
+  $('pdfDailyFileInput').addEventListener('change', async (e)=>{
+    const file = e.target.files[0];
+    e.target.value = '';
+    if(!file) return;
+    const ready = await ensurePdfJs();
+    if(!ready){ $('annStatus').textContent = 'Gagal memuat pustaka pembaca PDF (cek koneksi internet).'; $('annStatus').className='status-msg err'; return; }
+
+    const overlay = $('pdfDailyOverlay'); overlay.classList.add('open');
+    const statusEl = $('pdfDailyStatus'), barEl = $('pdfDailyBar'), detailEl = $('pdfDailyDetail');
+    statusEl.textContent = 'Membaca file PDF...';
+    barEl.style.width = '2%';
+
+    try{
+      const buf = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+      const total = pdf.numPages;
+      statusEl.textContent = `Mengubah & mengunggah halaman (0/${total})...`;
+      const urls = [];
+      let failed = 0;
+      for(let i=1;i<=total;i++){
+        detailEl.textContent = `Halaman ${i} dari ${total}${failed?` — ${failed} gagal (dilewati)`:''}`;
+        let uploadedUrl = null;
+        try{
+          const page = await pdf.getPage(i);
+          const viewport = page.getViewport({ scale: 1.3 });
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width; canvas.height = viewport.height;
+          const ctx = canvas.getContext('2d');
+          await page.render({ canvasContext: ctx, viewport }).promise;
+          const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.75));
+          uploadedUrl = await uploadBlobToDrive(blob, `page-${String(i).padStart(4,'0')}.jpg`, 'image/jpeg');
+          if(!uploadedUrl) uploadedUrl = await uploadBlobToDrive(blob, `page-${String(i).padStart(4,'0')}.jpg`, 'image/jpeg'); // retry once
+        }catch(err){ uploadedUrl = null; }
+        if(uploadedUrl) urls.push(uploadedUrl); else failed++;
+        barEl.style.width = `${Math.round(i/total*100)}%`;
+        statusEl.textContent = `Mengubah & mengunggah halaman (${i}/${total})...`;
+      }
+
+      if(urls.length === 0){
+        statusEl.textContent = '❌ Gagal — tidak ada halaman yang berhasil diunggah.'; 
+        return;
+      }
+
+      statusEl.textContent = 'Menyimpan daftar gambar...';
+      const setId = 'daily-' + Date.now();
+      const url = effectiveSyncUrl();
+      await remoteCall(url, { action:'saveDailySet', setId, images: urls });
+      dailySetsCache[setId] = urls;
+
+      tempBanners.push({
+        kind:'image', dailySetId:setId, caption:'',
+        mode:'scheduled', duration:'', intervalMinutes:15, times:'', days:[0,1,2,3,4,5,6]
+      });
+      renderBannerList();
+
+      statusEl.textContent = `✅ Selesai! ${urls.length} halaman siap${failed?`, ${failed} gagal dilewati`:''}. Atur jadwal & durasi tampilnya di daftar banner, lalu klik Simpan.`;
+      detailEl.textContent = '';
+    }catch(err){
+      statusEl.textContent = '❌ Gagal memproses PDF: ' + err.message;
+    }
+  });
+
+  $('savePaBtn').addEventListener('click', async ()=>{
+    const prayers = {};
+    document.querySelectorAll('.pa-prayer-cb').forEach(cb=> prayers[cb.dataset.key] = cb.checked);
+    prayerAuto = {
+      enabled: $('paEnabled').checked,
+      prayers,
+      gapToIqomah: Math.max(1, Number($('paGap').value)||5),
+      iqomahCountdown: Math.max(1, Number($('paCountdownMin').value)||15),
+      blackoutMinutes: Math.max(1, Number($('paBlackout').value)||10),
+    };
+    await storeSet('mosque_prayer_auto_v1', JSON.stringify(prayerAuto));
+    remotePush('prayerAuto', prayerAuto);
+    $('paStatus').textContent = 'Pengaturan adzan tersimpan.';
+    $('paStatus').className = 'status-msg ok';
+  });
+
+  function paCheck(iso, secOfDay){
+    if(!prayerAuto.enabled) return null;
+    const row = findRow(iso);
+    if(!row) return null;
+    for(let idx=0; idx<PRAYERS.length; idx++){
+      const p = PRAYERS[idx];
+      if(!prayerAuto.prayers[p.key]) continue;
+      const [hh,mm] = row[2+idx].split(':').map(Number);
+      const start = hh*3600+mm*60;
+      const e1 = start + prayerAuto.gapToIqomah*60;
+      const e2 = e1 + prayerAuto.iqomahCountdown*60;
+      const e3 = e2 + prayerAuto.blackoutMinutes*60;
+      if(secOfDay>=start && secOfDay<e1) return {phase:'adzan', key:p.key, label:p.label, remaining:e1-secOfDay};
+      if(secOfDay>=e1 && secOfDay<e2) return {phase:'iqomah', key:p.key, label:p.label, remaining:e2-secOfDay};
+      if(secOfDay>=e2 && secOfDay<e3) return {phase:'blackout', key:p.key, label:p.label, remaining:e3-secOfDay};
+    }
+    return null;
+  }
+
+  function fmtMMSS(sec){ const m=Math.floor(sec/60), s=sec%60; return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`; }
+
+  // ---- imam confirmation ----
+  let remoteReportsCache = null; // {"<iso>#<prayerKey>": {status:'absen', at}} from Apps Script, refreshed periodically
+
+  function isImamAbsent(iso, key){
+    if(effectiveSyncUrl() && remoteReportsCache){
+      return !!remoteReportsCache[`${iso}#${key}`];
+    }
+    if(imamReports.date !== iso) return false;
+    return !!(imamReports.status && imamReports.status[key]);
+  }
+  async function setImamAbsent(iso, key, absent){
+    if(imamReports.date !== iso) imamReports = { date: iso, status:{} };
+    if(absent) imamReports.status[key] = true; else delete imamReports.status[key];
+    await storeSet('mosque_imam_reports_v1', JSON.stringify(imamReports));
+    const url = effectiveSyncUrl();
+    if(url){
+      if(!remoteReportsCache) remoteReportsCache = {};
+      if(absent) remoteReportsCache[`${iso}#${key}`] = true; else delete remoteReportsCache[`${iso}#${key}`];
+      remotePost(url, { iso, prayerKey:key, action: absent ? 'set' : 'clear' });
+    }
+  }
+  async function remotePush(key, value){
+    const url = effectiveSyncUrl();
+    if(!url) return;
+    remotePost(url, { key, value });
+  }
+
+  async function pollFullSync(){
+    const url = effectiveSyncUrl();
+    if(!url) return;
+    const remote = await remoteGet(url);
+    if(!remote) return;
+
+    if(remote.reports) remoteReportsCache = remote.reports;
+    if(remote.dailySets) dailySetsCache = remote.dailySets;
+
+    if(remote.schedule && JSON.stringify(remote.schedule)!==JSON.stringify(schedule)){
+      schedule = remote.schedule;
+      await storeSet('mosque_schedule_v1', JSON.stringify(schedule));
+      refreshScheduleTabInfo(); tick();
+    }
+    if(remote.ticker && JSON.stringify(remote.ticker)!==JSON.stringify(ticker)){
+      ticker = remote.ticker;
+      await storeSet('mosque_ticker_v1', JSON.stringify(ticker));
+      renderTickerAndBannersUI();
+    }
+    if(remote.banners && JSON.stringify(remote.banners)!==JSON.stringify(bannersCfg)){
+      bannersCfg = remote.banners;
+      await storeSet('mosque_banners_v1', JSON.stringify(bannersCfg));
+      renderTickerAndBannersUI(); initBannerEngine();
+    }
+    if(remote.identity && JSON.stringify(remote.identity)!==JSON.stringify(identity)){
+      identity = remote.identity;
+      await storeSet('mosque_identity_v1', JSON.stringify(identity));
+      renderIdentity();
+    }
+    if(remote.prayerAuto && JSON.stringify(remote.prayerAuto)!==JSON.stringify(prayerAuto)){
+      prayerAuto = remote.prayerAuto;
+      await storeSet('mosque_prayer_auto_v1', JSON.stringify(prayerAuto));
+      renderPaUI();
+    }
+    if(remote.imamCfg && JSON.stringify(remote.imamCfg)!==JSON.stringify(imamCfg)){
+      imamCfg = remote.imamCfg;
+      await storeSet('mosque_imam_cfg_v1', JSON.stringify(imamCfg));
+      renderImamUI();
+    }
+    if(remote.soundCfg){
+      const merged = {...DEFAULT_SOUND, ...remote.soundCfg};
+      if(JSON.stringify(merged)!==JSON.stringify(soundCfg)){
+        soundCfg = merged;
+        await storeSet('mosque_sound_cfg_v1', JSON.stringify(soundCfg));
+        renderSoundUI();
+      }
+    }
+  }
+
+  // ---- "Lapor Imam Berhalangan" floating button + modal (same on every device running this app) ----
+  const laporOverlay = $('laporOverlay');
+  if(isImamDevice) $('laporBtn').style.display = 'block';
+  $('laporBtn').addEventListener('click', ()=>{ renderLaporList(); laporOverlay.classList.add('open'); });
+  $('closeLapor').addEventListener('click', ()=> laporOverlay.classList.remove('open'));
+  laporOverlay.addEventListener('click', (e)=>{ if(e.target===laporOverlay) laporOverlay.classList.remove('open'); });
+
+  function renderLaporList(){
+    const now = wibNow();
+    const row = findRow(now.iso);
+    const wrap = $('laporList');
+    wrap.innerHTML = '';
+    if(!row || !imamCfg.enabled){
+      wrap.innerHTML = '<p class="empty-note">Fitur ini belum diaktifkan (lihat Pengaturan → Adzan &amp; Iqomah).</p>';
+      return;
+    }
+    const nowMin = now.h*60+now.m;
+    let any = false;
+    PRAYERS.forEach((p,idx)=>{
+      if(!imamCfg.prayers[p.key]) return;
+      const [hh,mm] = row[2+idx].split(':').map(Number);
+      if(hh*60+mm < nowMin - 60) return; // hide prayers already well past (>1 jam lalu)
+      any = true;
+      const absent = isImamAbsent(now.iso, p.key);
+      const el = document.createElement('div');
+      el.className = 'banner-item';
+      el.innerHTML = `<div class="bi-row" style="justify-content:space-between;">
+        <span style="font-family:'Fraunces',serif;font-size:16px;">${p.label} <span class="hint" style="display:inline;">(${row[2+idx]})</span></span>
+        <button class="btn small ${absent?'primary':''}" data-key="${p.key}">${absent ? '✅ Batalkan Laporan' : '🚫 Tandai Berhalangan'}</button>
+      </div>`;
+      wrap.appendChild(el);
+    });
+    if(!any) wrap.innerHTML = '<p class="empty-note">Tidak ada sholat yang perlu dilaporkan saat ini.</p>';
+    wrap.querySelectorAll('button[data-key]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const key = btn.dataset.key;
+        const currentlyAbsent = isImamAbsent(now.iso, key);
+        await setImamAbsent(now.iso, key, !currentlyAbsent);
+        $('laporStatus').textContent = !currentlyAbsent ? `Dilaporkan: Imam berhalangan untuk ${key}.` : 'Laporan dibatalkan.';
+        $('laporStatus').className = 'status-msg ok';
+        renderLaporList();
+        const st = paCheck(now.iso, now.h*3600+now.m*60+now.s);
+        renderPaOverlay(st, now.iso);
+      });
+    });
+  }
+
+  // ---- sound engine (Web Audio — no external files needed for the built-in tones) ----
+  let audioCtx = null;
+  function getAudioCtx(){ if(!audioCtx){ try{ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } return audioCtx; }
+  function unlockAudio(){
+    const ctx = getAudioCtx();
+    if(ctx && ctx.state === 'suspended') ctx.resume().catch(()=>{});
+    $('soundUnlockBtn').style.display = 'none';
+  }
+  $('soundUnlockBtn').addEventListener('click', unlockAudio);
+  document.addEventListener('click', function firstClick(){ unlockAudio(); }, { once:true });
+  setTimeout(()=>{ const ctx = getAudioCtx(); if(ctx && ctx.state === 'suspended') $('soundUnlockBtn').style.display = 'block'; }, 1200);
+
+  function beep(freq, durationMs, type){
+    const ctx = getAudioCtx(); if(!ctx) return;
+    try{
+      const osc = ctx.createOscillator(); const gain = ctx.createGain();
+      osc.type = type||'sine'; osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime+0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+durationMs/1000);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(); osc.stop(ctx.currentTime + durationMs/1000 + 0.03);
+    }catch(e){}
+  }
+  function playAdzanSound(){
+    if(soundCfg.adzanCustom){ try{ new Audio(soundCfg.adzanCustom).play().catch(()=>{}); }catch(e){} return; }
+    const durMs = Math.max(1,Number(soundCfg.adzanDuration)||5) * 1000;
+    const freq = Number(soundCfg.adzanTone) || 880;
+    if(soundCfg.adzanPattern === 'pulse'){
+      let elapsed = 0;
+      const step = ()=>{ if(elapsed >= durMs) return; beep(freq, 320, 'sine'); elapsed += 550; setTimeout(step, 550); };
+      step();
+    } else {
+      const ctx = getAudioCtx(); if(!ctx) return;
+      try{
+        const osc = ctx.createOscillator(); const gain = ctx.createGain();
+        osc.type='sine'; osc.frequency.value = freq;
+        const durSec = durMs/1000;
+        gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.28, ctx.currentTime+0.08);
+        gain.gain.setValueAtTime(0.28, ctx.currentTime + Math.max(0.1,durSec-0.15));
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + durSec);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(); osc.stop(ctx.currentTime + durSec + 0.05);
+      }catch(e){}
+    }
+  }
+  function playIqomahBeep(){ beep(1000, 130, 'square'); }
+
+  function renderSoundUI(){
+    $('soundAdzanTone').value = String(soundCfg.adzanTone);
+    $('soundAdzanPattern').value = soundCfg.adzanPattern;
+    $('soundAdzanDuration').value = soundCfg.adzanDuration;
+    $('soundIqomahBeep').checked = soundCfg.iqomahBeep !== false;
+    $('soundAdzanFileRow').style.display = soundCfg.adzanCustom ? 'flex' : 'none';
+    $('soundAdzanFileStatus').textContent = soundCfg.adzanCustom ? '✅ Memakai suara custom yang diunggah.' : '';
+  }
+  $('testAdzanSoundBtn').addEventListener('click', ()=>{
+    unlockAudio();
+    const tempCfg = { adzanTone:$('soundAdzanTone').value, adzanPattern:$('soundAdzanPattern').value, adzanDuration:$('soundAdzanDuration').value, adzanCustom: soundCfg.adzanCustom };
+    const old = soundCfg; soundCfg = tempCfg; playAdzanSound(); soundCfg = old;
+  });
+  $('soundAdzanFile').addEventListener('change', (e)=>{
+    const file = e.target.files[0]; if(!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+      soundCfg = {...soundCfg, adzanCustom: ev.target.result};
+      renderSoundUI();
+    };
+    reader.readAsDataURL(file);
+  });
+  $('removeAdzanSoundBtn').addEventListener('click', ()=>{ soundCfg = {...soundCfg, adzanCustom:''}; renderSoundUI(); });
+  $('saveSoundBtn').addEventListener('click', async ()=>{
+    soundCfg = {
+      adzanTone: Number($('soundAdzanTone').value),
+      adzanPattern: $('soundAdzanPattern').value,
+      adzanDuration: Math.max(1, Number($('soundAdzanDuration').value)||5),
+      adzanCustom: soundCfg.adzanCustom || '',
+      iqomahBeep: $('soundIqomahBeep').checked
+    };
+    await storeSet('mosque_sound_cfg_v1', JSON.stringify(soundCfg));
+    remotePush('soundCfg', soundCfg);
+    renderSoundUI();
+    $('soundStatus').textContent = 'Pengaturan suara tersimpan.';
+    $('soundStatus').className = 'status-msg ok';
+  });
+
+  let lastAdzanSoundKey = null;
+  let lastIqomahBeepSecond = null;
+
+  function renderPaOverlay(state, todayIso){
+    const el = $('paFullscreen');
+    if(!state){ el.classList.remove('show'); prayerActive=false; return; }
+    prayerActive = true;
+    el.classList.add('show');
+    el.classList.toggle('blackout', state.phase==='blackout');
+    const needsImam = imamCfg.enabled && imamCfg.prayers[state.key];
+    const absent = needsImam && isImamAbsent(todayIso, state.key);
+
+    if(state.phase==='adzan'){
+      const adzanKey = `${todayIso}#${state.key}`;
+      if(lastAdzanSoundKey !== adzanKey){ lastAdzanSoundKey = adzanKey; playAdzanSound(); }
+      $('paCountdown').style.display='none';
+      if(absent){
+        el.classList.add('imam-absent');
+        $('paTitle').textContent = `⚠️ Imam Berhalangan`;
+        $('paSub').textContent = `Mohon salah satu jemaah bersiap menjadi Imam ${state.label}`;
+      } else {
+        el.classList.remove('imam-absent');
+        $('paTitle').textContent = `Waktu Sholat ${state.label} Telah Tiba`;
+        $('paSub').textContent = 'Mari bersiap menuju masjid';
+      }
+    } else if(state.phase==='iqomah'){
+      $('paCountdown').style.display=''; $('paCountdown').textContent = fmtMMSS(state.remaining);
+      if(soundCfg.iqomahBeep !== false && state.remaining<=10 && state.remaining>=1 && lastIqomahBeepSecond!==state.remaining){
+        lastIqomahBeepSecond = state.remaining; playIqomahBeep();
+      }
+      if(absent){
+        el.classList.add('imam-absent');
+        $('paTitle').textContent = `⚠️ Imam Berhalangan — Silakan Qomat`;
+        $('paSub').textContent = `Mohon salah satu jemaah maju menjadi Imam ${state.label}`;
+      } else {
+        el.classList.remove('imam-absent');
+        $('paTitle').textContent = `Menuju Iqomah ${state.label}`;
+        $('paSub').textContent = 'Mohon segera merapikan shaf';
+      }
+    }
+  }
+
+  // ---------------- Clock / schedule display ----------------
+  function wibNow(){
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone:'Asia/Makassar', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false, weekday:'short' }).formatToParts(new Date());
+    const o = {}; parts.forEach(p=> o[p.type]=p.value);
+    const wdMap = {Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6};
+    return { iso:`${o.year}-${o.month}-${o.day}`, h:+o.hour, m:+o.minute, s:+o.second, day: wdMap[o.weekday] };
+  }
+  function findRow(iso){ return schedule.rows.find(r=>r[1]===iso); }
+
+  function renderGridSkeleton(){
+    const grid = $('grid'); grid.innerHTML = '';
+    PRAYERS.forEach(p=>{
+      const el = document.createElement('div');
+      el.className = 'card'; el.id = 'card-'+p.key;
+      el.innerHTML = `<p class="name">${p.label}</p><div class="time" id="time-${p.key}">--:--</div><div class="countdown" id="cd-${p.key}"></div>`;
+      grid.appendChild(el);
+    });
+  }
+
+  function tick(){
+    if(!$('card-subuh')) return; // guard: belum selesai memuat data awal
+    const now = wibNow();
+    $('clock').innerHTML = `${String(now.h).padStart(2,'0')}<span class="colon">:</span>${String(now.m).padStart(2,'0')}<span class="sec">${String(now.s).padStart(2,'0')}</span>`;
+
+    let row = findRow(now.iso);
+    let usingFallback = false;
+    if(!row){ usingFallback = true; row = (now.iso < schedule.rows[0][1]) ? schedule.rows[0] : schedule.rows[schedule.rows.length-1]; }
+    $('hijriDate').textContent = row[0] + ' ' + (schedule.monthLabel.split(' ').slice(-2).join(' '));
+    $('masehiDate').textContent = new Date(now.iso+'T00:00:00').toLocaleDateString('id-ID',{weekday:'long', day:'numeric', month:'long', year:'numeric'}) + (usingFallback ? ' • perbarui jadwal' : '');
+
+    const nowMin = now.h*60+now.m;
+    const times = PRAYERS.map((p,idx)=>{ const [hh,mm] = row[2+idx].split(':').map(Number); return {key:p.key, mins: hh*60+mm, label: row[2+idx]}; });
+
+    let activeIdx = -1;
+    for(let i=0;i<times.length;i++){
+      const start = times[i].mins; const end = (i<times.length-1) ? times[i+1].mins : 24*60;
+      if(nowMin>=start && nowMin<end){ activeIdx = i; break; }
+    }
+    let nextIdx = times.findIndex(t=>t.mins>nowMin); if(nextIdx === -1) nextIdx = 0;
+
+    PRAYERS.forEach((p,idx)=>{
+      $('time-'+p.key).textContent = times[idx].label;
+      const card = $('card-'+p.key);
+      card.classList.toggle('active', idx===activeIdx);
+      card.classList.toggle('next', idx===nextIdx);
+      if(idx===nextIdx){
+        let diff = times[nextIdx].mins - nowMin; if(diff<0) diff += 24*60;
+        const hh = Math.floor(diff/60), mm = diff%60;
+        $('cd-'+p.key).textContent = `-${hh>0?hh+'j ':''}${mm}m lagi`;
+      } else { $('cd-'+p.key).textContent = ''; }
+    });
+
+    // prayer automation (highest priority) then banner engine
+    const secOfDay = now.h*3600+now.m*60+now.s;
+    const paState = paCheck(now.iso, secOfDay);
+    renderPaOverlay(paState, now.iso);
+    const nowMs = Date.now();
+    const nowHM = `${String(now.h).padStart(2,'0')}:${String(now.m).padStart(2,'0')}`;
+    bannerTick(nowMs, nowHM, now.day, now.iso);
+  }
+
+  // ---------------- Settings modal open/close/tabs ----------------
+  const overlay = $('overlay');
+  $('gearBtn').addEventListener('click', ()=>overlay.classList.add('open'));
+  $('closeModal').addEventListener('click', ()=>overlay.classList.remove('open'));
+  overlay.addEventListener('click', (e)=>{ if(e.target===overlay) overlay.classList.remove('open'); });
+  document.querySelectorAll('.tab-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+      btn.classList.add('active'); $('tab-'+btn.dataset.tab).classList.add('active');
+      if(btn.dataset.tab==='banner') updateCycleHint();
+    });
+  });
+
+  function refreshScheduleTabInfo(){ $('curMonthLabel').textContent = schedule.monthLabel; $('curRowCount').textContent = schedule.rows.length; }
+
+  // ---- spreadsheet parsing ----
+  function normalize(s){ return (s||'').toString().toLowerCase().trim(); }
+  function matchCol(header){
+    const h = normalize(header);
+    if(h.includes('masehi') || h.includes('gregorian') || h.includes('miladi')) return 'masehi';
+    if(h.includes('hijri') || h.includes('tanggal')) return 'hijri';
+    if(h.includes('subuh') || h.includes('imsak')) return 'subuh';
+    if(h.includes('duha') || h.includes('dhuha') || h.includes('syuruq') || h.includes('sunrise')) return 'duha';
+    if(h.includes('dzuhur') || h.includes('zuhur') || h.includes('dhuhr') || h.includes('zhuhur')) return 'dzuhur';
+    if(h.includes('ashar') || h.includes('asr')) return 'ashar';
+    if(h.includes('maghrib')) return 'maghrib';
+    if(h.includes('isya') || h.includes('isha')) return 'isya';
+    return null;
+  }
+  function extractTime(v){ const m = (v||'').toString().match(/(\d{1,2}):(\d{2})/); return m ? `${m[1].padStart(2,'0')}:${m[2]}` : ''; }
+  function toISO(v){
+    if(!v) return '';
+    v = v.toString().trim();
+    let m = v.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m) return `${m[1]}-${m[2]}-${m[3]}`;
+    m = v.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+    if(m){ let [_,d,mo,y] = m; if(y.length===2) y = (Number(y)<70?'20':'19')+y; return `${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`; }
+    return '';
+  }
+  function parseWorkbook(wb){
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const aoa = XLSX.utils.sheet_to_json(ws, {header:1, raw:false, defval:''});
+    let headerRowIdx = -1, colMap = {};
+    for(let i=0;i<aoa.length;i++){
+      const row = aoa[i]; const map = {};
+      row.forEach((cell,ci)=>{ const k = matchCol(cell); if(k && !(k in map)) map[k]=ci; });
+      if(map.subuh!==undefined && map.dzuhur!==undefined){ headerRowIdx=i; colMap=map; break; }
+    }
+    if(headerRowIdx===-1) throw new Error('Tidak menemukan baris header (kolom Subuh/Dzuhur/dst tidak terdeteksi).');
+    let monthLabel = schedule.monthLabel, location = schedule.location;
+    for(let i=0;i<headerRowIdx;i++){
+      const line = aoa[i].join(' ');
+      if(/bulan/i.test(line)) monthLabel = aoa[i].filter(c=>c && !/bulan/i.test(c)).join(' ').trim() || monthLabel;
+      if(/lokasi|location/i.test(line)) location = aoa[i].filter(c=>c && !/lokasi|location/i.test(c)).join(' ').trim() || location;
+    }
+    const rows = [];
+    for(let i=headerRowIdx+1;i<aoa.length;i++){
+      const r = aoa[i];
+      if(!r || r.every(c=>!c && c!==0)) continue;
+      const hijri = colMap.hijri!==undefined ? (r[colMap.hijri]||'').toString().trim() : `Hari ${rows.length+1}`;
+      const iso = colMap.masehi!==undefined ? toISO(r[colMap.masehi]) : '';
+      const subuh = extractTime(r[colMap.subuh]); const dzuhur = extractTime(r[colMap.dzuhur]);
+      if(!iso || !subuh || !dzuhur) continue;
+      rows.push([hijri, iso, subuh,
+        colMap.duha!==undefined ? extractTime(r[colMap.duha]) : '', dzuhur,
+        colMap.ashar!==undefined ? extractTime(r[colMap.ashar]) : '',
+        colMap.maghrib!==undefined ? extractTime(r[colMap.maghrib]) : '',
+        colMap.isya!==undefined ? extractTime(r[colMap.isya]) : ''
+      ]);
+    }
+    if(rows.length===0) throw new Error('Tidak ada baris data jadwal yang valid ditemukan.');
+    return {monthLabel, location, rows};
+  }
+
+  $('fileInput').addEventListener('change', (e)=>{
+    const file = e.target.files[0]; if(!file) return;
+    const statusEl = $('scheduleStatus');
+    if(typeof XLSX === 'undefined'){
+      statusEl.textContent = 'Gagal memuat pustaka pembaca Excel (koneksi ke CDN terblokir). Coba muat ulang halaman atau periksa koneksi internet.';
+      statusEl.className = 'status-msg err'; return;
+    }
+    statusEl.textContent = 'Membaca file...'; statusEl.className='status-msg';
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+      try{
+        const wb = XLSX.read(ev.target.result, {type:'array'});
+        const parsed = parseWorkbook(wb);
+        parsedUpload = parsed;
+        statusEl.textContent = `Berhasil membaca ${parsed.rows.length} baris jadwal (${parsed.monthLabel}). Periksa pratinjau, lalu klik Simpan.`;
+        statusEl.className = 'status-msg ok';
+        $('saveScheduleBtn').disabled = false;
+        renderPreview(parsed);
+      }catch(err){
+        statusEl.textContent = 'Gagal membaca file: ' + err.message; statusEl.className = 'status-msg err';
+        $('saveScheduleBtn').disabled = true; $('previewWrap').style.display='none';
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+
+  function renderPreview(parsed){
+    const t = $('previewTable');
+    const head = '<tr><th>Tanggal H</th><th>Masehi</th><th>Subuh</th><th>Duha</th><th>Dzuhur</th><th>Ashar</th><th>Maghrib</th><th>Isya</th></tr>';
+    const body = parsed.rows.slice(0,8).map(r=>`<tr>${r.map(c=>`<td>${c||'-'}</td>`).join('')}</tr>`).join('');
+    t.innerHTML = head + body + (parsed.rows.length>8 ? `<tr><td colspan="8" style="color:var(--muted)">... +${parsed.rows.length-8} baris lagi</td></tr>` : '');
+    $('previewWrap').style.display = '';
+  }
+
+  $('saveScheduleBtn').addEventListener('click', async ()=>{
+    if(!parsedUpload) return;
+    schedule = parsedUpload;
+    await storeSet('mosque_schedule_v1', JSON.stringify(schedule));
+    remotePush('schedule', schedule);
+    refreshScheduleTabInfo(); tick();
+    $('scheduleStatus').textContent = 'Jadwal tersimpan dan langsung tampil di layar.';
+    $('scheduleStatus').className = 'status-msg ok';
+    $('saveScheduleBtn').disabled = true; parsedUpload = null;
+  });
+
+  $('downloadTemplateBtn').addEventListener('click', ()=>{
+    if(typeof XLSX === 'undefined'){
+      $('scheduleStatus').textContent = 'Gagal memuat pustaka Excel (koneksi ke CDN terblokir). Coba muat ulang halaman.';
+      $('scheduleStatus').className = 'status-msg err'; return;
+    }
+    const aoa = [ ['Bulan:', schedule.monthLabel], ['Lokasi:', schedule.location], [],
+      ['Tanggal Hijriah','Tanggal Masehi','Subuh','Duha','Dzuhur','Ashar','Maghrib','Isya'], ...schedule.rows ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{wch:14},{wch:13},{wch:8},{wch:8},{wch:8},{wch:8},{wch:8},{wch:8}];
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Jadwal');
+    XLSX.writeFile(wb, 'template-jadwal-sholat.xlsx');
+  });
+
+  $('saveScreenAudienceBtn').addEventListener('click', ()=>{
+    screenAudience = $('screenAudienceInput').value;
+    try{ localStorage.setItem('mosque_screen_audience_v1', screenAudience); }catch(e){}
+    $('screenAudienceStatus').textContent = 'Tersimpan di perangkat ini.'; $('screenAudienceStatus').className = 'status-msg ok';
+  });
+  $('saveIdBtn').addEventListener('click', async ()=>{
+    identity = { name: $('mosqueNameInput').value.trim() || 'Masjid', loc: $('mosqueLocInput').value.trim(), logo: identity.logo || '' };
+    await storeSet('mosque_identity_v1', JSON.stringify(identity));
+    remotePush('identity', identity);
+    renderIdentity(); $('idStatus').textContent = 'Identitas tersimpan.'; $('idStatus').className = 'status-msg ok';
+  });
+  $('logoInput').addEventListener('change', (e)=>{
+    const file = e.target.files[0]; if(!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+      identity = { ...identity, logo: ev.target.result };
+      renderIdentity();
+    };
+    reader.readAsDataURL(file);
+  });
+  $('removeLogoBtn').addEventListener('click', ()=>{
+    identity = { ...identity, logo:'' };
+    renderIdentity();
+  });
+
+  $('exportBtn').addEventListener('click', ()=>{
+    const payload = { schedule, ticker, banners: bannersCfg, identity, prayerAuto, imamCfg, soundCfg, exportedAt: new Date().toISOString() };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'cadangan-jadwal-masjid.json'; a.click();
+    URL.revokeObjectURL(url);
+  });
+  $('importTriggerBtn').addEventListener('click', ()=> $('importInput').click());
+  $('importInput').addEventListener('change', (e)=>{
+    const file = e.target.files[0]; if(!file) return;
+    const reader = new FileReader();
+    reader.onload = async (ev)=>{
+      const st = $('backupStatus');
+      try{
+        const data = JSON.parse(ev.target.result);
+        if(data.schedule) schedule = data.schedule;
+        if(data.ticker) ticker = data.ticker;
+        if(data.banners) bannersCfg = data.banners;
+        if(data.identity) identity = data.identity;
+        if(data.prayerAuto) prayerAuto = data.prayerAuto;
+        if(data.imamCfg) imamCfg = data.imamCfg;
+        if(data.soundCfg) soundCfg = {...DEFAULT_SOUND, ...data.soundCfg};
+        await storeSet('mosque_schedule_v1', JSON.stringify(schedule));
+        await storeSet('mosque_ticker_v1', JSON.stringify(ticker));
+        await storeSet('mosque_banners_v1', JSON.stringify(bannersCfg));
+        await storeSet('mosque_identity_v1', JSON.stringify(identity));
+        await storeSet('mosque_prayer_auto_v1', JSON.stringify(prayerAuto));
+        await storeSet('mosque_imam_cfg_v1', JSON.stringify(imamCfg));
+        await storeSet('mosque_sound_cfg_v1', JSON.stringify(soundCfg));
+        renderIdentity(); renderTickerAndBannersUI(); renderPaUI(); renderImamUI(); renderSoundUI(); refreshScheduleTabInfo(); initBannerEngine(); tick();
+        st.textContent = 'Cadangan berhasil diimpor.'; st.className='status-msg ok';
+      }catch(err){ st.textContent = 'File cadangan tidak valid.'; st.className='status-msg err'; }
+    };
+    reader.readAsText(file); e.target.value = '';
+  });
+
+  loadConfig().then(()=>{
+    loadAll().then(()=>{ refreshScheduleTabInfo(); setInterval(tick, 1000); pollFullSync(); setInterval(pollFullSync, 12000); });
+  });
+})();
+</script>
