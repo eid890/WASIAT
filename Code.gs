@@ -289,6 +289,8 @@ function route(action, p) {
     case 'getDiagnostikUkuranData': return apiGetDiagnostikUkuranData(p);
     case 'getInfoLayarMasjid': return apiGetInfoLayarMasjid(p);
     case 'loginImamMasjid': return apiLoginImamMasjid(p);
+    case 'tarikSaldoPemilikManual': return apiTarikSaldoPemilikManual(p);
+    case 'getDaftarSaldoPemilik': return apiGetDaftarSaldoPemilik();
     case 'getSantriUntukTransaksiKantin': return {ok:true, data: getSantriUntukTransaksiKantin()};
     case 'prosesTransaksiKantin': return apiProsesTransaksiKantin(p);
     case 'getRiwayatTransaksiPemilik': return {ok:true, data: getRiwayatTransaksiPemilik(p.pemilik, p.tglMulai, p.tglAkhir)};
@@ -9895,5 +9897,107 @@ function apiLoginImamMasjid(p) {
     return {ok:true, nama: norm(found[0])};
   } catch (e) {
     return {ok:false, error:'Gagal memeriksa akun: ' + e.message};
+  }
+}
+
+
+// ============================================================
+// TARIK SALDO PEMILIK BARANG SECARA MANUAL (Bendahara/Mudir)
+//
+// Untuk kasus pemilik barang menerima uangnya langsung/tunai tanpa lewat alur
+// pengajuan. Bendahara/Mudir mencatatnya di sini supaya saldo di sistem tetap
+// cocok dengan uang fisik yang sudah diserahkan.
+//
+// Pengaman yang dipakai sama persis dengan alur persetujuan pengajuan
+// (apiSetujuiPenarikan), karena ini menyentuh uang sungguhan:
+// - LockService supaya dua petugas yang memproses bersamaan tidak saling menimpa saldo
+// - Saldo dibaca ULANG di dalam lock, bukan dipercaya dari kiriman aplikasi
+// - Penarikan melebihi saldo ditolak
+// - Selalu dicatat di RiwayatSaldoPemilik supaya jejaknya bisa diaudit
+// - WA pemberitahuan dikirim ke pemilik kalau nomornya ada
+function apiTarikSaldoPemilikManual(p) {
+  const pemilik = norm(p.pemilik);
+  const nominal = Number(p.nominal) || 0;
+  const keterangan = norm(p.keterangan) || 'Penarikan manual';
+  const oleh = norm(p.oleh);
+
+  if (!pemilik) return {ok:false, error:'Pemilik barang wajib dipilih.'};
+  if (nominal <= 0) return {ok:false, error:'Nominal harus lebih dari 0.'};
+  if (!oleh) return {ok:false, error:'Nama petugas tidak diketahui.'};
+
+  // Hanya Bendahara/Admin/Mudir yang boleh mencatat penarikan manual -- diverifikasi
+  // di server, bukan sekadar disembunyikan menunya di aplikasi.
+  let bolehProses = false;
+  try {
+    const shRole = getAktifSS().getSheetByName(SHEET_ROLE);
+    const rowsRole = shRole.getDataRange().getValues(); rowsRole.shift();
+    const akun = rowsRole.find(function(r){ return normNama(norm(r[0])) === normNama(oleh); });
+    if (akun) {
+      const lvl = norm(akun[3]);
+      bolehProses = lvl.indexOf('Bendahara') !== -1 || lvl.indexOf('Admin') !== -1 || lvl.indexOf('Mudir') !== -1;
+    }
+  } catch (e) { /* gagal baca role -> tetap ditolak di bawah */ }
+  if (!bolehProses) return {ok:false, error:'Hanya Bendahara, Admin, atau Mudir yang boleh mencatat penarikan manual.'};
+
+  const lock = LockService.getScriptLock();
+  try { lock.waitLock(15000); } catch(e) { return {ok:false, error:'Sistem sedang sibuk, coba lagi.'}; }
+  try {
+    const ss = getAktifKantinSS();
+    const shSaldo = ss.getSheetByName(SHEET_SALDO_PEMILIK);
+    if (!shSaldo) return {ok:false, error:'Sheet SaldoPemilik tidak ditemukan.'};
+    const spRows = shSaldo.getDataRange().getValues();
+
+    let foundRow = -1, saldoSebelum = 0, noWa = '';
+    for (let i=1;i<spRows.length;i++) {
+      if (norm(spRows[i][0]) === pemilik) {
+        foundRow = i+1;
+        saldoSebelum = Number(spRows[i][2]) || 0;
+        noWa = norm(spRows[i][1]);
+        break;
+      }
+    }
+    if (foundRow === -1) return {ok:false, error:'Data saldo untuk "'+pemilik+'" tidak ditemukan.'};
+    if (nominal > saldoSebelum) {
+      return {ok:false, error:'Saldo tidak mencukupi. Saldo '+pemilik+' saat ini Rp'+saldoSebelum.toLocaleString('id-ID')+', diminta Rp'+nominal.toLocaleString('id-ID')+'.'};
+    }
+
+    const saldoSekarang = saldoSebelum - nominal;
+    shSaldo.getRange(foundRow, 3).setValue(saldoSekarang);
+
+    const tz = Session.getScriptTimeZone();
+    const shRiwayat = ss.getSheetByName(SHEET_RIWAYAT_SALDO_PEMILIK);
+    if (shRiwayat) {
+      shRiwayat.appendRow([
+        Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd'),
+        Utilities.formatDate(new Date(), tz, 'HH:mm:ss'),
+        pemilik, 'Penarikan', nominal, saldoSebelum, saldoSekarang,
+        keterangan + ' (manual oleh ' + oleh + ')', 'Disetujui'
+      ]);
+    }
+
+    if (noWa) {
+      try {
+        kirimWAFonnteUmum(noWa, 'Assalamualaikum Wr. Wb.\n\n*PENARIKAN SALDO DICATAT*\n\nHalo *'+pemilik+'*,\nPenarikan saldo sebesar Rp'+nominal.toLocaleString('id-ID')+' telah dicatat oleh '+oleh+'.\nKeterangan: '+keterangan+'\n\nSisa saldo: Rp'+saldoSekarang.toLocaleString('id-ID')+'\n\nBila ada yang tidak sesuai, segera hubungi Bendahara.\n\nWassalamualaikum Wr. Wb.');
+      } catch(e) { Logger.log('WA penarikan manual gagal: ' + e.message); }
+    }
+
+    return {ok:true, pemilik:pemilik, nominal:nominal, saldoSebelum:saldoSebelum, saldoSekarang:saldoSekarang, waKirim: !!noWa};
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Daftar pemilik barang beserta saldonya -- untuk pemilih di form penarikan manual.
+function apiGetDaftarSaldoPemilik() {
+  try {
+    const sh = getAktifKantinSS().getSheetByName(SHEET_SALDO_PEMILIK);
+    if (!sh || sh.getLastRow() < 2) return {ok:true, data:[]};
+    const rows = sh.getDataRange().getValues(); rows.shift();
+    const data = rows.filter(function(r){ return norm(r[0]); }).map(function(r){
+      return {pemilik: norm(r[0]), noWa: norm(r[1]), saldo: Number(r[2]) || 0};
+    }).sort(function(a,b){ return b.saldo - a.saldo; });
+    return {ok:true, data:data};
+  } catch (e) {
+    return {ok:false, error:'Gagal membaca saldo pemilik: ' + e.message};
   }
 }

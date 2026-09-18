@@ -353,7 +353,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyjjAph_JPEFMKWfwXmsL3GekpC5OqzjvG57I3SDFakUSH6LsTYzABX-QygVKOHT0Lo/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -658,7 +658,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.09.17-c';
+  var VERSI_APP = '2026.09.19-b';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -2131,6 +2131,7 @@
       {key:'transaksi',       label:'Catat Transaksi',      icon:'&#128221;'},
       {key:'tambahsaldo',     label:'Tambah Saldo Santri',  icon:'&#128176;'},
       {key:'tarikkasir',      label:'Tarik Saldo Santri',   icon:'&#128717;'},
+      {key:'tarikpemilik',    label:'Tarik Saldo Pemilik',  icon:'&#127974;'},
       {key:'riwayatmutasi',   label:'Riwayat Tarik/Tambah', icon:'&#128337;'},
       {key:'bku',             label:'Buku Kas Umum',        icon:'&#128218;'},
       {key:'laporan',         label:'Laporan Bulanan',      icon:'&#128202;'},
@@ -2214,7 +2215,7 @@
       // peran (misal Bendahara + Guru) menekan "Tambah Saldo Santri" dan tidak
       // terjadi apa-apa -- layarnya diam saja tanpa pesan error.
       dasbor:bendDasbor, transaksi:bendTransaksi,
-      tambahsaldo:bendTambahSaldoSantri, tarikkasir:bendTarikSaldoSantri,
+      tambahsaldo:bendTambahSaldoSantri, tarikkasir:bendTarikSaldoSantri, tarikpemilik:tarikSaldoPemilikManual,
       riwayatmutasi:bendRiwayatMutasiSaldo,
       bku:bendBKU, laporan:bendLaporan, pendapatan:bendPendapatanPondok,
       anggaran:bendAnggaran,
@@ -7869,6 +7870,7 @@
       {key:'transaksi',    label:'Catat Transaksi',       icon:'&#128221;'},
       {key:'tambahsaldo',  label:'Tambah Saldo Santri',   icon:'&#128176;'},
       {key:'tarikkasir',   label:'Tarik Saldo Santri',    icon:'&#128717;'},
+      {key:'tarikpemilik', label:'Tarik Saldo Pemilik',   icon:'&#127974;'},
       {key:'riwayatmutasi',label:'Riwayat Tarik/Tambah',  icon:'&#128337;'},
       {key:'bku',          label:'Buku Kas Umum',         icon:'&#128218;'},
       {key:'laporan',      label:'Laporan Bulanan',       icon:'&#128202;'},
@@ -7883,7 +7885,7 @@
     var map = {
       dasbor:bendDasbor, transaksi:bendTransaksi,
       tambahsaldo:bendTambahSaldoSantri,
-      tarikkasir:bendTarikSaldoSantri,
+      tarikkasir:bendTarikSaldoSantri, tarikpemilik:tarikSaldoPemilikManual,
       riwayatmutasi:bendRiwayatMutasiSaldo,
       bku:bendBKU, laporan:bendLaporan, pendapatan:bendPendapatanPondok,
       anggaran:bendAnggaran,
@@ -7903,6 +7905,113 @@
   function bulanTahunSaatIni(){ var d=new Date(); return {bulan:d.getMonth()+1, tahun:d.getFullYear()}; }
 
   // ---- TARIK SALDO SANTRI (oleh Bendahara) ----
+  // ---------------- TARIK SALDO PEMILIK BARANG MANUAL (Bendahara/Admin/Mudir) ----------------
+  // Untuk kasus pemilik menerima uangnya langsung/tunai tanpa lewat alur pengajuan.
+  // Dicatat di sini supaya saldo di sistem tetap cocok dengan uang fisik yang sudah
+  // diserahkan, dan jejaknya tetap masuk Riwayat Saldo Pemilik untuk audit.
+  function tarikSaldoPemilikManual(){
+    var c = getContentEl();
+    c.innerHTML = '<p>Memuat data saldo pemilik...</p>';
+    api('getDaftarSaldoPemilik', {}).then(function(res){
+      if (!res.ok){ c.innerHTML = errBox(res.error); return; }
+      var daftar = res.data || [];
+      if (!daftar.length){
+        c.innerHTML = '<div class="card"><h3>&#127974; Tarik Saldo Pemilik Barang</h3>' +
+          warnBox('Belum ada data saldo pemilik barang. Saldo terbentuk otomatis setelah ada penjualan di kantin.') + '</div>';
+        return;
+      }
+      var totalSemua = daftar.reduce(function(s,x){ return s + x.saldo; }, 0);
+
+      c.innerHTML = '<div class="card"><h3>&#127974; Tarik Saldo Pemilik Barang (Manual)</h3>' +
+        warnBox('Dipakai saat pemilik barang menerima uangnya langsung/tunai tanpa lewat pengajuan. Saldo akan dikurangi dan tercatat di Riwayat Saldo Pemilik. Pemilik otomatis dapat notifikasi WhatsApp bila nomornya terdaftar.') +
+        '<label>Pilih Pemilik Barang</label><select id="tpPemilik"><option value="">-- pilih pemilik --</option>' +
+        daftar.map(function(d,i){
+          return '<option value="'+i+'">'+esc(d.pemilik)+' &mdash; Saldo: Rp'+d.saldo.toLocaleString('id-ID')+'</option>';
+        }).join('') + '</select>' +
+        '<div id="tpInfoSaldo" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:9px 12px;font-size:13px;margin:8px 0;display:none"></div>' +
+        fieldText('tpNominal','Nominal Penarikan (Rp)','') +
+        '<label>Keterangan</label><select id="tpKet">' +
+          '<option value="Diserahkan tunai">Diserahkan tunai</option>' +
+          '<option value="Transfer bank">Transfer bank</option>' +
+          '<option value="Potong kewajiban ke pondok">Potong kewajiban ke pondok</option>' +
+          '<option value="__lain__">Tulis sendiri...</option>' +
+        '</select>' +
+        '<div id="tpWrapLain" style="display:none">'+fieldText('tpKetLain','Tulis Keterangan','')+'</div>' +
+        '<button id="btnTarikPemilik" style="margin-top:10px">Catat Penarikan</button>' +
+        '<div id="pesanTarikPemilik"></div></div>' +
+
+        '<div class="card"><h4>Saldo Semua Pemilik</h4>' +
+        '<p class="muted">Total saldo tertahan di sistem: <b style="color:#0d9488">Rp'+totalSemua.toLocaleString('id-ID')+'</b></p>' +
+        '<div style="overflow-x:auto"><table><tr><th>Pemilik</th><th>No WA</th><th>Saldo</th></tr>' +
+        daftar.map(function(d){
+          return '<tr><td>'+esc(d.pemilik)+'</td><td>'+(d.noWa?esc(d.noWa):'<span class="muted">-</span>')+'</td>' +
+            '<td><b>Rp'+d.saldo.toLocaleString('id-ID')+'</b></td></tr>';
+        }).join('') + '</table></div></div>';
+
+      // Tampilkan sisa saldo setelah penarikan, dan cegah lebih awal kalau kurang
+      function perbaruiInfo(){
+        var idx = document.getElementById('tpPemilik').value;
+        var el = document.getElementById('tpInfoSaldo');
+        if (idx === ''){ el.style.display='none'; return; }
+        var d = daftar[Number(idx)];
+        var nom = Number(String(document.getElementById('tpNominal').value).replace(/[^\d]/g,'')) || 0;
+        var sisa = d.saldo - nom;
+        el.style.display = 'block';
+        el.innerHTML = 'Saldo <b>'+esc(d.pemilik)+'</b>: <b>Rp'+d.saldo.toLocaleString('id-ID')+'</b>' +
+          (nom > 0
+            ? '<br>Sisa setelah ditarik: <b style="color:'+(sisa<0?'#dc2626':'#0f766e')+'">Rp'+sisa.toLocaleString('id-ID')+'</b>' +
+              (sisa < 0 ? ' <span style="color:#dc2626">(saldo tidak cukup)</span>' : '')
+            : '') +
+          (d.noWa ? '' : '<br><span class="muted" style="font-size:12px">No WA belum terdaftar &mdash; notifikasi tidak akan terkirim.</span>');
+      }
+      document.getElementById('tpPemilik').onchange = perbaruiInfo;
+      document.getElementById('tpNominal').oninput = perbaruiInfo;
+      document.getElementById('tpKet').onchange = function(){
+        document.getElementById('tpWrapLain').style.display = (this.value === '__lain__') ? 'block' : 'none';
+      };
+
+      document.getElementById('btnTarikPemilik').onclick = function(){
+        var elPesan = document.getElementById('pesanTarikPemilik');
+        var idx = document.getElementById('tpPemilik').value;
+        if (idx === ''){ elPesan.innerHTML = errBox('Pilih pemilik barang dulu.'); return; }
+        var d = daftar[Number(idx)];
+        var nominal = Number(String(document.getElementById('tpNominal').value).replace(/[^\d]/g,'')) || 0;
+        if (nominal <= 0){ elPesan.innerHTML = errBox('Isi nominal yang valid.'); return; }
+        // Dicegah di sini supaya petugas tahu sebelum menekan, bukan setelah bolak-balik ke server
+        if (nominal > d.saldo){
+          elPesan.innerHTML = errBox('Saldo '+d.pemilik+' hanya Rp'+d.saldo.toLocaleString('id-ID')+', tidak cukup untuk menarik Rp'+nominal.toLocaleString('id-ID')+'.');
+          return;
+        }
+        var ket = document.getElementById('tpKet').value;
+        if (ket === '__lain__'){
+          ket = document.getElementById('tpKetLain').value.trim();
+          if (!ket){ elPesan.innerHTML = errBox('Tulis keterangannya.'); return; }
+        }
+        if (!confirm('Catat penarikan saldo?\n\nPemilik: '+d.pemilik+'\nNominal: Rp'+nominal.toLocaleString('id-ID')+'\nSisa setelah ini: Rp'+(d.saldo-nominal).toLocaleString('id-ID')+'\nKeterangan: '+ket)) return;
+
+        var btn = document.getElementById('btnTarikPemilik');
+        loadingBtn(btn, 'Memproses...');
+        api('tarikSaldoPemilikManual', {pemilik: d.pemilik, nominal: nominal, keterangan: ket, oleh: STATE.user.nama}).then(function(r){
+          resetBtn(btn, 'Catat Penarikan');
+          if (!r.ok){ elPesan.innerHTML = errBox(r.error); return; }
+          elPesan.innerHTML = '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;margin-top:8px;font-size:13px">' +
+            '&#10004; Berhasil. Saldo <b>'+esc(r.pemilik)+'</b> berkurang Rp'+r.nominal.toLocaleString('id-ID')+'.<br>' +
+            'Saldo sebelum: Rp'+r.saldoSebelum.toLocaleString('id-ID')+' &rarr; sekarang: <b>Rp'+r.saldoSekarang.toLocaleString('id-ID')+'</b>' +
+            (r.waKirim ? '<br><span style="font-size:11.5px;opacity:.85">&#10004; Notifikasi WA terkirim ke pemilik</span>' : '') +
+            '</div>';
+          // Muat ulang supaya daftar saldo menampilkan angka terbaru -- mencegah
+          // penarikan kedua memakai saldo lama yang sudah tidak berlaku
+          setTimeout(tarikSaldoPemilikManual, 1800);
+        }).catch(function(){
+          resetBtn(btn, 'Catat Penarikan');
+          elPesan.innerHTML = errBox('Gagal memproses. Coba lagi.');
+        });
+      };
+    }).catch(function(){
+      c.innerHTML = errBox('Gagal memuat data. Periksa koneksi lalu coba lagi.');
+    });
+  }
+
   function bendTarikSaldoSantri(){
     var c=getContentEl();
     c.innerHTML='<p>Memuat...</p>';
@@ -11074,6 +11183,7 @@
       {key:'riwayattasmi', label:'Riwayat Tasmi\'', icon:'&#128218;'},
       {key:'barangkantin', label:'Kelola Barang Kantin', icon:'&#127850;'},
       {key:'persetujuansaldo', label:'Persetujuan Saldo Kantin', icon:'&#9989;'},
+      {key:'tarikpemilik', label:'Tarik Saldo Pemilik', icon:'&#127974;'},
       {key:'spp', label:'SPP Santri', icon:'&#128179;'},
       {key:'modulajar', label:'Modul Ajar & RPP', icon:'&#128218;'},
       {key:'rekapjurnal', label:'Rekap Jurnal Guru', icon:'&#128221;'},
@@ -11095,7 +11205,7 @@
       catatpelanggaran:function(){ renderFormCatatPelanggaran('da-content'); }, pelanggaran:adminKelolaPelanggaran,
       slide:adminSlide, websitebuilder:adminWebsiteBuilder, notifpush:adminNotifikasiPush,
       templateflyer:adminTemplateFlyer, flyertasmi:halamanFlyerTasmi, riwayattasmi:halamanRiwayatTasmi, artikel:adminArtikel, fiturberanda:adminFiturBeranda, barangkantin:adminBarangKantin,
-      persetujuansaldo:function(){ renderPersetujuanSaldo('da-content'); }, spp:function(){ renderSppSantri('da-content'); },
+      persetujuansaldo:function(){ renderPersetujuanSaldo('da-content'); }, tarikpemilik:tarikSaldoPemilikManual, spp:function(){ renderSppSantri('da-content'); },
       modulajar:adminModulAjar, rekapjurnal:adminRekapJurnal, rekaphalaqoh:adminRekapHalaqoh,
       raporkelas:adminRaporKelas, kelompokpapel:adminKelompokMapel, sop:adminSOP, defaultjurnal:adminDefaultJurnal,
       website:adminInfoWebsite, spreadsheet:adminSpreadsheet,
@@ -11114,11 +11224,96 @@
     setTimeout(muatNotifBadge, 800);
   }
 
+  // ---------------- WIDGET REKAP JAM MENGAJAR SEMUA GURU (Admin/Mudir) ----------------
+  // Tampil di halaman Ringkasan dashboard Admin/Mudir. Menampilkan daftar semua guru
+  // beserta total jam mengajarnya bulan ini; diklik akan membuka rincian per sesi
+  // untuk guru itu (tanggal, jenis, mapel/halaqoh, jam) tanpa berpindah halaman.
+  function widgetJamMengajarSemuaGuru(containerId){
+    var el = document.getElementById(containerId);
+    if (!el) return;
+    var now = new Date();
+    var bulanAktif = now.getMonth()+1, tahunAktif = now.getFullYear();
+    var NAMA_BULAN = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+
+    function muat(){
+      el.innerHTML = '<div class="card"><h3>&#8987; Rekap Jam Mengajar Guru</h3><p class="muted">Memuat...</p></div>';
+      // pengampu dikosongkan = mode ringkasan (semua guru)
+      api('getRekapJamMengajarGuru', {pengampu:'', bulan:bulanAktif, tahun:tahunAktif}).then(function(res){
+        if (!el) return;
+        if (!res.ok){ el.innerHTML = '<div class="card">'+errBox(res.error)+'</div>'; return; }
+        var d = res.data;
+        var daftar = (d && d.daftar) ? d.daftar : [];
+        var totalSemua = daftar.reduce(function(s,x){ return s + (x.totalJam||0); }, 0);
+
+        el.innerHTML = '<div class="card"><h3>&#8987; Rekap Jam Mengajar Guru</h3>' +
+          '<div class="grid2" style="margin-bottom:10px">' +
+            '<div><label style="font-size:12.5px">Bulan</label><select id="wjBulan">' +
+              NAMA_BULAN.map(function(n,i){ return '<option value="'+(i+1)+'"'+((i+1)===bulanAktif?' selected':'')+'>'+n+'</option>'; }).join('') +
+            '</select></div>' +
+            '<div><label style="font-size:12.5px">Tahun</label><input id="wjTahun" value="'+tahunAktif+'"></div>' +
+          '</div>' +
+          '<p class="muted" style="font-size:12.5px;margin-top:-2px">Dihitung otomatis dari absensi mapel &amp; isi hafalan yang diisi guru. Klik nama guru untuk melihat rinciannya.</p>' +
+          (daftar.length
+            ? ('<p style="margin:8px 0">Total keseluruhan: <b style="color:#0d9488;font-size:17px">'+totalSemua+' jam</b> dari <b>'+daftar.length+'</b> guru aktif</p>' +
+               '<div style="overflow-x:auto"><table><tr><th>Nama Guru</th><th>Total Jam</th><th></th></tr>' +
+               daftar.map(function(g,i){
+                 return '<tr><td>'+esc(g.pengampu)+'</td>' +
+                   '<td><b style="color:#0d9488">'+g.totalJam+' jam</b></td>' +
+                   '<td><button class="small secondary btnDetilJamGuru" data-guru="'+esc(g.pengampu)+'">Rincian</button></td></tr>' +
+                   '<tr id="wjDetil'+i+'" style="display:none"><td colspan="3" style="background:#f8fafc;padding:0"></td></tr>';
+               }).join('') + '</table></div>')
+            : '<p class="muted">Belum ada data mengajar pada bulan ini.</p>') +
+          '</div>';
+
+        // Ganti bulan/tahun -> muat ulang
+        document.getElementById('wjBulan').onchange = function(){ bulanAktif = Number(this.value); muat(); };
+        document.getElementById('wjTahun').onchange = function(){
+          var t = Number(this.value);
+          if (t > 2000 && t < 3000) { tahunAktif = t; muat(); }
+        };
+
+        // Klik "Rincian" -> ambil detail guru itu, tampilkan inline di baris bawahnya
+        document.querySelectorAll('.btnDetilJamGuru').forEach(function(btn, i){
+          btn.onclick = function(){
+            var baris = document.getElementById('wjDetil'+i);
+            if (!baris) return;
+            // Kalau sudah terbuka, tutup saja (toggle) -- tidak perlu ambil data lagi
+            if (baris.style.display !== 'none') { baris.style.display = 'none'; btn.textContent = 'Rincian'; return; }
+            baris.style.display = 'table-row';
+            btn.textContent = 'Tutup';
+            var sel = baris.querySelector('td');
+            if (sel.dataset.sudahMuat === '1') return; // sudah pernah dimuat, pakai yang ada
+            sel.innerHTML = '<p class="muted" style="padding:10px;margin:0">Memuat rincian...</p>';
+            api('getRekapJamMengajarGuru', {pengampu: btn.dataset.guru, bulan:bulanAktif, tahun:tahunAktif}).then(function(r2){
+              if (!r2.ok){ sel.innerHTML = '<div style="padding:10px">'+errBox(r2.error)+'</div>'; return; }
+              var dd = r2.data;
+              if (!dd.riwayat || !dd.riwayat.length){
+                sel.innerHTML = '<p class="muted" style="padding:10px;margin:0">Tidak ada sesi tercatat.</p>';
+                sel.dataset.sudahMuat = '1'; return;
+              }
+              sel.innerHTML = '<div style="padding:10px">' +
+                '<p style="margin:0 0 6px;font-size:12.5px">'+esc(btn.dataset.guru)+' &mdash; <b>'+dd.totalJam+' jam</b> dari '+dd.jumlahSesi+' sesi, '+Object.keys(dd.perHari||{}).length+' hari mengajar</p>' +
+                '<table style="margin:0"><tr><th>Tanggal</th><th>Jenis</th><th>Keterangan</th><th>Jam</th></tr>' +
+                dd.riwayat.map(function(r){
+                  return '<tr><td>'+esc(r.tanggal)+'</td><td>'+esc(r.jenis)+'</td><td>'+esc(r.keterangan)+'</td><td><b>'+r.jam+'</b></td></tr>';
+                }).join('') + '</table></div>';
+              sel.dataset.sudahMuat = '1';
+            });
+          };
+        });
+      }).catch(function(){
+        if (el) el.innerHTML = '<div class="card">'+errBox('Gagal memuat rekap jam mengajar.')+'</div>';
+      });
+    }
+    muat();
+  }
+
   function adminRingkasan(){
     var c = getContentEl();
     // Buat dua div terpisah: widget status (async cepat) dan ringkasan utama (async lambat)
-    c.innerHTML = '<div id="adminStatusPondok"></div><div id="adminRingkasanUtama"><p class="muted">Memuat ringkasan...</p></div>';
+    c.innerHTML = '<div id="adminStatusPondok"></div><div id="adminRingkasanUtama"><p class="muted">Memuat ringkasan...</p></div><div id="adminJamMengajar"></div>';
     widgetStatusPondok('adminStatusPondok', ''); // load paralel, tidak saling timpa
+    widgetJamMengajarSemuaGuru('adminJamMengajar'); // rekap jam mengajar semua guru
     Promise.all([api('getDashboardAdmin', {}), api('getStatusJurnalHariIni', {})]).then(function(hasil){
       var res = hasil[0], resJurnal = hasil[1];
       if(!res.ok){ document.getElementById('adminRingkasanUtama').innerHTML = errBox(res.error); return; }
