@@ -288,6 +288,7 @@ function route(action, p) {
     case 'perbaikiKategoriTransaksi': return apiPerbaikiKategoriTransaksi(p);
     case 'getDiagnostikUkuranData': return apiGetDiagnostikUkuranData(p);
     case 'getInfoLayarMasjid': return apiGetInfoLayarMasjid(p);
+    case 'loginImamMasjid': return apiLoginImamMasjid(p);
     case 'getSantriUntukTransaksiKantin': return {ok:true, data: getSantriUntukTransaksiKantin()};
     case 'prosesTransaksiKantin': return apiProsesTransaksiKantin(p);
     case 'getRiwayatTransaksiPemilik': return {ok:true, data: getRiwayatTransaksiPemilik(p.pemilik, p.tglMulai, p.tglAkhir)};
@@ -9855,4 +9856,44 @@ function apiGetInfoLayarMasjid(p) {
     jumlahPelanggaran: jumlahPelanggaran,
     jumlahPrestasi: jumlahPrestasi
   };
+}
+
+
+// ============================================================
+// LOGIN IMAM UNTUK LAYAR JAM SHOLAT MASJID
+//
+// Dipanggil dari halaman jam-sholat/index.html (aplikasi terpisah) supaya imam bisa
+// melapor berhalangan langsung dari layar masjid atau HP-nya, memakai akun RoleAkses
+// yang sama dengan WASIAT -- tidak perlu lagi link khusus atau penanda di localStorage
+// yang mudah hilang saat cache dibersihkan atau ganti perangkat.
+//
+// Cakupan sengaja dibuat SESEMPIT mungkin:
+// - Hanya memverifikasi nama/no-WA + PIN, lalu mengecek apakah akun itu ber-peran Imam
+//   (atau Admin/Mudir, yang wajar boleh melapor atas nama imam saat berhalangan).
+// - Yang dikembalikan HANYA {ok, nama, boleh} -- tidak ada PIN, tidak ada daftar peran
+//   lengkap, tidak ada data santri/keuangan apa pun. Jadi walau layar masjid diakses
+//   orang lain, tidak ada data sensitif yang bisa ditarik lewat endpoint ini.
+// - TIDAK memberi sesi/token apa pun ke WASIAT. Login di sini sama sekali tidak
+//   membuka akses ke dashboard WASIAT.
+function apiLoginImamMasjid(p) {
+  const loginId = norm(p.loginId), pin = norm(p.pin);
+  if (!loginId || !pin) return {ok:false, error:'Nama/No WA dan PIN wajib diisi.'};
+  try {
+    const sh = getAktifSS().getSheetByName(SHEET_ROLE);
+    if (!sh) return {ok:false, error:'Data akun tidak ditemukan.'};
+    const rows = sh.getDataRange().getValues(); rows.shift();
+    const found = rows.find(function(r){
+      return (norm(r[0]) === loginId || norm(r[1]) === loginId) && norm(r[2]) === pin;
+    });
+    if (!found) return {ok:false, error:'Nama/No WA atau PIN salah.'};
+
+    const level = norm(found[3]);
+    const boleh = level.indexOf('Imam') !== -1 || level.indexOf('Admin') !== -1 || level.indexOf('Mudir') !== -1;
+    if (!boleh) {
+      return {ok:false, error:'Akun ini tidak punya akses Imam. Minta Admin menambahkan peran "Imam Masjid" di RoleAkses.'};
+    }
+    return {ok:true, nama: norm(found[0])};
+  } catch (e) {
+    return {ok:false, error:'Gagal memeriksa akun: ' + e.message};
+  }
 }

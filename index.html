@@ -353,7 +353,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbzLfTfITOYQQDPvMTFMBQX1SP91xZWyZuY6LMSN1FZZamIt55XLHtciKignQWin0ZGL/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -369,6 +369,11 @@
     {value:'PembinaPutra', label:'Pembina Putra'},
     {value:'PembinaPutri', label:'Pembina Putri'},
     {value:'Pembina',      label:'Pembina (Umum)'},
+    // Peran khusus layar Jam Sholat masjid: dipakai imam untuk melapor berhalangan
+    // langsung dari layar/HP-nya. Sengaja TIDAK diberi menu di dashboard WASIAT --
+    // akun ber-peran Imam saja (tanpa peran lain) tidak punya halaman dashboard,
+    // memang hanya untuk dipakai di layar masjid.
+    {value:'Imam',         label:'Imam Masjid'},
     {value:'WaliSantri',   label:'Orang Tua Santri'},
   ];
   function labelRole(value){ var r = DAFTAR_ROLE.find(function(x){return x.value===value;}); return r ? r.label : value; }
@@ -653,7 +658,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.09.17-a';
+  var VERSI_APP = '2026.09.17-c';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -1905,6 +1910,19 @@
       '<div class="site-section lebar" id="sec-ppdb">' +
         '<div class="sec-head reveal"><span class="sec-eyebrow">Pendaftaran</span><h2>Penerimaan Santri Baru (PPDB)</h2></div>' +
         '<p class="reveal" style="text-align:center;color:#475569;line-height:1.8;white-space:pre-line;max-width:640px;margin:0 auto">'+esc(p.InfoPPDB||'-')+'</p>' +
+        // Brosur PPDB (opsional). Bisa diklik untuk dibuka ukuran penuh di tab baru --
+        // penting karena brosur biasanya berisi teks kecil yang perlu diperbesar.
+        (p.BrosurPPDBURL
+          ? '<div class="reveal" style="text-align:center;margin-top:22px">' +
+            '<a href="'+esc(p.BrosurPPDBURL)+'" target="_blank" rel="noopener" title="Klik untuk melihat ukuran penuh">' +
+            '<img src="'+esc(p.BrosurPPDBURL)+'" alt="Brosur PPDB" loading="lazy" style="max-width:100%;width:auto;max-height:620px;border-radius:12px;box-shadow:0 8px 28px rgba(15,23,42,.14);cursor:zoom-in">' +
+            '</a><p class="muted" style="font-size:12.5px;margin-top:8px">Ketuk brosur untuk melihat ukuran penuh</p></div>'
+          : '') +
+        // Video PPDB (opsional) -- memakai pemutar yang sama dengan Video Profil,
+        // jadi otomatis mendukung YouTube, Google Drive, dan file .mp4 langsung.
+        (htmlPemutarVideo(p.VideoPPDBURL)
+          ? '<div class="reveal" style="max-width:860px;margin:24px auto 0"><div class="video-bingkai">'+htmlPemutarVideo(p.VideoPPDBURL)+'</div></div>'
+          : '') +
         (p.LinkPPDBEksternal ? '<div class="reveal" style="text-align:center;margin-top:18px"><a href="'+esc(p.LinkPPDBEksternal)+'" target="_blank" rel="noopener" class="btn-masuk" style="text-decoration:none;display:inline-block;background:var(--tema);color:#fff;padding:12px 28px;border-radius:24px;font-weight:700">Daftar Sekarang</a></div>' : '') +
       '</div>' +
 
@@ -12529,19 +12547,74 @@
   }
 
   function renderWbPpdbKontak(target, d){
+    var previewBrosur = d.BrosurPPDBURL
+      ? '<img src="'+esc(fotoUkuran(d.BrosurPPDBURL,300))+'" style="max-height:160px;border-radius:8px;margin-top:6px;display:block;border:1px solid #e2e8f0">' : '';
     target.innerHTML =
       '<label>Info PPDB (Penerimaan Santri Baru)</label><textarea id="wbPPDB" rows="4" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-family:inherit;font-size:14px">'+esc(d.InfoPPDB||'')+'</textarea>' +
       fieldText('wbLinkPPDB','Link Pendaftaran PPDB (opsional, misal Google Form)', d.LinkPPDBEksternal||'') +
+
+      '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px;margin:14px 0">' +
+        '<b style="font-size:13.5px">&#128196; Brosur PPDB (opsional)</b>' +
+        '<p class="muted" style="font-size:12px;margin:4px 0 8px">Unggah gambar brosur (JPG/PNG). Di halaman depan brosur bisa diketuk pengunjung untuk melihat ukuran penuh. Kalau brosur Anda berupa PDF, ekspor dulu jadi gambar agar bisa langsung terlihat tanpa diunduh.</p>' +
+        '<input type="file" id="wbBrosurFile" accept="image/*">' +
+        '<p class="muted" style="font-size:12px;margin-top:4px"><b>Tunggu sampai muncul "Berhasil diunggah"</b> sebelum menekan Simpan.</p>' +
+        fieldText('wbBrosurUrl','URL Brosur (terisi otomatis setelah unggah)', d.BrosurPPDBURL||'') +
+        '<div id="wbBrosurStatus">'+previewBrosur+'</div>' +
+        '<button class="small secondary" id="btnHapusBrosur" style="margin-top:8px">Hapus Brosur</button>' +
+      '</div>' +
+
+      '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px;margin:14px 0">' +
+        '<b style="font-size:13.5px">&#127909; Video PPDB (opsional)</b>' +
+        '<p class="muted" style="font-size:12px;margin:4px 0 8px">Tempel link YouTube, Google Drive, atau file .mp4 langsung. Video tampil di bawah brosur di halaman depan.</p>' +
+        fieldText('wbVideoPPDB','Link Video PPDB', d.VideoPPDBURL||'') +
+      '</div>' +
+
       fieldText('wbAlamat','Alamat Pesantren', d.AlamatPesantren||'') +
       '<div class="grid2">' +
         '<div>'+fieldText('wbTelp','No Telepon / WhatsApp (contoh: 081234567890)', d.NoTeleponPesantren||'')+'</div>' +
         '<div>'+fieldText('wbEmail','Email', d.EmailPesantren||'')+'</div>' +
       '</div>' +
       '<button id="btnSimpanWbKontak" style="margin-top:12px">Simpan</button><div id="pesanWbKontak"></div>';
+
+    // Unggah brosur -- memakai endpoint uploadSlideImage yang sudah dipakai fitur lain
+    var sedangUnggahBrosur = false;
+    document.getElementById('wbBrosurFile').onchange = function(e){
+      var file = e.target.files[0];
+      if (!file) return;
+      var st = document.getElementById('wbBrosurStatus');
+      sedangUnggahBrosur = true;
+      st.innerHTML = '<p class="muted">Memproses gambar...</p>';
+      // 1400px: brosur berisi teks kecil, jadi perlu resolusi lebih tinggi daripada
+      // foto biasa supaya tetap terbaca saat dibuka ukuran penuh.
+      resizeImageFile(file, 1400, 0.88).then(function(hasil){
+        st.innerHTML = '<p class="muted">Mengunggah... mohon tunggu.</p>';
+        api('uploadSlideImage', {base64:hasil.base64, mimeType:hasil.mimeType, fileName:file.name}).then(function(res){
+          sedangUnggahBrosur = false;
+          if (!res.ok) { st.innerHTML = errBox(res.error); return; }
+          document.getElementById('wbBrosurUrl').value = res.url;
+          st.innerHTML = '<p style="color:#16a34a;font-weight:600;margin:6px 0">&#9989; Berhasil diunggah.</p><img src="'+esc(fotoUkuran(res.url,300))+'" style="max-height:160px;border-radius:8px;display:block;border:1px solid #e2e8f0">';
+        }).catch(function(){
+          sedangUnggahBrosur = false;
+          st.innerHTML = errBox('Gagal mengunggah. Periksa koneksi lalu coba lagi.');
+        });
+      }).catch(function(){
+        sedangUnggahBrosur = false;
+        st.innerHTML = errBox('Gagal memproses gambar. Coba file lain.');
+      });
+    };
+    document.getElementById('btnHapusBrosur').onclick = function(){
+      if (!confirm('Hapus brosur dari halaman depan?')) return;
+      document.getElementById('wbBrosurUrl').value = '';
+      document.getElementById('wbBrosurStatus').innerHTML = '<p class="muted">Brosur dikosongkan. Tekan Simpan untuk menerapkan.</p>';
+    };
+
     document.getElementById('btnSimpanWbKontak').onclick = function(){
+      if (sedangUnggahBrosur) { alert('Brosur masih diunggah. Tunggu sampai selesai, lalu tekan Simpan.'); return; }
       var data = {
         InfoPPDB: document.getElementById('wbPPDB').value.trim(),
         LinkPPDBEksternal: document.getElementById('wbLinkPPDB').value.trim(),
+        BrosurPPDBURL: document.getElementById('wbBrosurUrl').value.trim(),
+        VideoPPDBURL: document.getElementById('wbVideoPPDB').value.trim(),
         AlamatPesantren: document.getElementById('wbAlamat').value.trim(),
         NoTeleponPesantren: document.getElementById('wbTelp').value.trim(),
         EmailPesantren: document.getElementById('wbEmail').value.trim()
@@ -12765,6 +12838,8 @@
         '<label>Misi</label><textarea id="wMisi" rows="3" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-family:inherit;font-size:14px">'+esc(d.Misi||'')+'</textarea>' +
         '<label>Info PPDB (Penerimaan Santri Baru)</label><textarea id="wPPDB" rows="4" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-family:inherit;font-size:14px">'+esc(d.InfoPPDB||'')+'</textarea>' +
         fieldText('wLinkPPDB','Link Pendaftaran PPDB (opsional, misal Google Form)', d.LinkPPDBEksternal||'') +
+        fieldText('wBrosurPPDB','URL Brosur PPDB (opsional -- untuk unggah gambar, pakai menu Website Builder)', d.BrosurPPDBURL||'') +
+        fieldText('wVideoPPDB','Link Video PPDB (opsional -- YouTube/Drive/.mp4)', d.VideoPPDBURL||'') +
         fieldText('wAlamat','Alamat Pesantren', d.AlamatPesantren||'') +
         '<div class="grid2">' +
         '<div>'+fieldText('wTelp','No Telepon / WhatsApp (contoh: 081234567890)', d.NoTeleponPesantren||'')+'</div>' +
@@ -12845,6 +12920,8 @@
           Misi: document.getElementById('wMisi').value.trim(),
           InfoPPDB: document.getElementById('wPPDB').value.trim(),
           LinkPPDBEksternal: document.getElementById('wLinkPPDB').value.trim(),
+          BrosurPPDBURL: document.getElementById('wBrosurPPDB').value.trim(),
+          VideoPPDBURL: document.getElementById('wVideoPPDB').value.trim(),
           AlamatPesantren: document.getElementById('wAlamat').value.trim(),
           NoTeleponPesantren: document.getElementById('wTelp').value.trim(),
           EmailPesantren: document.getElementById('wEmail').value.trim()
