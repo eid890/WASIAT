@@ -505,6 +505,11 @@
         <p class="sub" style="margin:4px 0 10px;">Layar berjalan normal seperti biasa (hanya hitung mundur iqomah). Tidak ada info apa pun soal kehadiran imam yang ditampilkan — <em>kecuali</em> ada laporan "berhalangan" yang masuk, barulah layar menampilkan peringatan "Silakan Qomat".</p>
         <span class="field-label">Berlaku untuk waktu sholat</span>
         <div class="prayer-check-row" id="imamPrayerChecks"></div>
+        <div class="row-actions" style="margin-top:12px;">
+          <button class="btn primary" id="saveImamAktifBtn">Simpan Pengaturan Imam</button>
+        </div>
+        <p class="hint" id="imamAktifBelumSimpan" style="display:none;color:#e0a82e;">&#9888;&#65039; Ada perubahan yang belum disimpan &mdash; tekan "Simpan Pengaturan Imam" di atas, kalau tidak centang ini tidak berlaku.</p>
+        <div id="imamAktifStatus" class="status-msg"></div>
 
         <span class="field-label" style="margin-top:20px;">URL Sinkronisasi (Google Apps Script)</span>
         <p class="sub" style="margin:-2px 0 8px;">Isi URL ini agar <strong>semua pengaturan</strong> (jadwal, banner/video, pengumuman, identitas, dll) otomatis tersinkron ke semua perangkat. <strong>Penting:</strong> mengisi kolom ini saja hanya berlaku di perangkat/browser ini. Supaya berlaku otomatis di SEMUA perangkat sejak awal dibuka (tanpa perlu diatur satu-satu), klik "Unduh config.json" di bawah lalu upload file itu ke GitHub (timpa yang lama).</p>
@@ -514,7 +519,7 @@
         <div class="row-actions" style="margin-top:14px;">
           <button class="btn" id="testImamSyncBtn">Tes Koneksi</button>
           <button class="btn" id="downloadConfigBtn">⬇ Unduh config.json</button>
-          <button class="btn primary" id="saveImamBtn">Simpan (perangkat ini saja)</button>
+          <button class="btn primary" id="saveImamBtn">Simpan URL Sinkronisasi</button>
         </div>
         <div id="imamStatus" class="status-msg"></div>
         <p class="hint" id="configSyncStatus"></p>
@@ -1241,6 +1246,9 @@
       lab.innerHTML = `<input type="checkbox" class="imam-prayer-cb" data-key="${p.key}" ${imamCfg.prayers[p.key]?'checked':''}> ${p.label}`;
       box.appendChild(lab);
     });
+    // Checkbox ini dibuat ulang tiap render, jadi listener-nya dipasang di sini
+    box.querySelectorAll('.imam-prayer-cb').forEach(cb=>
+      cb.addEventListener('change', ()=>{ const el=$('imamAktifBelumSimpan'); if(el) el.style.display='block'; }));
     $('configSyncStatus').textContent = configSyncUrl
       ? `✅ config.json aktif dan otomatis berlaku di semua perangkat (${configSyncUrl.slice(0,50)}...).`
       : '⚠️ config.json belum diisi — pengaturan baru berlaku di perangkat ini saja sampai Anda unduh & upload config.json.';
@@ -1251,36 +1259,124 @@
     const url = $('imamWasiatUrl').value.trim();
     const el = $('imamWasiatTestResult');
     if(!url){ el.textContent = 'Isi URL Web App WASIAT dulu.'; el.className='status-msg err'; return; }
+
+    const masalahBentuk = periksaBentukUrlAppsScript(url);
+    if(masalahBentuk){ el.textContent = '❌ ' + masalahBentuk; el.className='status-msg err'; return; }
+
     el.textContent = 'Menguji koneksi...'; el.className = 'hint';
     try{
       // Endpoint getInfoLayarMasjid dipakai sekadar untuk memastikan alamatnya benar
       // dan Code.gs-nya sudah versi terbaru -- tidak mengubah apa pun di WASIAT.
       const r = await fetch(url + (url.includes('?')?'&':'?') + 'action=getInfoLayarMasjid');
-      const j = await r.json();
-      if(j && j.ok){ el.textContent = '✅ Terhubung ke WASIAT. Imam sudah bisa masuk lewat tombol Lapor Berhalangan.'; el.className='status-msg ok'; }
-      else{ el.textContent = '⚠️ Terhubung, tapi respons tidak sesuai. Pastikan Code.gs WASIAT sudah versi terbaru.'; el.className='status-msg err'; }
-    }catch(e){ el.textContent = '❌ Gagal terhubung. Cek URL, dan pastikan deployment WASIAT diakses "Anyone".'; el.className='status-msg err'; }
+      if(!r.ok){
+        el.textContent = `⚠️ Server merespons dengan status ${r.status}. Kalau 401/403: atur deployment WASIAT "Who has access" ke Anyone.`;
+        el.className='status-msg err'; return;
+      }
+      const teks = await r.text();
+      let j = null;
+      try{ j = JSON.parse(teks); }catch(e){}
+      if(!j){
+        el.textContent = '⚠️ Terhubung, tapi respons bukan JSON. Kemungkinan URL ini bukan Web App WASIAT.';
+        el.className='status-msg err'; return;
+      }
+      if(j.ok){ el.textContent = `✅ Terhubung ke WASIAT (${j.jumlahSantri||0} santri terdaftar). Imam sudah bisa masuk lewat tombol Lapor Berhalangan.`; el.className='status-msg ok'; }
+      else if(j.error && String(j.error).indexOf('Aksi tidak dikenal') !== -1){
+        el.textContent = '⚠️ Terhubung ke WASIAT, tapi Code.gs-nya masih versi lama. Deploy ulang Code.gs versi terbaru (Deploy → Manage deployments → Edit → New version).';
+        el.className='status-msg err';
+      }
+      else{ el.textContent = '⚠️ Terhubung, tapi WASIAT menolak: ' + (j.error || 'respons tidak sesuai'); el.className='status-msg err'; }
+    }catch(e){
+      el.textContent = '❌ Tidak bisa dihubungi. Tiga penyebab tersering: (1) deployment WASIAT belum diatur "Anyone", (2) URL dari deployment yang sudah diganti — salin ulang URL terbaru, (3) tidak ada koneksi internet.';
+      el.className='status-msg err';
+    }
   });
-  $('saveImamBtn').addEventListener('click', async ()=>{
+  // Satu fungsi simpan dipakai oleh KEDUA tombol (aktivasi & URL), supaya tidak ada
+  // kemungkinan satu tombol menyimpan sebagian saja lalu menimpa yang lain.
+  async function simpanPengaturanImam(idStatus, pesanSukses){
     const prayers = {};
     document.querySelectorAll('.imam-prayer-cb').forEach(cb=> prayers[cb.dataset.key] = cb.checked);
     imamCfg = { enabled: $('imamEnabled').checked, prayers, syncUrl: $('imamSyncUrl').value.trim(), wasiatUrl: $('imamWasiatUrl').value.trim() };
     await storeSet('mosque_imam_cfg_v1', JSON.stringify(imamCfg));
     remotePush('imamCfg', imamCfg);
     renderImamUI();
-    $('imamStatus').textContent = 'Pengaturan imam tersimpan.';
-    $('imamStatus').className = 'status-msg ok';
+    $('imamAktifBelumSimpan').style.display = 'none'; // perubahan sudah tersimpan
+    const el = $(idStatus);
+    el.textContent = pesanSukses;
+    el.className = 'status-msg ok';
+  }
+
+  $('saveImamAktifBtn').addEventListener('click', ()=>{
+    const aktif = $('imamEnabled').checked;
+    simpanPengaturanImam('imamAktifStatus',
+      aktif ? 'Tersimpan. Fitur lapor berhalangan sudah aktif.'
+            : 'Tersimpan. Fitur lapor berhalangan dimatikan.');
   });
+  $('saveImamBtn').addEventListener('click', ()=>{
+    simpanPengaturanImam('imamStatus', 'Pengaturan imam & URL tersinkron tersimpan.');
+  });
+
+  // Peringatan kalau centang/pilihan diubah tapi belum ditekan simpan. Ini yang
+  // sebelumnya menjadi sumber kebingungan: centang terlihat aktif di layar, padahal
+  // belum tersimpan sehingga fiturnya tetap mati.
+  function tandaiImamBelumSimpan(){
+    const el = $('imamAktifBelumSimpan');
+    if(el) el.style.display = 'block';
+  }
+  $('imamEnabled').addEventListener('change', tandaiImamBelumSimpan);
+  // Pemeriksaan bentuk URL Apps Script. Dibuat mendiagnosis penyebab spesifik karena
+  // pesan "gagal terhubung" yang umum membuat pengguna menduga-duga -- padahal
+  // penyebabnya hampir selalu salah satu dari beberapa hal yang bisa dikenali dari
+  // bentuk URL-nya sendiri, tanpa perlu memanggil server.
+  function periksaBentukUrlAppsScript(url){
+    if(!/^https:\/\//i.test(url)) return 'URL harus dimulai dengan https://';
+    if(url.indexOf('script.google.com') === -1 && url.indexOf('script.googleusercontent.com') === -1){
+      return 'Ini sepertinya bukan URL Apps Script. Alamatnya harus mengandung script.google.com';
+    }
+    if(/\/dev($|\?)/.test(url)){
+      return 'URL berakhiran /dev — alamat itu hanya bisa dibuka oleh pemilik akun yang sedang login, jadi tidak bisa dipakai di layar masjid. Pakai URL yang berakhiran /exec (ambil dari Deploy → Manage deployments).';
+    }
+    if(!/\/exec($|\?)/.test(url)){
+      return 'URL harus berakhiran /exec. Pastikan Anda menyalin "Web app URL" dari Manage deployments, bukan link editor skripnya.';
+    }
+    return '';
+  }
+
   $('testImamSyncBtn').addEventListener('click', async ()=>{
     const url = $('imamSyncUrl').value.trim();
     const el = $('imamSyncTestResult');
     if(!url){ el.textContent='Isi URL dulu.'; el.className='hint'; return; }
-    el.textContent = 'Menguji koneksi...';
+
+    // Diagnosis bentuk URL lebih dulu -- lebih cepat & pesannya jauh lebih spesifik
+    const masalahBentuk = periksaBentukUrlAppsScript(url);
+    if(masalahBentuk){ el.textContent = '❌ ' + masalahBentuk; el.className='status-msg err'; return; }
+
+    el.textContent = 'Menguji koneksi...'; el.className='hint';
     try{
       const r = await fetch(url);
-      if(r.ok){ el.textContent = '✅ Berhasil terhubung ke Apps Script.'; el.className='status-msg ok'; }
-      else { el.textContent = `⚠️ Server merespons tapi statusnya ${r.status}. Cek lagi deployment-nya (akses "Anyone").`; el.className='status-msg err'; }
-    }catch(e){ el.textContent = '❌ Gagal terhubung. Cek URL & pastikan deployment diakses "Anyone".'; el.className='status-msg err'; }
+      if(!r.ok){
+        el.textContent = `⚠️ Server merespons dengan status ${r.status}. Kalau 500: jalankan dulu fungsi "setup" di proyek Apps Script-nya. Kalau 401/403: atur deployment "Who has access" ke Anyone.`;
+        el.className='status-msg err'; return;
+      }
+      // Pastikan yang merespons benar-benar skrip sinkronisasi layar ini, bukan
+      // Web App lain (misal tertukar dengan URL WASIAT) -- tertukar adalah kekeliruan
+      // yang paling sering terjadi karena keduanya sama-sama alamat script.google.com.
+      const teks = await r.text();
+      let data = null;
+      try{ data = JSON.parse(teks); }catch(e){}
+      if(!data){
+        el.textContent = '⚠️ Terhubung, tapi respons bukan JSON. Kemungkinan URL ini milik Web App lain, bukan skrip sinkronisasi layar sholat.';
+        el.className='status-msg err'; return;
+      }
+      if(data.settings === undefined && data.reports === undefined && data.dailySets === undefined){
+        el.textContent = '⚠️ Terhubung, tapi ini sepertinya URL Web App LAIN (mungkin tertukar dengan URL WASIAT). URL Sinkronisasi harus dari proyek apps-script-sync.gs.';
+        el.className='status-msg err'; return;
+      }
+      el.textContent = '✅ Berhasil terhubung ke skrip sinkronisasi.';
+      el.className='status-msg ok';
+    }catch(e){
+      el.textContent = '❌ Tidak bisa dihubungi. Tiga penyebab tersering: (1) deployment belum diatur "Anyone", (2) URL ini dari deployment yang sudah dihapus/diganti — buat deployment baru lalu salin URL-nya lagi, (3) tidak ada koneksi internet.';
+      el.className='status-msg err';
+    }
   });
   $('downloadConfigBtn').addEventListener('click', ()=>{
     const url = $('imamSyncUrl').value.trim();
@@ -1997,7 +2093,12 @@
     const wrap = $('laporList');
     wrap.innerHTML = '';
     if(!row || !imamCfg.enabled){
-      wrap.innerHTML = '<p class="empty-note">Fitur ini belum diaktifkan (lihat Pengaturan → Adzan &amp; Iqomah).</p>';
+      // Pesan dibuat menuntun langkahnya, bukan hanya menyatakan statusnya -- penyebab
+      // tersering adalah centang aktivasi sudah ditandai tapi belum ditekan simpan.
+      wrap.innerHTML = '<p class="empty-note" style="text-align:left;line-height:1.7">' +
+        '<strong>Fitur ini belum aktif.</strong><br>Buka <strong>⚙️ Pengaturan → Adzan &amp; Iqomah</strong>, centang ' +
+        '<em>"Aktifkan pelaporan Imam Berhalangan"</em>, lalu <strong>tekan tombol "Simpan Pengaturan Imam"</strong> ' +
+        'tepat di bawahnya. Mencentang saja tanpa menekan simpan membuat fitur ini tetap mati.</p>';
       return;
     }
     const nowMin = now.h*60+now.m;
