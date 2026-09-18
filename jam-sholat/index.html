@@ -232,9 +232,28 @@
   <div class="modal" style="max-width:420px;">
     <button class="close-x" id="closeLapor">&times;</button>
     <h2>Lapor Imam Berhalangan</h2>
-    <p class="sub">Tandai sholat yang Anda tidak bisa hadiri. Layar akan menampilkan "Silakan Qomat" untuk sholat itu. Kalau ternyata bisa hadir lagi, tekan sekali lagi untuk membatalkan.</p>
-    <div id="laporList"></div>
-    <div id="laporStatus" class="status-msg"></div>
+
+    <div id="laporLoginStep">
+      <p class="sub">Masuk dengan akun Imam Anda (sama dengan akun aplikasi WASIAT). Minta Admin menambahkan peran <strong>Imam Masjid</strong> di RoleAkses kalau belum ada.</p>
+      <span class="field-label" style="margin-top:0;">Nama atau No. WA</span>
+      <input type="text" id="laporLoginId" placeholder="Nama lengkap atau nomor WA" autocomplete="off">
+      <span class="field-label">PIN</span>
+      <input type="password" id="laporLoginPin" inputmode="numeric" placeholder="PIN akun Anda" autocomplete="off">
+      <div class="row-actions" style="margin-top:12px;">
+        <button class="btn primary" id="laporLoginBtn">Masuk</button>
+      </div>
+      <p class="hint" id="laporLoginHint" style="margin-top:8px;"></p>
+      <div id="laporLoginStatus" class="status-msg"></div>
+    </div>
+
+    <div id="laporListStep" style="display:none;">
+      <p class="sub">Masuk sebagai <strong id="laporNamaImam">—</strong>. Tandai sholat yang Anda tidak bisa hadiri. Layar akan menampilkan "Silakan Qomat" untuk sholat itu. Kalau ternyata bisa hadir lagi, tekan sekali lagi untuk membatalkan.</p>
+      <div id="laporList"></div>
+      <div id="laporStatus" class="status-msg"></div>
+      <div class="row-actions" style="margin-top:12px;">
+        <button class="btn small" id="laporLogoutBtn">Keluar dari Akun Imam</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -500,13 +519,14 @@
         <div id="imamStatus" class="status-msg"></div>
         <p class="hint" id="configSyncStatus"></p>
 
-        <span class="field-label" style="margin-top:20px;">Link Khusus untuk HP Imam</span>
-        <p class="sub" style="margin:-2px 0 8px;">Kirim link ini ke imam (WhatsApp, dll). Link ini yang memunculkan tombol "🚫 Lapor Berhalangan" — tombol itu <strong>tidak</strong> muncul di TV/perangkat lain.</p>
-        <div class="row-actions">
-          <input type="text" id="imamLinkOutput" readonly style="flex:1;">
-          <button class="btn small" id="copyImamLinkBtn">Salin Link</button>
+        <span class="field-label" style="margin-top:20px;">Akses Imam — URL Web App WASIAT</span>
+        <p class="sub" style="margin:-2px 0 8px;">Tombol "🚫 Lapor Berhalangan" kini tampil di <strong>semua</strong> perangkat, tapi baru bisa dipakai setelah imam <strong>masuk dengan akun WASIAT-nya</strong> (peran <em>Imam Masjid</em>). Jadi tidak perlu lagi link khusus yang mudah hilang kalau cache dibersihkan atau ganti HP.</p>
+        <input type="text" id="imamWasiatUrl" placeholder="https://script.google.com/macros/s/xxxxx/exec">
+        <p class="hint">Alamat ini sama dengan yang dipakai aplikasi WASIAT (WEBAPP_URL di index.html-nya) — <strong>bukan</strong> URL Sinkronisasi di atas. Admin perlu menambahkan peran <strong>"Imam Masjid"</strong> untuk akun imam di menu RoleAkses WASIAT.</p>
+        <div class="row-actions" style="margin-top:10px;">
+          <button class="btn" id="testImamWasiatBtn">Tes Koneksi WASIAT</button>
         </div>
-        <p class="hint">Imam buka link ini sekali di HP-nya → tekan "📲 Install Aplikasi" supaya jadi app tersendiri → sejak itu tombol Lapor Berhalangan selalu tersedia di HP-nya, walau dibuka lewat ikon app (bukan link lagi).</p>
+        <p class="hint" id="imamWasiatTestResult"></p>
       </div>
     </div>
 
@@ -659,6 +679,10 @@
       if(syncFromUrl) localStorage.setItem('imam_sync_url', syncFromUrl);
     }catch(e){}
   }
+  // Penanda perangkat imam versi lama. SUDAH TIDAK DIPAKAI untuk mengatur akses --
+  // digantikan login peran Imam (lihat bagian "Lapor Imam Berhalangan" di bawah).
+  // Pembacanya dibiarkan di sini supaya link lama "?imam=1" yang mungkin sudah tersebar
+  // ke HP imam tidak menyebabkan error -- link itu sekarang sekadar diabaikan.
   let isImamDevice = false;
   try{ isImamDevice = urlParams.get('imam')==='1' || localStorage.getItem('imam_device')==='1'; }catch(e){}
 
@@ -1207,39 +1231,40 @@
   }
   ['paGap','paCountdownMin','paBlackout'].forEach(id=> $(id).addEventListener('input', updatePaTimelineHint));
 
-  function imamLinkUrl(){
-    const base = location.origin + location.pathname;
-    const url = effectiveSyncUrl();
-    if(!url) return '';
-    return `${base}?imam=1&sync=${encodeURIComponent(url)}`;
-  }
-
   function renderImamUI(){
     $('imamEnabled').checked = !!imamCfg.enabled;
     $('imamSyncUrl').value = imamCfg.syncUrl || '';
+    $('imamWasiatUrl').value = imamCfg.wasiatUrl || '';
     const box = $('imamPrayerChecks'); box.innerHTML='';
     PRAYERS.forEach(p=>{
       const lab = document.createElement('label');
       lab.innerHTML = `<input type="checkbox" class="imam-prayer-cb" data-key="${p.key}" ${imamCfg.prayers[p.key]?'checked':''}> ${p.label}`;
       box.appendChild(lab);
     });
-    const link = imamLinkUrl();
-    $('imamLinkOutput').value = link || 'Isi URL Sinkronisasi dulu (atau pastikan config.json sudah diisi)...';
     $('configSyncStatus').textContent = configSyncUrl
       ? `✅ config.json aktif dan otomatis berlaku di semua perangkat (${configSyncUrl.slice(0,50)}...).`
       : '⚠️ config.json belum diisi — pengaturan baru berlaku di perangkat ini saja sampai Anda unduh & upload config.json.';
     $('configSyncStatus').className = configSyncUrl ? 'status-msg ok' : 'hint';
   }
-  $('copyImamLinkBtn').addEventListener('click', async ()=>{
-    const link = imamLinkUrl();
-    if(!link){ $('imamStatus').textContent = 'Isi & simpan URL Sinkronisasi dulu.'; $('imamStatus').className='status-msg err'; return; }
-    try{ await navigator.clipboard.writeText(link); $('imamStatus').textContent='Link disalin.'; $('imamStatus').className='status-msg ok'; }
-    catch(e){ $('imamLinkOutput').select(); document.execCommand('copy'); $('imamStatus').textContent='Link disalin.'; $('imamStatus').className='status-msg ok'; }
+
+  $('testImamWasiatBtn').addEventListener('click', async ()=>{
+    const url = $('imamWasiatUrl').value.trim();
+    const el = $('imamWasiatTestResult');
+    if(!url){ el.textContent = 'Isi URL Web App WASIAT dulu.'; el.className='status-msg err'; return; }
+    el.textContent = 'Menguji koneksi...'; el.className = 'hint';
+    try{
+      // Endpoint getInfoLayarMasjid dipakai sekadar untuk memastikan alamatnya benar
+      // dan Code.gs-nya sudah versi terbaru -- tidak mengubah apa pun di WASIAT.
+      const r = await fetch(url + (url.includes('?')?'&':'?') + 'action=getInfoLayarMasjid');
+      const j = await r.json();
+      if(j && j.ok){ el.textContent = '✅ Terhubung ke WASIAT. Imam sudah bisa masuk lewat tombol Lapor Berhalangan.'; el.className='status-msg ok'; }
+      else{ el.textContent = '⚠️ Terhubung, tapi respons tidak sesuai. Pastikan Code.gs WASIAT sudah versi terbaru.'; el.className='status-msg err'; }
+    }catch(e){ el.textContent = '❌ Gagal terhubung. Cek URL, dan pastikan deployment WASIAT diakses "Anyone".'; el.className='status-msg err'; }
   });
   $('saveImamBtn').addEventListener('click', async ()=>{
     const prayers = {};
     document.querySelectorAll('.imam-prayer-cb').forEach(cb=> prayers[cb.dataset.key] = cb.checked);
-    imamCfg = { enabled: $('imamEnabled').checked, prayers, syncUrl: $('imamSyncUrl').value.trim() };
+    imamCfg = { enabled: $('imamEnabled').checked, prayers, syncUrl: $('imamSyncUrl').value.trim(), wasiatUrl: $('imamWasiatUrl').value.trim() };
     await storeSet('mosque_imam_cfg_v1', JSON.stringify(imamCfg));
     remotePush('imamCfg', imamCfg);
     renderImamUI();
@@ -1879,12 +1904,92 @@
     }
   }
 
-  // ---- "Lapor Imam Berhalangan" floating button + modal (same on every device running this app) ----
+  // ---- "Lapor Imam Berhalangan" -- akses lewat login peran Imam di WASIAT ----
+  //
+  // Pendekatan lama (link khusus ?imam=1 + penanda di localStorage) ditinggalkan karena
+  // rapuh: penandanya hilang begitu cache dibersihkan, ganti browser, atau buka di HP
+  // lain -- imam jadi kehilangan tombolnya tanpa tahu sebabnya.
+  //
+  // Sekarang: tombolnya SELALU tampil di semua perangkat, tapi baru bisa dipakai setelah
+  // imam masuk dengan akun RoleAkses WASIAT-nya (peran "Imam Masjid"). Sesi login
+  // disimpan per perangkat supaya imam tidak perlu login berulang di HP-nya sendiri,
+  // TAPI kalau sesi itu hilang, imam cukup login lagi -- tidak perlu link baru dari Admin.
   const laporOverlay = $('laporOverlay');
-  if(isImamDevice) $('laporBtn').style.display = 'block';
-  $('laporBtn').addEventListener('click', ()=>{ renderLaporList(); laporOverlay.classList.add('open'); });
+  let imamSesi = null; // { nama } -- null berarti belum masuk
+  try{
+    const simpan = localStorage.getItem('mosque_imam_sesi_v1');
+    if(simpan) imamSesi = JSON.parse(simpan);
+  }catch(e){}
+
+  $('laporBtn').style.display = 'block'; // selalu tersedia; akses tetap dijaga oleh login
+
+  function tampilkanTahapLapor(){
+    const masuk = !!(imamSesi && imamSesi.nama);
+    $('laporLoginStep').style.display = masuk ? 'none' : 'block';
+    $('laporListStep').style.display = masuk ? 'block' : 'none';
+    if(masuk){
+      $('laporNamaImam').textContent = imamSesi.nama;
+      renderLaporList();
+    } else {
+      const adaUrl = !!(imamCfg.wasiatUrl || '').trim();
+      $('laporLoginHint').textContent = adaUrl
+        ? ''
+        : '⚠️ Admin belum mengisi URL Web App WASIAT di Pengaturan → Adzan & Iqomah, jadi login belum bisa diproses.';
+      $('laporLoginHint').className = adaUrl ? 'hint' : 'status-msg err';
+    }
+  }
+
+  $('laporBtn').addEventListener('click', ()=>{
+    $('laporLoginStatus').textContent = '';
+    $('laporLoginPin').value = '';
+    tampilkanTahapLapor();
+    laporOverlay.classList.add('open');
+  });
   $('closeLapor').addEventListener('click', ()=> laporOverlay.classList.remove('open'));
   laporOverlay.addEventListener('click', (e)=>{ if(e.target===laporOverlay) laporOverlay.classList.remove('open'); });
+
+  $('laporLoginBtn').addEventListener('click', async ()=>{
+    const wasiatUrl = (imamCfg.wasiatUrl || '').trim();
+    const el = $('laporLoginStatus');
+    if(!wasiatUrl){
+      el.textContent = 'URL Web App WASIAT belum diatur. Hubungi Admin.';
+      el.className = 'status-msg err'; return;
+    }
+    const loginId = $('laporLoginId').value.trim();
+    const pin = $('laporLoginPin').value.trim();
+    if(!loginId || !pin){ el.textContent = 'Isi nama/No WA dan PIN dulu.'; el.className='status-msg err'; return; }
+    const btn = $('laporLoginBtn');
+    btn.disabled = true; btn.textContent = 'Memeriksa...';
+    el.textContent = ''; el.className = 'status-msg';
+    try{
+      // Dikirim lewat POST supaya PIN tidak ikut tercatat di log URL server.
+      const r = await fetch(wasiatUrl, {
+        method:'POST',
+        headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body: JSON.stringify({ action:'loginImamMasjid', payload:{ loginId, pin } })
+      });
+      const j = await r.json();
+      if(j && j.ok){
+        imamSesi = { nama: j.nama };
+        try{ localStorage.setItem('mosque_imam_sesi_v1', JSON.stringify(imamSesi)); }catch(e){}
+        $('laporLoginId').value = ''; $('laporLoginPin').value = '';
+        tampilkanTahapLapor();
+      } else {
+        el.textContent = (j && j.error) || 'Login gagal.';
+        el.className = 'status-msg err';
+      }
+    }catch(e){
+      el.textContent = 'Gagal menghubungi WASIAT. Periksa koneksi internet.';
+      el.className = 'status-msg err';
+    }
+    btn.disabled = false; btn.textContent = 'Masuk';
+  });
+
+  $('laporLogoutBtn').addEventListener('click', ()=>{
+    imamSesi = null;
+    try{ localStorage.removeItem('mosque_imam_sesi_v1'); }catch(e){}
+    tampilkanTahapLapor();
+  });
 
   function renderLaporList(){
     const now = wibNow();
