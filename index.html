@@ -128,6 +128,7 @@
   #absensi-app .badge-hafalan.manzil{background:#7c3aed}
   #absensi-app .badge-hafalan.murojaah{background:#0284c7}
   #absensi-app .badge-hafalan.tahsin{background:#16a34a}
+  #absensi-app .badge-hafalan.tasmi{background:#b45309}
   #absensi-app .badge-hafalan.tidaksetor{background:#64748b}
   #absensi-app .badge-hafalan.izin{background:#2563eb}
   #absensi-app .badge-hafalan.sakit{background:#f59e0b}
@@ -353,7 +354,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycby0_aEMxJ78OJcfZe_fqpax1aJxwn2Yigfa7pgKS5Xqds7s0lrFygaLLEBZJudhH0gh/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -384,9 +385,10 @@
     var d = new Date(parts[0], parts[1]-1, parts[2]);
     return HARI_LIST[d.getDay()];
   }
-  var JENIS_HAFALAN_ALL = ['Sabaq','Sabqi','Manzil','Murojaah','Tahsin','Tidak Setor','Izin','Izin Pulang','Sakit','Ghaib'];
-  var JENIS_HAFALAN_SETOR = ['Sabaq','Sabqi','Manzil','Murojaah','Tahsin'];
-  var PETA_KELAS_BADGE_HAFALAN = {'Sabaq':'sabaq','Sabqi':'sabqi','Manzil':'manzil','Murojaah':'murojaah','Tahsin':'tahsin','Tidak Setor':'tidaksetor','Izin':'izin','Izin Pulang':'izinpulang','Sakit':'sakit','Ghaib':'ghaib'};
+  var JENIS_HAFALAN_ALL = ['Sabaq','Sabqi','Manzil','Murojaah','Tahsin',"Tasmi'",'Tidak Setor','Izin','Izin Pulang','Sakit','Ghaib'];
+  // Tasmi' diperlakukan seperti setoran: wajib isi detail (surah/ayat, halaman, atau juz utuh) dan nilai.
+  var JENIS_HAFALAN_SETOR = ['Sabaq','Sabqi','Manzil','Murojaah','Tahsin',"Tasmi'"];
+  var PETA_KELAS_BADGE_HAFALAN = {'Sabaq':'sabaq','Sabqi':'sabqi','Manzil':'manzil','Murojaah':'murojaah','Tahsin':'tahsin',"Tasmi'":'tasmi','Tidak Setor':'tidaksetor','Izin':'izin','Izin Pulang':'izinpulang','Sakit':'sakit','Ghaib':'ghaib'};
   // Rangkai detail setoran hanya dari bagian yang BENAR-BENAR terisi.
   // Sebelumnya semua bagian selalu dirangkai apa adanya, sehingga catatan yang
   // datanya kosong tampil sebagai ": , Juz , Hal" -- membingungkan wali santri
@@ -658,7 +660,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.09.19-b';
+  var VERSI_APP = '2026.09.22-f';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -2099,6 +2101,7 @@
     'Guru': [
       {key:'jadwal',          label:'Jadwal & Absen',      icon:'&#128197;'},
       {key:'jammengajar',     label:'Jam Mengajar Saya',   icon:'&#8987;'},
+      {key:'izinsaya',        label:'Izin & Surat Saya',   icon:'&#128221;'},
       {key:'riwayatabsen',    label:'Riwayat Absensi',     icon:'&#128203;'},
       {key:'rekapabsen',      label:'Rekap Absensi',       icon:'&#128202;'},
       {key:'hafalan',         label:'Isi Hafalan',         icon:'&#128214;'},
@@ -2196,7 +2199,7 @@
   function getMapFungsi(role){
     var m = {
       // Guru
-      jadwal:guruJadwal, jammengajar:guruJamMengajar, riwayatabsen:guruRiwayat, rekapabsen:guruRekapAbsensi,
+      jadwal:guruJadwal, jammengajar:guruJamMengajar, izinsaya:guruIzinSaya, riwayatabsen:guruRiwayat, rekapabsen:guruRekapAbsensi,
       hafalan:guruIsiHafalan, riwayathafalan:guruRiwayatHafalan, progresshafalan:function(){ renderRekapProgressHafalan({pengampu:STATE.user.nama}); },
       inputnilai:guruInputNilai, riwayatnilai:guruRiwayatNilai, rekapnilai:guruRekapNilaiRapor,
       raporkelassaya:guruRaporKelas,
@@ -4278,6 +4281,7 @@
     var navItems = [
       {key:'jadwal', label:'Jadwal & Absen', icon:'&#128197;'},
       {key:'jammengajar', label:'Jam Mengajar Saya', icon:'&#8987;'},
+      {key:'izinsaya', label:'Izin & Surat Saya', icon:'&#128221;'},
       {key:'riwayatabsen', label:'Riwayat Absensi', icon:'&#128203;'},
       {key:'rekapabsen', label:'Rekap Absensi', icon:'&#128202;'},
       {key:'hafalan', label:'Isi Hafalan', icon:'&#128214;'},
@@ -4294,7 +4298,7 @@
       {key:'profilsaya', label:'Profil Saya', icon:'&#128100;'}
     ];
     var map = {
-      jadwal:guruJadwal, jammengajar:guruJamMengajar, riwayatabsen:guruRiwayat, rekapabsen:guruRekapAbsensi,
+      jadwal:guruJadwal, jammengajar:guruJamMengajar, izinsaya:guruIzinSaya, riwayatabsen:guruRiwayat, rekapabsen:guruRekapAbsensi,
       hafalan:guruIsiHafalan, riwayathafalan:guruRiwayatHafalan, progresshafalan:function(){ renderRekapProgressHafalan({pengampu:STATE.user.nama}); },
       inputnilai:guruInputNilai, riwayatnilai:guruRiwayatNilai, rekapnilai:guruRekapNilaiRapor,
       pelanggaran:guruCatatPelanggaran, santrisaya:guruSantriSaya, profilsaya:guruProfilSaya,
@@ -4810,29 +4814,62 @@
 
   // Widget ringkas untuk halaman Jadwal & Absen (landing page guru) -- supaya
   // guru langsung melihat "sudah X jam bulan ini" tanpa perlu berpindah menu.
+  // Widget rekap jam mengajar guru yang sedang login (halaman Jadwal & Absen).
+  // SELALU tampil -- termasuk saat memuat, saat 0 jam, dan saat gagal -- supaya guru
+  // tidak bingung widgetnya "hilang". Diklik -> tabel riwayat sesi terbuka langsung
+  // di bawahnya (tanpa pindah halaman), diklik lagi -> tertutup.
   function widgetJamMengajarRingkas(containerId){
     var el = document.getElementById(containerId);
     if (!el) return;
     var now = new Date();
+    var NAMA_BULAN = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+    var judul = 'JAM MENGAJAR SAYA &mdash; '+NAMA_BULAN[now.getMonth()]+' '+now.getFullYear();
+    el.innerHTML = '<div class="card" style="border-left:4px solid #0d9488"><div class="muted" style="font-size:12px">'+judul+'</div><p class="muted" style="margin:6px 0 0">Memuat...</p></div>';
+
     api('getRekapJamMengajarGuru', {pengampu: STATE.user.nama, bulan: now.getMonth()+1, tahun: now.getFullYear()}).then(function(res){
-      if (!el || !res.ok || !res.data) { if (el) el.innerHTML = ''; return; }
+      if (!document.body.contains(el)) return;
+      if (!res.ok || !res.data || res.data.ok === false) {
+        el.innerHTML = '<div class="card" style="border-left:4px solid #d97706"><div class="muted" style="font-size:12px">'+judul+'</div>' +
+          '<p style="margin:6px 0 0;font-size:13px;color:#92400e">Rekap jam belum bisa dimuat'+((res && res.error) ? ': '+esc(res.error) : '')+'. Bila berlanjut, minta Admin memastikan Code.gs versi terbaru sudah di-deploy.</p></div>';
+        return;
+      }
       var d = res.data;
-      var namaBulan = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][now.getMonth()];
+      var riwayat = d.riwayat || [];
+      var jmlHari = Object.keys(d.perHari || {}).length;
       el.innerHTML =
-        '<div class="card" style="border-left:4px solid #0d9488;cursor:pointer" id="widgetJamKlik">' +
-          '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">' +
-            '<div><div class="muted" style="font-size:12px">JAM MENGAJAR &mdash; '+namaBulan+' '+now.getFullYear()+'</div>' +
-            '<div style="font-size:26px;font-weight:800;color:#0d9488;line-height:1.2">'+d.totalJam+' <span style="font-size:14px;font-weight:600;color:#64748b">jam</span></div>' +
-            '<div class="muted" style="font-size:12px">dari '+d.jumlahSesi+' sesi mengajar tercatat</div></div>' +
-            '<div style="color:#0d9488;font-size:13px;font-weight:600">Lihat Rincian &rarr;</div>' +
+        '<div class="card" style="border-left:4px solid #0d9488">' +
+          '<div id="wjgKlik" style="cursor:pointer">' +
+            '<div class="muted" style="font-size:12px">'+judul+'</div>' +
+            '<div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;margin-top:4px">' +
+              '<div style="display:flex;gap:22px;flex-wrap:wrap">' +
+                '<div><div style="font-size:28px;font-weight:800;color:#0d9488;line-height:1.1">'+(d.totalJam||0)+'</div><div class="muted" style="font-size:11.5px">jam pelajaran</div></div>' +
+                '<div><div style="font-size:28px;font-weight:800;color:#0f766e;line-height:1.1">'+(d.jumlahSesi||0)+'</div><div class="muted" style="font-size:11.5px">sesi mengajar</div></div>' +
+                '<div><div style="font-size:28px;font-weight:800;color:#0f766e;line-height:1.1">'+jmlHari+'</div><div class="muted" style="font-size:11.5px">hari mengajar</div></div>' +
+              '</div>' +
+              '<div id="wjgLabel" style="color:#0d9488;font-size:13px;font-weight:600">'+(riwayat.length ? 'Lihat Riwayat &#9662;' : '')+'</div>' +
+            '</div>' +
+            '<p class="muted" style="font-size:11.5px;margin:8px 0 0">Terhitung otomatis setiap Anda mengisi absensi mapel atau hafalan halaqoh.</p>' +
           '</div>' +
+          '<div id="wjgTabel" style="display:none;margin-top:10px;overflow-x:auto">' +
+            (riwayat.length
+              ? '<table><tr><th>Tanggal</th><th>Jenis</th><th>Keterangan</th><th>Jam</th></tr>' +
+                riwayat.slice().reverse().map(function(r){
+                  return '<tr><td>'+esc(r.tanggal)+'</td><td>'+esc(r.jenis)+'</td><td>'+esc(r.keterangan)+'</td><td><b>'+r.jam+'</b></td></tr>';
+                }).join('') + '</table>'
+              : '') +
+          '</div>' +
+          (riwayat.length ? '' : '<p class="muted" style="font-size:12.5px;margin:6px 0 0">Belum ada sesi mengajar tercatat bulan ini.</p>') +
         '</div>';
-      var w = document.getElementById('widgetJamKlik');
-      if (w) w.onclick = function(){
-        var nav = document.querySelector('[data-key="jammengajar"]');
-        if (nav) nav.click(); else guruJamMengajar();
+      var klik = document.getElementById('wjgKlik');
+      if (klik && riwayat.length) klik.onclick = function(){
+        var t = document.getElementById('wjgTabel'), lbl = document.getElementById('wjgLabel');
+        var buka = t.style.display === 'none';
+        t.style.display = buka ? 'block' : 'none';
+        lbl.innerHTML = buka ? 'Tutup Riwayat &#9652;' : 'Lihat Riwayat &#9662;';
       };
-    }).catch(function(){ if (el) el.innerHTML = ''; });
+    }).catch(function(){
+      if (document.body.contains(el)) el.innerHTML = '<div class="card" style="border-left:4px solid #d97706"><div class="muted" style="font-size:12px">'+judul+'</div><p style="margin:6px 0 0;font-size:13px;color:#92400e">Gagal memuat rekap jam. Periksa koneksi.</p></div>';
+    });
   }
 
   function guruJamMengajar(){
@@ -4881,10 +4918,53 @@
     muat();
   }
 
+  // ================= IZIN ABSEN SUSULAN (jadwal hari lain) =================
+  // Admin/Mudir bisa membuka jadwal hari lain supaya guru yang berhalangan mengisi
+  // absen di hari jadwalnya tetap bisa mengisinya belakangan. Disimpan di Pengaturan:
+  //   AbsenSusulanAktif : true/false
+  //   AbsenSusulanGuru  : "SEMUA" atau daftar nama guru dipisah "|"
+  //   AbsenSusulanSampai: yyyy-MM-dd (opsional) -- setelah tanggal ini izin otomatis
+  //                       berhenti, supaya tidak terbuka selamanya karena lupa ditutup.
+  function izinAbsenSusulanUntuk(pg, namaGuru){
+    if (!pg) return false;
+    var aktif = pg.AbsenSusulanAktif === true || String(pg.AbsenSusulanAktif).toLowerCase() === 'true';
+    if (!aktif) return false;
+    var sampai = String(pg.AbsenSusulanSampai || '').trim();
+    if (sampai && todayStr() > sampai) return false; // sudah kedaluwarsa
+    var daftar = String(pg.AbsenSusulanGuru || '').trim();
+    if (!daftar || daftar.toUpperCase() === 'SEMUA') return true;
+    var target = normNamaFE(namaGuru);
+    return daftar.split('|').some(function(n){ return normNamaFE(n) === target; });
+  }
+  function normNamaFE(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
+  function normHariFE(h){ return String(h||'').toLowerCase().replace(/[^a-z]/g,''); } // "Jum'at" == "Jumat"
+
+  // Tanggal terakhir (hari ini atau sebelumnya) yang jatuh pada nama hari tertentu --
+  // dipakai sebagai tanggal bawaan form absen susulan.
+  function tanggalTerakhirHari(namaHari){
+    var target = normHariFE(namaHari);
+    var d = new Date();
+    for (var i = 1; i <= 7; i++) {
+      d.setDate(d.getDate() - 1);
+      if (normHariFE(HARI_LIST[d.getDay()]) === target) {
+        return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+      }
+    }
+    return todayStr();
+  }
+
   function guruJadwal(){
     var c = getContentEl();
     c.innerHTML = '<p>Memuat jadwal...</p>';
-    api('getJadwalGuru', {pengampu: STATE.user.nama}).then(function(res){
+    // Pengaturan izin susulan diambil segar (bukan dari sesi login), supaya begitu
+    // Admin/Mudir membuka izin, guru langsung bisa memakainya tanpa perlu login ulang.
+    Promise.all([
+      api('getJadwalGuru', {pengampu: STATE.user.nama}),
+      api('getPengaturanBatch', {keys:['AbsenSusulanAktif','AbsenSusulanGuru','AbsenSusulanSampai']}).catch(function(){ return {ok:false}; })
+    ]).then(function(hasilJ){
+      var res = hasilJ[0];
+      var pgSusulan = (hasilJ[1] && hasilJ[1].ok) ? hasilJ[1].data : null;
+      var bolehSusulan = izinAbsenSusulanUntuk(pgSusulan, STATE.user.nama);
       if (!getContentEl()) return;
       if(!res.ok){ c.innerHTML = errBox(res.error)+'<button id="btnUlangJadwal">Coba Lagi</button>'; var b=document.getElementById('btnUlangJadwal'); if(b) b.onclick=guruJadwal; return; }
 
@@ -4893,13 +4973,15 @@
       var jadwalLain = res.data.filter(function(j){return !j.hariIni;});
 
       if (!res.data.length) {
-        c.innerHTML = '<div class="card">'+
+        c.innerHTML = '<div id="widgetJamMengajarTop"></div><div id="widgetKehadiranSaya"></div><div class="card">'+
           warnBox('Belum ada jadwal terdaftar untuk Anda. Minta Admin melengkapi jadwal di menu Kelola Mata Pelajaran.')+
           '</div>';
+        widgetJamMengajarRingkas('widgetJamMengajarTop'); // jam halaqoh tetap terhitung walau tanpa jadwal mapel
+        widgetKehadiranSaya('widgetKehadiranSaya');
         return;
       }
 
-      var html = '<div id="widgetJamMengajarTop"></div>' +
+      var html = '<div id="widgetJamMengajarTop"></div><div id="widgetKehadiranSaya"></div>' +
         '<div class="card"><h3>&#128197; Jadwal Mengajar</h3>'+
         '<p class="muted">Hari ini: <b>'+hariIni+'</b>. Jadwal hari ini aktif (bisa diisi absen). Jadwal hari lain ditampilkan samar.</p></div>';
 
@@ -4935,8 +5017,14 @@
           perHari[h].push(j);
         });
 
-        html += '<div class="card" style="opacity:0.55;pointer-events:none;user-select:none">'+
-          '<h4 style="color:#94a3b8;margin-top:0">&#128337; Jadwal Hari Lain</h4>';
+        html += bolehSusulan
+          ? ('<div class="card" style="border:2px dashed #d97706">'+
+             '<h4 style="color:#b45309;margin-top:0">&#128337; Jadwal Hari Lain &mdash; Absen Susulan Dibuka</h4>'+
+             '<p class="muted" style="font-size:12.5px;margin-top:-4px">Admin/Mudir membuka absen susulan'+
+             (pgSusulan && pgSusulan.AbsenSusulanSampai ? ' sampai <b>'+esc(pgSusulan.AbsenSusulanSampai)+'</b>' : '')+
+             '. Pilih jadwal yang terlewat, lalu sesuaikan tanggalnya di form absen.</p>')
+          : ('<div class="card" style="opacity:0.55;pointer-events:none;user-select:none">'+
+             '<h4 style="color:#94a3b8;margin-top:0">&#128337; Jadwal Hari Lain</h4>');
 
         urutanHariList.forEach(function(hari){
           var namaHariTampil = hari || '(Hari belum diisi)';
@@ -4946,10 +5034,14 @@
             (hari==='(Hari belum diisi)'?'&#9888;&#65039; ':'')+esc(namaHariTampil)+'</div>';
           list.forEach(function(j){
             var labelJam = j.jamKeList && j.jamKeList.length ? ('Jam ke-'+j.jamKeList.join(' & ')) : '';
-            html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #e2e8f0;font-size:13px">'+
+            // Tombol susulan hanya bila izin aktif DAN jadwalnya punya hari & jam
+            // (tanpa itu tanggal/jam absennya tidak bisa ditentukan dengan benar).
+            var bisaSusulan = bolehSusulan && j.hari && j.jamKeList && j.jamKeList.length;
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px dashed #e2e8f0;font-size:13px">'+
               '<span><b>'+esc(j.mapel)+'</b> &mdash; '+esc(j.kelas)+'</span>'+
-              '<span class="muted">'+esc(labelJam)+'</span>'+
-              '</div>';
+              '<span style="display:flex;align-items:center;gap:8px"><span class="muted">'+esc(labelJam)+'</span>'+
+              (bisaSusulan ? '<button class="small btnIsiSusulan" data-idx="'+res.data.indexOf(j)+'" style="white-space:nowrap;background:#d97706">&#9999;&#65039; Absen Susulan</button>' : '')+
+              '</span></div>';
           });
           html += '</div>';
         });
@@ -4966,11 +5058,19 @@
       c.querySelectorAll('.btnIsiAbsen').forEach(function(btn){
         btn.onclick = function(){ formAbsen(window.__jadwalGuru[Number(btn.dataset.idx)]); };
       });
+      c.querySelectorAll('.btnIsiSusulan').forEach(function(btn){
+        btn.onclick = function(){ formAbsen(window.__jadwalGuru[Number(btn.dataset.idx)], {susulan:true}); };
+      });
       widgetJamMengajarRingkas('widgetJamMengajarTop');
+      widgetKehadiranSaya('widgetKehadiranSaya');
     });
   }
 
-  function formAbsen(j){
+  function formAbsen(j, opts){
+    opts = opts || {};
+    var susulan = !!opts.susulan;
+    // Tanggal bawaan: hari ini, atau (mode susulan) tanggal terakhir hari jadwal itu
+    var tglAwal = opts.tanggal || (susulan ? tanggalTerakhirHari(j.hari) : todayStr());
     var c = getContentEl();
     c.innerHTML = '<p>Memuat...</p>';
     Promise.all([
@@ -4978,7 +5078,7 @@
       api('getRPPList', {mapel: j.mapel, kelas: j.kelas}),
       api('getModulAjarList', {mapel: j.mapel, kelas: j.kelas}),
       api('getSOPList', {kategori: 'Mengajar'}),
-      api('getJurnalHariIni', {tanggal: todayStr(), pengampu: STATE.user.nama})
+      api('getJurnalHariIni', {tanggal: tglAwal, pengampu: STATE.user.nama})
     ]).then(function(hasil){
       var resSantri = hasil[0], resRPP = hasil[1], resMA = hasil[2], resSOP = hasil[3], resJurnal = hasil[4];
       if(!resSantri.ok){ c.innerHTML = errBox(resSantri.error) + '<button id="btnBalikJadwal">Kembali</button>'; document.getElementById('btnBalikJadwal').onclick = guruJadwal; return; }
@@ -5019,8 +5119,11 @@
       var labelJam = j.jamKeList.length>1 ? ('Jam ke-'+j.jamKeList.join(' & ')) : ('Jam ke-'+j.jamKeList[0]);
       var htmlAbsen = '<div class="card"><h3>Absensi '+esc(j.mapel)+' - '+esc(j.kelas)+' ('+labelJam+')</h3>'+
         (j.jamKeList.length>1 ? warnBox('Tercatat untuk '+j.jamKeList.length+' jam pelajaran sekaligus.') : '')+
-        '<label class="muted">Tanggal</label><input type="date" id="absenTanggal" value="'+todayStr()+'" '+(STATE.pengaturan.IzinkanGantiTanggal?'':'disabled')+ '>'+
-        (STATE.pengaturan.IzinkanGantiTanggal ? '' : '<p class="faded">Tanggal terkunci ke hari ini.</p>')+
+        (susulan
+          ? warnBox('Absen susulan untuk jadwal hari <b>'+esc(j.hari)+'</b>. Pilih tanggal saat jadwal itu terlewat &mdash; tanggal harus jatuh pada hari '+esc(j.hari)+' dan tidak boleh melewati hari ini.')+
+            '<label class="muted">Tanggal</label><input type="date" id="absenTanggal" value="'+tglAwal+'" max="'+todayStr()+'">'
+          : '<label class="muted">Tanggal</label><input type="date" id="absenTanggal" value="'+todayStr()+'" max="'+todayStr()+'" '+(STATE.pengaturan.IzinkanGantiTanggal?'':'disabled')+ '>'+
+            (STATE.pengaturan.IzinkanGantiTanggal ? '' : '<p class="faded">Tanggal terkunci ke hari ini.</p>'))+
         '<div id="formAbsenSantri">';
       resSantri.data.forEach(function(s){
         htmlAbsen += '<div class="santriRowAbsen" data-nisn="'+esc(s.nisn)+'" data-nama="'+esc(s.nama)+'">'+
@@ -5080,8 +5183,17 @@
             sikap4: isHadir ? Number(sikapEls[3].value) : ''
           });
         });
-        var btn=document.getElementById('btnSimpanAbsen'); btn.disabled=true; btn.innerText='Menyimpan...';
         var tanggalDipakai=(document.getElementById('absenTanggal').value)||todayStr();
+        if (tanggalDipakai > todayStr()) { document.getElementById('pesanSimpanAbsen').innerHTML = errBox('Tanggal '+tanggalDipakai+' belum terjadi. Absensi hanya bisa diisi untuk hari ini atau hari yang sudah lewat.'); return; }
+        if (susulan) {
+          // Cegah salah tanggal: absen susulan harus pada hari jadwalnya & tidak di masa depan
+          if (tanggalDipakai > todayStr()) { document.getElementById('pesanSimpanAbsen').innerHTML = errBox('Tanggal absen susulan tidak boleh melewati hari ini.'); return; }
+          if (normHariFE(hariDariTanggal(tanggalDipakai)) !== normHariFE(j.hari)) {
+            document.getElementById('pesanSimpanAbsen').innerHTML = errBox('Tanggal '+tanggalDipakai+' jatuh pada hari '+hariDariTanggal(tanggalDipakai)+', sedangkan jadwal ini hari '+j.hari+'. Pilih tanggal yang sesuai.');
+            return;
+          }
+        }
+        var btn=document.getElementById('btnSimpanAbsen'); btn.disabled=true; btn.innerText='Menyimpan...';
         api('submitAbsensi',{tanggal:tanggalDipakai, hari:hariDariTanggal(tanggalDipakai)||j.hari, jamKeList:j.jamKeList, mapel:j.mapel, kelas:j.kelas, pengampu:STATE.user.nama, items:items})
           .then(function(res2){
             if(!res2.ok){ document.getElementById('pesanSimpanAbsen').innerHTML=errBox(res2.error); btn.disabled=false; btn.innerText='Simpan Absensi'; return; }
@@ -5387,7 +5499,7 @@
           daftarTA.map(function(t){return '<option value="'+esc(t.id)+'" '+(t.id===taDefault?'selected':'')+'>'+esc(t.nama)+(t.aktif?' (aktif)':'')+'</option>';}).join('') + '</select>') : '') +
         '<div id="'+containerId+'_rekapAbsensi">Memuat...</div></div>' +
         '<div class="card"><h3>Rekap Kehadiran Halaqoh</h3>' +
-        warnBox('Dihitung dari jenis hafalan yang dicatat pengampu: Sabaq/Sabqi/Manzil/Murojaah/Tahsin/Tidak Setor = Hadir. Izin/Sakit/Ghaib sesuai keterangan itu.') +
+        warnBox('Dihitung dari jenis hafalan yang dicatat pengampu: Sabaq/Sabqi/Manzil/Murojaah/Tahsin/Tasmi\'/Tidak Setor = Hadir. Izin/Sakit/Ghaib sesuai keterangan itu.') +
         '<div id="'+containerId+'_rekapHalaqoh">Memuat...</div></div>' +
         kartuProgresHafalanHtml +
         '<div class="card"><h3>Riwayat Catatan Hafalan</h3>' +
@@ -5539,7 +5651,7 @@
   function guruIsiHafalan(){
     var c = getContentEl();
     c.innerHTML = '<div class="card"><h3>Isi Hafalan</h3>' +
-      '<div class="grid2"><div><label>Tanggal</label><input type="date" id="hfTanggal" value="'+todayStr()+'" '+(STATE.pengaturan.IzinkanGantiTanggal?'':'disabled')+'></div>' +
+      '<div class="grid2"><div><label>Tanggal</label><input type="date" id="hfTanggal" value="'+todayStr()+'" max="'+todayStr()+'" '+(STATE.pengaturan.IzinkanGantiTanggal?'':'disabled')+'></div>' +
       '<div><label>Waktu Halaqoh</label><select id="hfWaktu">' + WAKTU_HALAQOH.map(function(w){return '<option value="'+w+'">'+w+'</option>';}).join('') + '</select></div></div>' +
       '<label>Pengampu</label><input value="'+esc(STATE.user.nama)+'" disabled>' +
       (STATE.pengaturan.IzinkanGantiTanggal ? '' : '<p class="faded">Tanggal terkunci ke hari ini. Admin/Mudir bisa mengaktifkan izin ganti tanggal di menu Tampilan/Logo.</p>') +
@@ -5662,7 +5774,7 @@
           '<p class="faded hintHafalan">Memuat riwayat...</p>' +
           '<label class="muted">Jenis Hafalan</label>' +
           '<select class="jenisSelect">' + JENIS_HAFALAN_ALL.map(function(j){return '<option value="'+j+'">'+j+'</option>';}).join('') + '</select>' +
-          // MODE INPUT SELECTOR — hanya muncul untuk jenis Sabaq/Sabqi/Manzil/Murojaah/Tahsin
+          // MODE INPUT SELECTOR — hanya muncul untuk jenis Sabaq/Sabqi/Manzil/Murojaah/Tahsin/Tasmi'
           '<div class="modeInputWrap">' +
           '<label class="muted">Mode Input</label>' +
           '<select class="modeInput" style="width:100%">' +
@@ -6034,6 +6146,8 @@
           items.push(it);
         });
         if (adaError) { document.getElementById('pesanSimpanHafalan').innerHTML = errBox(pesanError || 'Ada isian yang salah. Periksa kembali sebelum menyimpan.'); return; }
+        var tglHf = document.getElementById('hfTanggal').value || todayStr();
+        if (tglHf > todayStr()) { document.getElementById('pesanSimpanHafalan').innerHTML = errBox('Tanggal '+tglHf+' belum terjadi. Setoran hanya bisa dicatat untuk hari ini atau hari yang sudah lewat.'); return; }
         var btn = document.getElementById('btnSimpanHafalan'); btn.disabled = true; btn.innerText = 'Menyimpan...';
         api('submitHafalan', {tanggal: document.getElementById('hfTanggal').value, waktu: waktu, halaqoh: namaHalaqoh, pengampu: STATE.user.nama, items: items})
           .then(function(res2){
@@ -11198,6 +11312,8 @@
       {key:'spreadsheet', label:'File Spreadsheet', icon:'&#128196;'},
       {key:'tampilan', label:'Tampilan / Logo', icon:'&#127912;'},
       {key:'pengaturanwali', label:'Pengaturan Akun Wali', icon:'&#128100;'},
+      {key:'kehadiranguru', label:'Kehadiran Guru & SP', icon:'&#128232;'},
+      {key:'absensusulan', label:'Izin Absen Susulan Guru', icon:'&#128197;'},
       {key:'diagnostikdata', label:'Diagnostik Ukuran Data', icon:'&#128202;'}
     ];
     var map = {ringkasan:adminRingkasan, tahun:adminTahunAjaran, rombel:adminRombel, halaqoh:adminHalaqoh, santri:adminDataSantri,
@@ -11212,7 +11328,7 @@
       progresshafalan: function(){ renderRekapProgressHafalan(''); },
       kelolatugas: adminKelolaTugasPembina,
       rekaptugas: adminRekapTugasPembina,
-      pengaturanwali: adminPengaturanWali, diagnostikdata: adminDiagnostikData,
+      pengaturanwali: adminPengaturanWali, diagnostikdata: adminDiagnostikData, absensusulan: adminIzinAbsenSusulan, kehadiranguru: function(){ adminKehadiranGuru(); },
       tampilan:adminTampilan};
     activeKey = activeKey && map[activeKey] ? activeKey : 'ringkasan';
     renderSidebarShell({title:'Dashboard '+STATE.user.level, navItems:navItems, activeKey:activeKey, contentId:'da-content',
@@ -11311,7 +11427,8 @@
   function adminRingkasan(){
     var c = getContentEl();
     // Buat dua div terpisah: widget status (async cepat) dan ringkasan utama (async lambat)
-    c.innerHTML = '<div id="adminStatusPondok"></div><div id="adminRingkasanUtama"><p class="muted">Memuat ringkasan...</p></div><div id="adminJamMengajar"></div>';
+    c.innerHTML = '<div id="adminNotifKehadiranGuru"></div><div id="adminStatusPondok"></div><div id="adminRingkasanUtama"><p class="muted">Memuat ringkasan...</p></div><div id="adminJamMengajar"></div>';
+    widgetNotifKehadiranGuru('adminNotifKehadiranGuru'); // izin menunggu & draf SP
     widgetStatusPondok('adminStatusPondok', ''); // load paralel, tidak saling timpa
     widgetJamMengajarSemuaGuru('adminJamMengajar'); // rekap jam mengajar semua guru
     Promise.all([api('getDashboardAdmin', {}), api('getStatusJurnalHariIni', {})]).then(function(hasil){
@@ -12337,6 +12454,654 @@
   // atau ubah apa pun. Tujuannya semata memantau pertumbuhan data dari waktu ke waktu,
   // supaya kalau suatu saat ada yang menumpuk tidak wajar (misal karena bug), Admin
   // melihatnya lebih awal -- jauh sebelum itu terasa sebagai aplikasi melambat.
+  // ---------------- IZIN ABSEN SUSULAN (Admin/Mudir) ----------------
+  // Membuka jadwal hari lain di dashboard guru, supaya guru yang berhalangan mengisi
+  // absen pada hari jadwalnya bisa mengisinya belakangan. Bisa untuk semua guru atau
+  // guru tertentu saja, dan bisa diberi batas waktu agar tidak terbuka selamanya.
+  function adminIzinAbsenSusulan(){
+    var c = getContentEl();
+    c.innerHTML = '<div class="card"><p class="muted">Memuat...</p></div>';
+    Promise.all([
+      api('getPengaturanBatch', {keys:['AbsenSusulanAktif','AbsenSusulanGuru','AbsenSusulanSampai']}),
+      api('getMasterData', {sheet:'Guru'})
+    ]).then(function(hasil){
+      var pg = hasil[0].ok ? hasil[0].data : {};
+      var daftarGuru = (hasil[1].ok && hasil[1].data && hasil[1].data.data)
+        ? hasil[1].data.data.map(function(g){ return String(g.Nama||'').trim(); }).filter(Boolean).sort() : [];
+      var aktif = pg.AbsenSusulanAktif === true || String(pg.AbsenSusulanAktif).toLowerCase() === 'true';
+      var guruStr = String(pg.AbsenSusulanGuru || 'SEMUA').trim() || 'SEMUA';
+      var semua = guruStr.toUpperCase() === 'SEMUA';
+      var terpilih = semua ? [] : guruStr.split('|').map(function(n){ return n.trim(); });
+      var sampai = String(pg.AbsenSusulanSampai || '');
+      var kedaluwarsa = aktif && sampai && todayStr() > sampai;
+
+      c.innerHTML = '<div class="card"><h3>&#128197; Izin Absen Susulan Guru</h3>' +
+        warnBox('Secara bawaan guru hanya bisa mengisi absen untuk jadwal <b>hari ini</b>. Aktifkan ini untuk membuka jadwal hari lain, supaya guru yang berhalangan mengisi absen di hari jadwalnya bisa mengisinya belakangan. Guru tetap wajib memilih tanggal yang sesuai dengan hari jadwalnya.') +
+        (kedaluwarsa ? '<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:9px 12px;font-size:13px;margin-bottom:10px">&#9888;&#65039; Izin ini sudah melewati batas waktu ('+esc(sampai)+'), jadi saat ini <b>tidak berlaku</b>. Ubah tanggalnya bila ingin membukanya lagi.</div>' : '') +
+        '<label style="display:flex;align-items:center;gap:8px;font-weight:700;margin:6px 0 12px"><input type="checkbox" id="asAktif" style="width:auto"'+(aktif?' checked':'')+'> Buka absen susulan (jadwal hari lain)</label>' +
+        '<div id="asDetail">' +
+          '<label>Berlaku untuk</label>' +
+          '<select id="asCakupan"><option value="SEMUA"'+(semua?' selected':'')+'>Semua guru</option><option value="PILIH"'+(!semua?' selected':'')+'>Guru tertentu saja</option></select>' +
+          '<div id="asWrapGuru" style="display:'+(semua?'none':'block')+';margin-top:8px">' +
+            (daftarGuru.length
+              ? '<div style="display:flex;gap:6px;margin-bottom:6px"><button class="small secondary" id="asPilihSemua" type="button">Centang semua</button><button class="small secondary" id="asKosongkan" type="button">Kosongkan</button></div>' +
+                '<div style="max-height:260px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;padding:8px">' +
+                daftarGuru.map(function(n,i){
+                  var cek = terpilih.some(function(t){ return normNamaFE(t) === normNamaFE(n); });
+                  return '<label style="display:flex;align-items:center;gap:8px;padding:3px 0;font-weight:400"><input type="checkbox" class="asGuru" value="'+esc(n)+'" style="width:auto"'+(cek?' checked':'')+'> '+esc(n)+'</label>';
+                }).join('') + '</div>'
+              : '<p class="muted">Data guru tidak ditemukan.</p>') +
+          '</div>' +
+          '<label style="margin-top:12px">Berlaku sampai tanggal (opsional)</label>' +
+          '<input type="date" id="asSampai" value="'+esc(sampai)+'">' +
+          '<p class="muted" style="font-size:12px;margin-top:2px">Disarankan diisi. Setelah tanggal ini izin otomatis tertutup, jadi tidak terbuka selamanya kalau lupa dimatikan. Kosongkan = berlaku sampai dimatikan manual.</p>' +
+        '</div>' +
+        '<button id="btnSimpanSusulan" style="margin-top:12px">Simpan</button><div id="pesanSusulan"></div></div>';
+
+      function sinkronTampilan(){
+        document.getElementById('asDetail').style.opacity = document.getElementById('asAktif').checked ? '1' : '.5';
+        document.getElementById('asWrapGuru').style.display = document.getElementById('asCakupan').value === 'PILIH' ? 'block' : 'none';
+      }
+      document.getElementById('asAktif').onchange = sinkronTampilan;
+      document.getElementById('asCakupan').onchange = sinkronTampilan;
+      sinkronTampilan();
+      var bSemua = document.getElementById('asPilihSemua');
+      if (bSemua) bSemua.onclick = function(){ c.querySelectorAll('.asGuru').forEach(function(x){ x.checked = true; }); };
+      var bKosong = document.getElementById('asKosongkan');
+      if (bKosong) bKosong.onclick = function(){ c.querySelectorAll('.asGuru').forEach(function(x){ x.checked = false; }); };
+
+      document.getElementById('btnSimpanSusulan').onclick = function(){
+        var elP = document.getElementById('pesanSusulan');
+        var on = document.getElementById('asAktif').checked;
+        var cakupan = document.getElementById('asCakupan').value;
+        var nilaiGuru = 'SEMUA';
+        if (cakupan === 'PILIH') {
+          var dipilih = Array.prototype.map.call(c.querySelectorAll('.asGuru:checked'), function(x){ return x.value; });
+          if (on && !dipilih.length) { elP.innerHTML = errBox('Centang minimal satu guru, atau pilih "Semua guru".'); return; }
+          nilaiGuru = dipilih.join('|');
+        }
+        var tglSampai = document.getElementById('asSampai').value;
+        if (on && tglSampai && tglSampai < todayStr()) { elP.innerHTML = errBox('Tanggal "berlaku sampai" sudah lewat. Pilih hari ini atau setelahnya.'); return; }
+        var btn = this;
+        loadingBtn(btn, 'Menyimpan...');
+        api('simpanPengaturanBatch', {data:{
+          AbsenSusulanAktif: on ? 'true' : 'false',
+          AbsenSusulanGuru: nilaiGuru,
+          AbsenSusulanSampai: tglSampai || ''
+        }}).then(function(r){
+          resetBtn(btn, 'Simpan');
+          if (!r.ok) { elP.innerHTML = errBox(r.error); return; }
+          elP.innerHTML = '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;font-size:13px;color:#166534;margin-top:8px">&#9989; ' +
+            (on ? ('Absen susulan <b>dibuka</b> untuk ' + (cakupan==='PILIH' ? nilaiGuru.split('|').length+' guru' : 'semua guru') + (tglSampai ? ' sampai '+esc(tglSampai) : '') + '. Guru cukup membuka ulang menu Jadwal &amp; Absen.')
+                : 'Absen susulan <b>ditutup</b>. Guru kembali hanya bisa mengisi absen jadwal hari ini.') + '</div>';
+        }).catch(function(){ resetBtn(btn, 'Simpan'); elP.innerHTML = errBox('Gagal menyimpan. Periksa koneksi lalu coba lagi.'); });
+      };
+    }).catch(function(){
+      c.innerHTML = '<div class="card">'+errBox('Gagal memuat data. Periksa koneksi lalu coba lagi.')+'</div>';
+    });
+  }
+
+  // ======================================================================
+  // KEHADIRAN MENGAJAR GURU, IZIN, DAN SURAT PERINGATAN (tampilan)
+  // Mesin perhitungannya ada di Code.gs (hitungKehadiranGuruAtur_). Di sini hanya
+  // tampilan: widget & halaman izin untuk guru, halaman kelola untuk Admin/Mudir,
+  // dan surat SP yang bisa dibaca/dicetak.
+  // ======================================================================
+  var SP_NAMA_BULAN = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+  var SP_ALASAN_IZIN = ['Sakit','Keperluan keluarga','Tugas dari pondok','Sudah mengajar, lupa mencatat','Lainnya'];
+  var SP_URUTAN = ['','PERTAMA','KEDUA','KETIGA'];
+
+  function fmtTglIndoSP(t){
+    if (!t) return '-';
+    var p = String(t).slice(0,10).split('-').map(Number);
+    if (p.length < 3 || !p[0]) return esc(t);
+    var d = new Date(p[0], p[1]-1, p[2]);
+    return HARI_LIST[d.getDay()] + ', ' + p[2] + ' ' + SP_NAMA_BULAN[p[1]-1] + ' ' + p[0];
+  }
+  function labelBulanSP(bulanStr){
+    var p = String(bulanStr||'').split('-').map(Number);
+    return p[1] ? (SP_NAMA_BULAN[p[1]-1] + ' ' + p[0]) : esc(bulanStr);
+  }
+  function badgeStatusSesi(st){
+    var peta = {
+      Hadir:['#dcfce7','#166534','Hadir'], Digantikan:['#e0e7ff','#3730a3','Digantikan'],
+      Izin:['#dbeafe','#1e40af','Izin'], MenungguIzin:['#fef9c3','#854d0e','Izin diproses'],
+      BelumTercatat:['#ffedd5','#9a3412','Belum tercatat'], TMTI:['#fee2e2','#991b1b','Tanpa izin'],
+      Libur:['#f1f5f9','#475569','Libur']
+    };
+    var w = peta[st] || ['#f1f5f9','#475569',st];
+    return '<span style="background:'+w[0]+';color:'+w[1]+';font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap">'+w[2]+'</span>';
+  }
+
+  // ---------- Surat SP (dipakai guru, admin, dan cetak) ----------
+  function htmlSuratSP(sp){
+    var pg = STATE.pengaturan || {};
+    var logo = pg.LogoURL || pg.LogoDataUriDefault || '';
+    var level = Number(sp.level) || 1;
+    var masa = Number(pg.SPMasaBerlakuBulan) || 3;
+    var batasKlar = Number(pg.SPBatasKlarifikasi) || 3;
+    var tglSurat = sp.diterbitkanPada || todayStr();
+    var berlaku = sp.berlakuSampai || '';
+    if (!berlaku) { var q = todayStr().split('-').map(Number); var dB = new Date(q[0], q[1]-1+masa, q[2]); berlaku = dB.getFullYear()+'-'+String(dB.getMonth()+1).padStart(2,'0')+'-'+String(dB.getDate()).padStart(2,'0'); }
+    var rincian = (sp.rincian || []).map(function(r, i){
+      return '<tr><td style="text-align:center">'+(i+1)+'</td><td>'+fmtTglIndoSP(r.tanggal)+'</td><td>'+esc(r.jenis)+'</td><td>'+esc(r.nama)+'</td></tr>';
+    }).join('');
+    var lanjut = level >= 3
+      ? 'akan diambil tindakan lebih lanjut sesuai ketentuan yang berlaku di '+esc(pg.NamaPesantren||'pondok')
+      : 'akan diberikan Surat Peringatan '+SP_URUTAN[level+1].charAt(0)+SP_URUTAN[level+1].slice(1).toLowerCase()+' (SP-'+(level+1)+')';
+    return '<div class="surat-sp" style="font-family:\'Times New Roman\',serif;color:#111;font-size:14.5px;line-height:1.6;background:#fff;padding:26px 30px;max-width:720px;margin:0 auto">' +
+      '<div style="display:flex;align-items:center;gap:16px;border-bottom:3px double #111;padding-bottom:10px;margin-bottom:14px">' +
+        (logo ? '<img src="'+esc(logo)+'" style="width:70px;height:70px;object-fit:contain">' : '') +
+        '<div style="flex:1;text-align:center"><div style="font-size:19px;font-weight:700;text-transform:uppercase">'+esc(pg.NamaPesantren||'Pondok Pesantren')+'</div>' +
+        (pg.AlamatPesantren ? '<div style="font-size:12.5px">'+esc(pg.AlamatPesantren)+'</div>' : '') + '</div>' +
+      '</div>' +
+      '<div style="text-align:center;margin-bottom:12px"><div style="font-weight:700;text-decoration:underline;font-size:16px">SURAT PERINGATAN '+SP_URUTAN[level]+' (SP-'+level+')</div>' +
+        '<div>Nomor: '+(sp.nomor ? esc(sp.nomor) : '<i>(diberikan saat diterbitkan)</i>')+'</div></div>' +
+      '<p>Yang bertanda tangan di bawah ini, '+esc(pg.SPJabatan||'Mudir')+' '+esc(pg.NamaPesantren||'Pondok Pesantren')+', dengan ini memberikan Surat Peringatan '+SP_URUTAN[level].charAt(0)+SP_URUTAN[level].slice(1).toLowerCase()+' kepada:</p>' +
+      '<table style="margin:4px 0 10px 24px;border:none"><tr><td style="border:none;padding:1px 10px 1px 0">Nama</td><td style="border:none;padding:1px 0">: <b>'+esc(sp.guru)+'</b></td></tr>' +
+        '<tr><td style="border:none;padding:1px 10px 1px 0">Jabatan</td><td style="border:none;padding:1px 0">: Tenaga Pendidik / Pengajar</td></tr></table>' +
+      '<p>Berdasarkan rekap kehadiran mengajar bulan <b>'+labelBulanSP(sp.bulan)+'</b>, yang bersangkutan tercatat <b>tidak hadir mengajar tanpa izin sebanyak '+(sp.jumlahTMTI||(sp.rincian||[]).length)+' sesi</b>, dengan rincian:</p>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:13.5px;margin-bottom:10px" border="1" cellpadding="5"><tr style="background:#f1f5f9"><th>No</th><th>Hari, Tanggal</th><th>Jenis</th><th>Sesi</th></tr>'+rincian+'</table>' +
+      '<p>Ketidakhadiran tersebut tidak disertai izin maupun klarifikasi dalam batas waktu yang ditentukan ('+batasKlar+' hari), sehingga tidak sesuai dengan ketentuan kehadiran tenaga pendidik.</p>' +
+      '<p>Surat peringatan ini berlaku selama '+masa+' bulan, sampai dengan <b>'+fmtTglIndoSP(berlaku)+'</b>. Apabila selama masa berlaku surat ini yang bersangkutan kembali melakukan pelanggaran serupa, '+lanjut+'.</p>' +
+      (sp.catatan && !/^Otomatis|^Dibatalkan/.test(sp.catatan) ? '<p><i>Catatan: '+esc(sp.catatan)+'</i></p>' : '') +
+      '<p>Demikian surat peringatan ini disampaikan agar menjadi perhatian dan perbaikan ke depan. Semoga Allah memudahkan kita dalam menunaikan amanah.</p>' +
+      '<div style="display:flex;justify-content:flex-end;margin-top:22px"><div style="text-align:center;min-width:230px">' +
+        '<div>'+esc(pg.SPKotaSurat||'Poso')+', '+fmtTglIndoSP(tglSurat).replace(/^[^,]+, /,'')+'</div>' +
+        '<div>'+esc(pg.SPJabatan||'Mudir')+'</div><div style="height:64px"></div>' +
+        '<div style="font-weight:700;text-decoration:underline">'+(pg.SPPenandatangan ? esc(pg.SPPenandatangan) : '(................................)')+'</div>' +
+      '</div></div>' +
+      (sp.dibacaPada ? '<p style="font-size:12px;color:#475569;margin-top:18px;border-top:1px dashed #cbd5e1;padding-top:6px">Telah diterima dan dibaca oleh yang bersangkutan pada '+esc(sp.dibacaPada)+'.</p>' : '') +
+      '</div>';
+  }
+
+  function cetakSuratSP(sp){
+    var w = window.open('', '_blank');
+    if (!w) { alert('Izinkan pop-up untuk mencetak/mengunduh surat.'); return; }
+    w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Surat Peringatan '+esc(sp.guru)+'</title>' +
+      '<style>body{margin:0;padding:20px;background:#fff}td,th{border-color:#555}@media print{body{padding:0}}</style></head><body>' +
+      htmlSuratSP(sp) + '<script>window.onload=function(){window.print();}<\/script></body></html>');
+    w.document.close();
+  }
+
+  // Tampilkan surat di layar. opts.untukGuru -> ada tombol "Saya telah membaca".
+  function bukaSuratSP(sp, opts){
+    opts = opts || {};
+    var wrap = document.createElement('div');
+    wrap.className = 'overlay';
+    wrap.innerHTML = '<div class="modal" style="max-width:780px;width:96%;max-height:92vh;overflow:auto;padding:12px">' +
+      '<div style="border:1px solid #e2e8f0;border-radius:8px;overflow:auto">'+htmlSuratSP(sp)+'</div>' +
+      '<div id="spAksiStatus" style="margin-top:8px"></div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">' +
+        (opts.untukGuru && !sp.dibacaPada ? '<button id="spBtnBaca">&#9989; Saya telah membaca surat ini</button>' : '') +
+        '<button class="secondary" id="spBtnCetak">&#128424; Cetak / Unduh PDF</button>' +
+        '<button class="secondary" id="spBtnTutup">Tutup</button>' +
+      '</div></div>';
+    root.appendChild(wrap);
+    wrap.querySelector('#spBtnTutup').onclick = function(){ wrap.remove(); };
+    wrap.querySelector('#spBtnCetak').onclick = function(){ cetakSuratSP(sp); };
+    var bBaca = wrap.querySelector('#spBtnBaca');
+    if (bBaca) bBaca.onclick = function(){
+      loadingBtn(bBaca, 'Menyimpan...');
+      api('tandaiSPDibaca', {id: sp.id, guru: STATE.user.nama}).then(function(r){
+        if (!r.ok) { resetBtn(bBaca, '&#9989; Saya telah membaca surat ini'); wrap.querySelector('#spAksiStatus').innerHTML = errBox(r.error); return; }
+        sp.dibacaPada = r.dibacaPada;
+        bBaca.remove();
+        wrap.querySelector('#spAksiStatus').innerHTML = '<p style="color:#166534;font-weight:600;margin:0">&#9989; Tercatat telah dibaca pada '+esc(r.dibacaPada)+'.</p>';
+        if (opts.setelahDibaca) opts.setelahDibaca();
+      }).catch(function(){ resetBtn(bBaca, '&#9989; Saya telah membaca surat ini'); });
+    };
+  }
+
+  // ---------- Form ajukan izin (dipakai widget & halaman guru) ----------
+  function formAjukanIzinGuru(tanggalAwal, setelahBerhasil){
+    var fields =
+      '<label>Tanggal tidak masuk</label><input type="date" id="izTanggal" value="'+esc(tanggalAwal||todayStr())+'">' +
+      '<label>Alasan</label><select id="izAlasan">'+SP_ALASAN_IZIN.map(function(a){ return '<option>'+esc(a)+'</option>'; }).join('')+'</select>' +
+      '<p class="muted" style="font-size:12px;margin:2px 0 8px">Pilih <b>"Sudah mengajar, lupa mencatat"</b> bila Anda sebenarnya hadir. Untuk jadwal mapel, lebih cepat langsung isi absen susulan.</p>' +
+      '<label>Keterangan</label><textarea id="izKet" rows="3" style="width:100%;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-family:inherit" placeholder="Jelaskan singkat, mis. sesi apa yang terlewat"></textarea>' +
+      '<label>Bukti (opsional, mis. surat dokter)</label><input type="file" id="izBukti" accept="image/*"><div id="izBuktiStatus" class="muted" style="font-size:12px"></div>';
+    var buktiUrl = '', sedangUnggah = false;
+    var modal = openModal('Ajukan Izin Tidak Masuk', fields, function(m){
+      if (sedangUnggah) { alert('Bukti masih diunggah, tunggu sebentar.'); return false; }
+      var tgl = m.querySelector('#izTanggal').value;
+      if (!tgl) { alert('Pilih tanggalnya.'); return false; }
+      return api('ajukanIzinGuru', {guru: STATE.user.nama, tanggal: tgl, alasan: m.querySelector('#izAlasan').value,
+        keterangan: m.querySelector('#izKet').value.trim(), buktiUrl: buktiUrl}).then(function(r){
+        if (!r.ok) { alert(r.error); throw new Error(r.error); }
+        alert('Pengajuan izin terkirim. Menunggu persetujuan Mudir/Admin.');
+        if (setelahBerhasil) setelahBerhasil();
+      });
+    });
+    modal.querySelector('#izBukti').onchange = function(e){
+      var f = e.target.files[0]; if (!f) return;
+      var st = modal.querySelector('#izBuktiStatus');
+      sedangUnggah = true; st.textContent = 'Mengunggah bukti...';
+      resizeImageFile(f, 1200, 0.85).then(function(h){
+        return api('uploadSlideImage', {base64: h.base64, mimeType: h.mimeType, fileName: f.name});
+      }).then(function(r){
+        sedangUnggah = false;
+        if (r && r.ok) { buktiUrl = r.url; st.innerHTML = '<span style="color:#166534">&#9989; Bukti terunggah.</span>'; }
+        else st.innerHTML = '<span style="color:#dc2626">Gagal mengunggah bukti. Izin tetap bisa dikirim tanpa bukti.</span>';
+      }).catch(function(){ sedangUnggah = false; st.innerHTML = '<span style="color:#dc2626">Gagal mengunggah bukti.</span>'; });
+    };
+  }
+
+  // ---------- Widget guru (halaman Jadwal & Absen) ----------
+  function widgetKehadiranSaya(containerId){
+    var el = document.getElementById(containerId);
+    if (!el) return;
+    api('getKehadiranSaya', {guru: STATE.user.nama}).then(function(res){
+      if (!document.body.contains(el)) return;
+      if (!res.ok) { el.innerHTML = ''; return; }
+      var spBelumDibaca = (res.sp||[]).filter(function(s){ return !s.dibacaPada; });
+      if (!res.aktif && !spBelumDibaca.length) { el.innerHTML = ''; return; }
+      var html = '';
+
+      spBelumDibaca.forEach(function(s, i){
+        html += '<div class="card" style="border:2px solid #dc2626;background:#fef2f2">' +
+          '<b style="color:#991b1b">&#128232; Anda menerima Surat Peringatan (SP-'+s.level+')</b>' +
+          '<p style="margin:4px 0 8px;font-size:13px;color:#7f1d1d">Terkait kehadiran mengajar bulan '+labelBulanSP(s.bulan)+'. Mohon dibaca dan dikonfirmasi.</p>' +
+          '<button class="small spBacaWidget" data-i="'+i+'" style="background:#dc2626">Baca Surat</button></div>';
+      });
+
+      if (res.aktif) {
+        var r = res.ringkas || {};
+        if (res.teguran) {
+          html += '<div class="card" style="border-left:4px solid #d97706;background:#fffbeb">' +
+            '<b style="color:#92400e">&#9888;&#65039; Teguran</b><p style="margin:4px 0 0;font-size:13px;color:#78350f">Bulan ini tercatat <b>'+r.TMTI+' sesi tidak masuk tanpa izin</b>. Bila mencapai '+res.cfg.sp1+' sesi, pondok akan menerbitkan Surat Peringatan (SP-1).</p></div>';
+        }
+        var perlu = res.perluKlarifikasi || [];
+        html += '<div class="card" style="border-left:4px solid #0d9488">' +
+          '<div class="muted" style="font-size:12px">KEHADIRAN MENGAJAR &mdash; '+SP_NAMA_BULAN[new Date().getMonth()]+'</div>' +
+          '<div style="display:flex;gap:20px;flex-wrap:wrap;margin:4px 0 6px">' +
+            '<div><div style="font-size:24px;font-weight:800;color:'+(res.persen>=90?'#16a34a':res.persen>=75?'#d97706':'#dc2626')+'">'+res.persen+'%</div><div class="muted" style="font-size:11px">kehadiran</div></div>' +
+            '<div><div style="font-size:24px;font-weight:800;color:#0f766e">'+(r.Hadir||0)+'</div><div class="muted" style="font-size:11px">hadir</div></div>' +
+            '<div><div style="font-size:24px;font-weight:800;color:#1e40af">'+((r.Izin||0)+(r.MenungguIzin||0))+'</div><div class="muted" style="font-size:11px">izin</div></div>' +
+            '<div><div style="font-size:24px;font-weight:800;color:'+((r.TMTI||0)?'#dc2626':'#94a3b8')+'">'+(r.TMTI||0)+'</div><div class="muted" style="font-size:11px">tanpa izin</div></div>' +
+          '</div>';
+        if (perlu.length) {
+          html += '<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px;margin-top:6px">' +
+            '<b style="color:#9a3412;font-size:13.5px">&#128276; '+perlu.length+' sesi belum tercatat &mdash; mohon diklarifikasi</b>' +
+            '<p class="muted" style="font-size:12px;margin:2px 0 6px">Isi absen susulan bila Anda mengajar tapi lupa mencatat, atau ajukan izin. Bila tidak diklarifikasi sampai batas waktu, sesi dihitung <b>tidak masuk tanpa izin</b>.</p>';
+          perlu.forEach(function(s, i){
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-top:1px dashed #fed7aa;font-size:13px">' +
+              '<span><b>'+esc(s.nama)+'</b><br><span class="muted" style="font-size:12px">'+fmtTglIndoSP(s.tanggal)+' &middot; sisa '+s.sisaHari+' hari</span></span>' +
+              '<span style="display:flex;gap:6px">' +
+                (s.jenis === 'Mapel' ? '<button class="small klarSusulan" data-i="'+i+'">&#9999;&#65039; Isi Susulan</button>' : '') +
+                '<button class="small secondary klarIzin" data-i="'+i+'">Ajukan Izin</button></span></div>';
+          });
+          html += '</div>';
+        }
+        html += '<div style="margin-top:8px"><button class="small secondary" id="btnKeIzinSaya">Riwayat Izin &amp; Surat</button></div></div>';
+      }
+      el.innerHTML = html;
+
+      el.querySelectorAll('.spBacaWidget').forEach(function(b){
+        b.onclick = function(){ bukaSuratSP(spBelumDibaca[Number(b.dataset.i)], {untukGuru:true, setelahDibaca: function(){ widgetKehadiranSaya(containerId); }}); };
+      });
+      var perlu2 = res.perluKlarifikasi || [];
+      el.querySelectorAll('.klarSusulan').forEach(function(b){
+        b.onclick = function(){
+          var s = perlu2[Number(b.dataset.i)];
+          formAbsen({mapel: s.mapel, kelas: s.kelas, jamKeList: (s.jamKe||[]).map(Number), hari: s.hariJadwal || s.hari}, {susulan:true, tanggal: s.tanggal});
+        };
+      });
+      el.querySelectorAll('.klarIzin').forEach(function(b){
+        b.onclick = function(){ formAjukanIzinGuru(perlu2[Number(b.dataset.i)].tanggal, function(){ widgetKehadiranSaya(containerId); }); };
+      });
+      var bk = document.getElementById('btnKeIzinSaya');
+      if (bk) bk.onclick = function(){ var nav = document.querySelector('[data-key="izinsaya"]'); if (nav) nav.click(); else guruIzinSaya(); };
+    }).catch(function(){ if (el) el.innerHTML = ''; });
+  }
+
+  // ---------- Halaman guru: Izin & Surat Saya ----------
+  function guruIzinSaya(){
+    var c = getContentEl();
+    c.innerHTML = '<p>Memuat...</p>';
+    Promise.all([api('getIzinGuru', {guru: STATE.user.nama}), api('getKehadiranSaya', {guru: STATE.user.nama})]).then(function(h){
+      var izin = h[0].ok ? h[0].data : [];
+      var saya = h[1].ok ? h[1] : {sp:[]};
+      var html = '<div class="card"><h3>&#128221; Izin Tidak Masuk</h3>' +
+        '<p class="muted" style="font-size:13px">Ajukan izin <b>sebelum</b> hari Anda berhalangan bila sudah tahu, atau paling lambat '+((saya.cfg&&saya.cfg.batasKlarifikasi)||3)+' hari setelahnya. Izin yang disetujui Mudir/Admin tidak dihitung sebagai ketidakhadiran.</p>' +
+        '<button id="btnAjukanIzinBaru">+ Ajukan Izin</button></div>';
+
+      html += '<div class="card"><h4>Riwayat Pengajuan</h4>' + (izin.length
+        ? '<div style="overflow-x:auto"><table><tr><th>Tanggal</th><th>Alasan</th><th>Status</th><th></th></tr>' +
+          izin.map(function(z, i){
+            var warna = {Disetujui:'#166534', Ditolak:'#991b1b', Menunggu:'#854d0e', Dibatalkan:'#64748b'}[z.status] || '#475569';
+            return '<tr><td>'+fmtTglIndoSP(z.tanggal)+'</td><td>'+esc(z.alasan)+(z.keterangan?'<br><span class="muted" style="font-size:12px">'+esc(z.keterangan)+'</span>':'')+'</td>' +
+              '<td><b style="color:'+warna+'">'+esc(z.status)+'</b>'+(z.catatanProses?'<br><span class="muted" style="font-size:12px">'+esc(z.catatanProses)+'</span>':'')+'</td>' +
+              '<td>'+(z.status==='Menunggu' ? '<button class="small secondary izBatal" data-i="'+i+'">Batalkan</button>' : '')+'</td></tr>';
+          }).join('') + '</table></div>'
+        : '<p class="muted">Belum ada pengajuan izin.</p>') + '</div>';
+
+      var sp = saya.sp || [];
+      html += '<div class="card"><h4>&#128232; Surat Peringatan</h4>' + (sp.length
+        ? '<div style="overflow-x:auto"><table><tr><th>Nomor</th><th>Jenjang</th><th>Bulan</th><th>Berlaku s/d</th><th>Dibaca</th><th></th></tr>' +
+          sp.map(function(s, i){
+            return '<tr><td>'+esc(s.nomor)+'</td><td><b>SP-'+s.level+'</b></td><td>'+labelBulanSP(s.bulan)+'</td><td>'+fmtTglIndoSP(s.berlakuSampai)+'</td>' +
+              '<td>'+(s.dibacaPada ? esc(s.dibacaPada) : '<b style="color:#dc2626">Belum</b>')+'</td><td><button class="small spLihatSaya" data-i="'+i+'">Buka</button></td></tr>';
+          }).join('') + '</table></div>'
+        : '<p class="muted">Tidak ada surat peringatan. Jazakumullah khairan atas kedisiplinannya.</p>') + '</div>';
+      c.innerHTML = html;
+
+      document.getElementById('btnAjukanIzinBaru').onclick = function(){ formAjukanIzinGuru(todayStr(), guruIzinSaya); };
+      c.querySelectorAll('.izBatal').forEach(function(b){
+        b.onclick = function(){
+          if (!confirm('Batalkan pengajuan izin ini?')) return;
+          api('batalkanIzinGuru', {id: izin[Number(b.dataset.i)].id, guru: STATE.user.nama}).then(function(r){ if (!r.ok) alert(r.error); guruIzinSaya(); });
+        };
+      });
+      c.querySelectorAll('.spLihatSaya').forEach(function(b){
+        b.onclick = function(){ bukaSuratSP(sp[Number(b.dataset.i)], {untukGuru:true, setelahDibaca: guruIzinSaya}); };
+      });
+    }).catch(function(){ c.innerHTML = errBox('Gagal memuat data. Periksa koneksi.'); });
+  }
+
+  // ---------- Notifikasi di Ringkasan Admin/Mudir ----------
+  function widgetNotifKehadiranGuru(containerId){
+    var el = document.getElementById(containerId);
+    if (!el) return;
+    api('getNotifKehadiranGuru', {oleh: STATE.user.nama}).then(function(r){
+      if (!document.body.contains(el) || !r.ok) return;
+      if (!r.izinMenunggu && !r.drafSP) { el.innerHTML = ''; return; }
+      el.innerHTML = '<div class="card" style="border-left:4px solid #dc2626;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
+        '<div><b>&#128276; Kehadiran Guru perlu ditinjau</b><div style="font-size:13px;margin-top:2px">' +
+        (r.izinMenunggu ? '<b>'+r.izinMenunggu+'</b> pengajuan izin menunggu persetujuan' : '') +
+        (r.izinMenunggu && r.drafSP ? ' &middot; ' : '') +
+        (r.drafSP ? '<b>'+r.drafSP+'</b> draf Surat Peringatan menunggu diterbitkan' : '') + '</div></div>' +
+        '<button class="small" id="btnKeKehadiranGuru">Tinjau</button></div>';
+      document.getElementById('btnKeKehadiranGuru').onclick = function(){
+        var nav = document.querySelector('[data-key="kehadiranguru"]');
+        if (nav) nav.click(); else adminKehadiranGuru(r.izinMenunggu ? 'izin' : 'sp');
+      };
+    }).catch(function(){});
+  }
+
+  // ---------- Halaman Admin/Mudir ----------
+  function adminKehadiranGuru(tabAwal){
+    var c = getContentEl();
+    var tab = tabAwal || 'rekap';
+    var TABS = [['rekap','&#128202; Rekap'],['izin','&#128221; Izin Guru'],['sp','&#128232; Surat SP'],['libur','&#127958; Hari Libur'],['aturan','&#9881;&#65039; Aturan']];
+    c.innerHTML = '<div class="card" style="padding:10px 12px"><h3 style="margin:0 0 8px">Kehadiran Mengajar Guru</h3><div id="khgTabs" style="display:flex;gap:6px;flex-wrap:wrap"></div></div><div id="khgIsi"></div>';
+    function gambarTab(){
+      document.getElementById('khgTabs').innerHTML = TABS.map(function(t){
+        var a = t[0] === tab;
+        return '<button class="small'+(a?'':' secondary')+' khgTab" data-t="'+t[0]+'">'+t[1]+'</button>';
+      }).join('');
+      c.querySelectorAll('.khgTab').forEach(function(b){ b.onclick = function(){ tab = b.dataset.t; gambarTab(); muatTab(); }; });
+    }
+    function muatTab(){
+      var isi = document.getElementById('khgIsi');
+      isi.innerHTML = '<div class="card"><p class="muted">Memuat...</p></div>';
+      if (tab === 'rekap') khgRekap(isi);
+      else if (tab === 'izin') khgIzin(isi);
+      else if (tab === 'sp') khgSP(isi);
+      else if (tab === 'libur') khgLibur(isi);
+      else khgAturan(isi);
+    }
+    gambarTab(); muatTab();
+  }
+
+  function khgRekap(isi){
+    var now = new Date(), bulan = now.getMonth()+1, tahun = now.getFullYear();
+    function muat(){
+      isi.innerHTML = '<div class="card"><p class="muted">Menghitung kehadiran semua guru...</p></div>';
+      api('getRekapKehadiranGuru', {oleh: STATE.user.nama, bulan: bulan, tahun: tahun}).then(function(res){
+        if (!res.ok) { isi.innerHTML = '<div class="card">'+errBox(res.error)+'</div>'; return; }
+        var spPeta = {};
+        (res.sp||[]).forEach(function(s){ var k = s.guru.toLowerCase(); if (!spPeta[k] || spPeta[k].level < s.level) spPeta[k] = s; });
+        var cfg = res.cfg || {};
+        var html = '<div class="card">' +
+          (!res.aktif ? warnBox((res.statusAturan && res.statusAturan.status === 'Terjadwal')
+              ? 'Aturan kehadiran <b>terjadwal</b> mulai '+fmtTglIndoSP(res.statusAturan.mulai)+'. Sampai tanggal itu rekap hanya sebagai gambaran &mdash; guru belum melihat apa pun dan draf SP belum dibuat.'
+              : 'Aturan kehadiran <b>nonaktif</b>. Rekap tetap bisa dilihat, tapi guru belum melihat apa pun dan draf Surat Peringatan belum dibuat. Aktifkan di tab <b>Aturan</b>.') : '') +
+          '<div class="grid2"><div><label>Bulan</label><select id="rkBulan">'+SP_NAMA_BULAN.map(function(n,i){ return '<option value="'+(i+1)+'"'+(i+1===bulan?' selected':'')+'>'+n+'</option>'; }).join('')+'</select></div>' +
+          '<div><label>Tahun</label><input id="rkTahun" value="'+tahun+'"></div></div>' +
+          '<p class="muted" style="font-size:12px">Dihitung dari jadwal mapel'+(cfg.hitungHalaqoh?' dan halaqoh':'')+' dibandingkan catatan absensi/hafalan'+(cfg.mulai?', mulai '+fmtTglIndoSP(cfg.mulai):'')+'. Hari ini belum dihitung. "Belum tercatat" = masih dalam masa klarifikasi '+(cfg.batasKlarifikasi||3)+' hari. Klik baris untuk rinciannya.</p>';
+        if (!res.rekap.length) html += '<p class="muted">Belum ada sesi wajib pada periode ini.</p>';
+        else html += '<div style="overflow-x:auto"><table><tr><th>Guru</th><th>Wajib</th><th>Hadir</th><th>Izin</th><th>Belum tercatat</th><th>Tanpa izin</th><th>%</th><th>Status</th></tr>' +
+          res.rekap.map(function(g, i){
+            var r = g.ringkas;
+            var s = spPeta[g.guru.toLowerCase()];
+            var status = s ? ('<span style="background:'+(s.status==='Draf'?'#fef9c3':'#fee2e2')+';color:#7f1d1d;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px">SP-'+s.level+(s.status==='Draf'?' (draf)':'')+'</span>')
+              : (r.TMTI >= (cfg.teguran||1) ? '<span style="background:#fffbeb;color:#92400e;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px">Teguran</span>' : '<span class="muted" style="font-size:12px">-</span>');
+            return '<tr class="rkBaris" data-i="'+i+'" style="cursor:pointer"><td><b>'+esc(g.guru)+'</b></td><td>'+g.wajib+'</td><td>'+(r.Hadir+r.Digantikan)+'</td><td>'+(r.Izin+r.MenungguIzin)+'</td><td>'+r.BelumTercatat+'</td>' +
+              '<td><b style="color:'+(r.TMTI?'#dc2626':'#94a3b8')+'">'+r.TMTI+'</b></td><td><b style="color:'+(g.persen>=90?'#16a34a':g.persen>=75?'#d97706':'#dc2626')+'">'+g.persen+'%</b></td><td>'+status+'</td></tr>' +
+              '<tr id="rkDetil'+i+'" style="display:none"><td colspan="8" style="background:#f8fafc"></td></tr>';
+          }).join('') + '</table></div>';
+        if (res.sinkron && (res.sinkron.dibuat || res.sinkron.diperbarui)) html += '<p style="font-size:12.5px;color:#9a3412;margin-top:8px">&#128232; Draf SP diperbarui: '+res.sinkron.dibuat+' baru, '+res.sinkron.diperbarui+' diubah. Tinjau di tab <b>Surat SP</b>.</p>';
+        isi.innerHTML = html + '</div>';
+
+        document.getElementById('rkBulan').onchange = function(){ bulan = Number(this.value); muat(); };
+        document.getElementById('rkTahun').onchange = function(){ var t = Number(this.value); if (t > 2000) { tahun = t; muat(); } };
+        isi.querySelectorAll('.rkBaris').forEach(function(tr){
+          tr.onclick = function(){
+            var i = Number(tr.dataset.i), baris = document.getElementById('rkDetil'+i);
+            if (baris.style.display !== 'none') { baris.style.display = 'none'; return; }
+            var g = res.rekap[i];
+            var penting = g.sesi.filter(function(s){ return s.status !== 'Hadir' && s.status !== 'Libur'; });
+            baris.querySelector('td').innerHTML = penting.length
+              ? '<table style="margin:4px 0"><tr><th>Tanggal</th><th>Sesi</th><th>Status</th><th>Keterangan</th></tr>' +
+                penting.map(function(s){ return '<tr><td>'+fmtTglIndoSP(s.tanggal)+'</td><td>'+esc(s.nama)+'</td><td>'+badgeStatusSesi(s.status)+'</td><td style="font-size:12px">'+esc(s.ket||(s.sisaHari?('sisa '+s.sisaHari+' hari klarifikasi'):''))+'</td></tr>'; }).join('') + '</table>'
+              : '<p style="margin:6px;color:#166534">&#9989; Semua sesi wajib terisi.</p>';
+            baris.style.display = 'table-row';
+          };
+        });
+      }).catch(function(){ isi.innerHTML = '<div class="card">'+errBox('Gagal memuat rekap.')+'</div>'; });
+    }
+    muat();
+  }
+
+  function khgIzin(isi){
+    api('getIzinGuru', {semua:true, oleh: STATE.user.nama}).then(function(res){
+      if (!res.ok) { isi.innerHTML = '<div class="card">'+errBox(res.error)+'</div>'; return; }
+      var data = res.data;
+      var menunggu = data.filter(function(z){ return z.status === 'Menunggu'; });
+      var lain = data.filter(function(z){ return z.status !== 'Menunggu'; });
+      var html = '<div class="card"><h4>Menunggu Persetujuan ('+menunggu.length+')</h4>' + (menunggu.length
+        ? menunggu.map(function(z, i){
+            return '<div style="border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:8px">' +
+              '<b>'+esc(z.guru)+'</b> &mdash; '+fmtTglIndoSP(z.tanggal)+'<br><span style="font-size:13px">Alasan: <b>'+esc(z.alasan)+'</b></span>' +
+              (z.keterangan ? '<br><span class="muted" style="font-size:12.5px">'+esc(z.keterangan)+'</span>' : '') +
+              (z.buktiUrl ? '<br><a href="'+esc(z.buktiUrl)+'" target="_blank" rel="noopener" style="font-size:12.5px">&#128206; Lihat bukti</a>' : '') +
+              '<div class="muted" style="font-size:11.5px;margin-top:2px">Diajukan '+esc(z.diajukan)+'</div>' +
+              '<div style="display:flex;gap:6px;margin-top:8px"><button class="small izSetuju" data-i="'+i+'">&#9989; Setujui</button><button class="small secondary izTolak" data-i="'+i+'" style="color:#dc2626">Tolak</button></div></div>';
+          }).join('')
+        : '<p class="muted">Tidak ada pengajuan yang menunggu.</p>') + '</div>';
+      html += '<div class="card"><h4>Riwayat</h4>' + (lain.length
+        ? '<div style="overflow-x:auto"><table><tr><th>Guru</th><th>Tanggal</th><th>Alasan</th><th>Status</th><th>Diproses</th></tr>' +
+          lain.slice(0,100).map(function(z){
+            return '<tr><td>'+esc(z.guru)+'</td><td>'+fmtTglIndoSP(z.tanggal)+'</td><td>'+esc(z.alasan)+'</td><td><b>'+esc(z.status)+'</b>'+(z.catatanProses?'<br><span class="muted" style="font-size:12px">'+esc(z.catatanProses)+'</span>':'')+'</td><td style="font-size:12px">'+esc(z.diprosesOleh)+(z.waktuProses?'<br>'+esc(z.waktuProses):'')+'</td></tr>';
+          }).join('') + '</table></div>'
+        : '<p class="muted">Belum ada riwayat.</p>') + '</div>';
+      isi.innerHTML = html;
+      function proses(i, keputusan){
+        var catatan = '';
+        if (keputusan === 'Ditolak') { catatan = prompt('Alasan penolakan (akan dilihat guru):', ''); if (catatan === null) return; }
+        api('prosesIzinGuru', {id: menunggu[i].id, keputusan: keputusan, catatan: catatan, oleh: STATE.user.nama}).then(function(r){
+          if (!r.ok) alert(r.error);
+          khgIzin(isi);
+        });
+      }
+      isi.querySelectorAll('.izSetuju').forEach(function(b){ b.onclick = function(){ proses(Number(b.dataset.i), 'Disetujui'); }; });
+      isi.querySelectorAll('.izTolak').forEach(function(b){ b.onclick = function(){ proses(Number(b.dataset.i), 'Ditolak'); }; });
+    }).catch(function(){ isi.innerHTML = '<div class="card">'+errBox('Gagal memuat data izin.')+'</div>'; });
+  }
+
+  function khgSP(isi){
+    api('getDaftarSP', {oleh: STATE.user.nama}).then(function(res){
+      if (!res.ok) { isi.innerHTML = '<div class="card">'+errBox(res.error)+'</div>'; return; }
+      var draf = res.data.filter(function(s){ return s.status === 'Draf'; });
+      var terbit = res.data.filter(function(s){ return s.status === 'Diterbitkan'; });
+      var html = '<div class="card"><h4>Draf Menunggu Diterbitkan ('+draf.length+')</h4>' +
+        '<p class="muted" style="font-size:12.5px">Draf dibuat otomatis dari data kehadiran. Periksa rinciannya lebih dulu &mdash; bila ada kekeliruan data (jadwal salah, libur belum dicatat), batalkan draf dan perbaiki datanya. Draf tidak terlihat oleh guru sampai diterbitkan.</p>' +
+        (draf.length ? draf.map(function(s, i){
+          return '<div style="border:1px solid #fecaca;background:#fff7f7;border-radius:10px;padding:10px 12px;margin-bottom:8px">' +
+            '<b>'+esc(s.guru)+'</b> &mdash; <b style="color:#b91c1c">SP-'+s.level+'</b> &middot; '+labelBulanSP(s.bulan)+' &middot; '+s.jumlahTMTI+' sesi tanpa izin' +
+            '<div style="font-size:12.5px;margin-top:4px">'+s.rincian.map(function(r){ return fmtTglIndoSP(r.tanggal)+' &mdash; '+esc(r.nama); }).join('<br>')+'</div>' +
+            '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button class="small secondary spPratinjau" data-i="'+i+'">Pratinjau Surat</button>' +
+            '<button class="small spTerbit" data-i="'+i+'">Terbitkan</button><button class="small secondary spBatalDraf" data-i="'+i+'" style="color:#dc2626">Batalkan</button></div></div>';
+        }).join('') : '<p class="muted">Tidak ada draf.</p>') + '</div>';
+      html += '<div class="card"><h4>Surat yang Sudah Diterbitkan</h4>' + (terbit.length
+        ? '<div style="overflow-x:auto"><table><tr><th>Nomor</th><th>Guru</th><th>Jenjang</th><th>Bulan</th><th>Berlaku s/d</th><th>Dibaca guru</th><th></th></tr>' +
+          terbit.map(function(s, i){
+            return '<tr><td style="font-size:12px">'+esc(s.nomor)+'</td><td>'+esc(s.guru)+'</td><td><b>SP-'+s.level+'</b></td><td>'+labelBulanSP(s.bulan)+'</td><td>'+fmtTglIndoSP(s.berlakuSampai)+'</td>' +
+              '<td>'+(s.dibacaPada ? '<span style="color:#166534">&#9989; '+esc(s.dibacaPada)+'</span>' : '<b style="color:#dc2626">Belum</b>')+'</td>' +
+              '<td style="white-space:nowrap"><button class="small secondary spLihat" data-i="'+i+'">Lihat</button> <button class="small secondary spBatalTerbit" data-i="'+i+'" style="color:#dc2626">Batalkan</button></td></tr>';
+          }).join('') + '</table></div>'
+        : '<p class="muted">Belum ada surat yang diterbitkan.</p>') + '</div>';
+      isi.innerHTML = html;
+
+      isi.querySelectorAll('.spPratinjau').forEach(function(b){ b.onclick = function(){ bukaSuratSP(draf[Number(b.dataset.i)]); }; });
+      isi.querySelectorAll('.spLihat').forEach(function(b){ b.onclick = function(){ bukaSuratSP(terbit[Number(b.dataset.i)]); }; });
+      isi.querySelectorAll('.spTerbit').forEach(function(b){
+        b.onclick = function(){
+          var s = draf[Number(b.dataset.i)];
+          if (!STATE.pengaturan.SPPenandatangan && !confirm('Nama penandatangan belum diisi di tab Aturan, jadi surat akan memakai titik-titik. Tetap terbitkan?')) return;
+          var catatan = prompt('Terbitkan SP-'+s.level+' untuk '+s.guru+'?\n\nCatatan tambahan di surat (opsional, boleh dikosongkan):', '');
+          if (catatan === null) return;
+          loadingBtn(b, 'Menerbitkan...');
+          api('terbitkanSP', {id: s.id, catatan: catatan, oleh: STATE.user.nama}).then(function(r){
+            if (!r.ok) { resetBtn(b, 'Terbitkan'); alert(r.error); return; }
+            alert('Surat diterbitkan dengan nomor '+r.nomor+'. Surat kini tampil di dashboard '+s.guru+'.');
+            khgSP(isi);
+          });
+        };
+      });
+      function batalkan(s){
+        var alasan = prompt('Batalkan surat untuk '+s.guru+'? Tulis alasannya:', '');
+        if (alasan === null) return;
+        api('batalkanSP', {id: s.id, alasan: alasan, oleh: STATE.user.nama}).then(function(r){ if (!r.ok) alert(r.error); khgSP(isi); });
+      }
+      isi.querySelectorAll('.spBatalDraf').forEach(function(b){ b.onclick = function(){ batalkan(draf[Number(b.dataset.i)]); }; });
+      isi.querySelectorAll('.spBatalTerbit').forEach(function(b){ b.onclick = function(){ batalkan(terbit[Number(b.dataset.i)]); }; });
+    }).catch(function(){ isi.innerHTML = '<div class="card">'+errBox('Gagal memuat surat.')+'</div>'; });
+  }
+
+  function khgLibur(isi){
+    api('getLiburPondok', {}).then(function(res){
+      var data = res.ok ? res.data : [];
+      isi.innerHTML = '<div class="card"><h4>Tambah Hari Libur Pondok</h4>' +
+        '<p class="muted" style="font-size:12.5px">Pada hari libur tidak ada sesi wajib, jadi tidak ada guru yang tercatat tidak masuk. Catat libur semester, tanggal merah, dan libur mendadak di sini &mdash; termasuk yang sudah lewat.</p>' +
+        '<div class="grid2"><div><label>Mulai</label><input type="date" id="lbMulai"></div><div><label>Sampai (opsional)</label><input type="date" id="lbSelesai"></div></div>' +
+        fieldText('lbKet','Keterangan','') +
+        '<button id="btnSimpanLibur" style="margin-top:8px">Simpan</button><div id="pesanLibur"></div></div>' +
+        '<div class="card"><h4>Daftar Hari Libur</h4>' + (data.length
+          ? '<div style="overflow-x:auto;max-height:420px"><table><tr><th>Tanggal</th><th>Keterangan</th><th></th></tr>' +
+            data.slice(0,200).map(function(l, i){ return '<tr><td>'+fmtTglIndoSP(l.tanggal)+'</td><td>'+esc(l.keterangan)+'</td><td><button class="small secondary lbHapus" data-i="'+i+'">Hapus</button></td></tr>'; }).join('') + '</table></div>'
+          : '<p class="muted">Belum ada hari libur tercatat.</p>') + '</div>';
+      document.getElementById('btnSimpanLibur').onclick = function(){
+        var btn = this, m = document.getElementById('lbMulai').value;
+        if (!m) { document.getElementById('pesanLibur').innerHTML = errBox('Pilih tanggal mulai.'); return; }
+        loadingBtn(btn, 'Menyimpan...');
+        api('simpanLiburPondok', {mulai: m, selesai: document.getElementById('lbSelesai').value, keterangan: document.getElementById('lbKet').value.trim(), oleh: STATE.user.nama}).then(function(r){
+          resetBtn(btn, 'Simpan');
+          if (!r.ok) { document.getElementById('pesanLibur').innerHTML = errBox(r.error); return; }
+          khgLibur(isi);
+        });
+      };
+      isi.querySelectorAll('.lbHapus').forEach(function(b){
+        b.onclick = function(){
+          var l = data[Number(b.dataset.i)];
+          if (!confirm('Hapus hari libur '+l.tanggal+'? Sesi pada tanggal itu akan kembali dihitung.')) return;
+          api('hapusLiburPondok', {tanggal: l.tanggal, oleh: STATE.user.nama}).then(function(r){ if (!r.ok) alert(r.error); khgLibur(isi); });
+        };
+      });
+    });
+  }
+
+  function khgAturan(isi){
+    var KUNCI = ['SPAktif','SPMulaiBerlaku','SPBatasTeguran','SPBatasSP1','SPBatasSP2','SPBatasSP3','SPBatasKlarifikasi','SPMasaBerlakuBulan','SPHitungHalaqoh','SPHariHalaqoh','SPKodeSurat','SPPenandatangan','SPJabatan','SPKotaSurat','SPWAAktif','SPWAIzinBaru','SPWAIzinDiproses','SPWASPTerbit'];
+    api('getPengaturanBatch', {keys: KUNCI}).then(function(res){
+      var d = res.ok ? res.data : {};
+      function v(k, def){ return (d[k] === undefined || d[k] === null || d[k] === '') ? def : d[k]; }
+      var hariAktif = String(v('SPHariHalaqoh', "Senin,Selasa,Rabu,Kamis,Jum'at,Sabtu,Minggu")).split(',').map(function(h){ return h.trim(); });
+      var HARI_URUT = ['Senin','Selasa','Rabu','Kamis',"Jum'at",'Sabtu','Minggu'];
+      function num(id, label, val){ return '<div><label style="font-size:12.5px">'+label+'</label><input type="number" min="0" id="'+id+'" value="'+esc(val)+'"></div>'; }
+      function b(k, def){ var x = v(k, def); return x === true || String(x).toLowerCase() === 'true'; }
+      isi.innerHTML = '<div class="card"><h4>Aturan Kehadiran &amp; Surat Peringatan</h4>' +
+        '<div id="atStatus" style="border-radius:8px;padding:10px 12px;font-size:13.5px;margin-bottom:12px"></div>' +
+        '<label style="display:flex;align-items:center;gap:8px;font-weight:700"><input type="checkbox" id="atAktif" style="width:auto"'+(b('SPAktif',false)?' checked':'')+'> Aktifkan aturan kehadiran guru &amp; draf SP otomatis</label>' +
+        '<p class="muted" style="font-size:12px;margin:2px 0 0">Bawaannya <b>nonaktif</b>. Selama nonaktif, guru tidak melihat widget kehadiran, tidak ada teguran, dan tidak ada draf SP. Rekap tetap bisa dilihat Admin/Mudir.</p>' +
+        '<label style="margin-top:10px">Mulai aktif pada tanggal</label><input type="date" id="atMulai" value="'+esc(v('SPMulaiBerlaku',''))+'">' +
+        '<p class="muted" style="font-size:12px;margin-top:2px">Boleh tanggal di masa depan, mis. awal bulan depan. Sebelum tanggal itu aturan belum berjalan sama sekali, dan sesi sebelum tanggal itu tidak pernah dihitung. Bisa diubah kapan saja. Sebaiknya umumkan aturan kepada para guru sebelum tanggal ini.</p>' +
+        '<h4 style="margin-top:14px">Batas sesi tanpa izin per bulan</h4><div class="grid2">' +
+          num('atTeguran','Teguran', v('SPBatasTeguran',1)) + num('atSP1','SP-1', v('SPBatasSP1',3)) +
+          num('atSP2','SP-2', v('SPBatasSP2',5)) + num('atSP3','SP-3', v('SPBatasSP3',7)) + '</div>' +
+        '<div class="grid2" style="margin-top:6px">' +
+          num('atKlar','Masa klarifikasi (hari)', v('SPBatasKlarifikasi',3)) + num('atMasa','Masa berlaku SP (bulan)', v('SPMasaBerlakuBulan',3)) + '</div>' +
+        '<p class="muted" style="font-size:12px">SP naik jenjang bila guru kembali mencapai batas SP selama SP sebelumnya masih berlaku.</p>' +
+        '<h4 style="margin-top:14px">Halaqoh</h4>' +
+        '<label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="atHalaqoh" style="width:auto"'+(v('SPHitungHalaqoh',true)!==false?' checked':'')+'> Hitung kehadiran halaqoh</label>' +
+        '<label style="margin-top:6px">Hari halaqoh berjalan</label><div style="display:flex;flex-wrap:wrap;gap:10px">' +
+          HARI_URUT.map(function(h){ var cek = hariAktif.some(function(x){ return x.replace(/'/g,'').toLowerCase() === h.replace(/'/g,'').toLowerCase(); });
+            return '<label style="display:flex;align-items:center;gap:5px;font-weight:400"><input type="checkbox" class="atHari" value="'+esc(h)+'" style="width:auto"'+(cek?' checked':'')+'> '+esc(h)+'</label>'; }).join('') + '</div>' +
+        '<p class="muted" style="font-size:12px">Pastikan sesuai kenyataan &mdash; hari yang dicentang tapi sebenarnya tidak ada halaqoh akan membuat pengampu tercatat tidak masuk.</p>' +
+        '<h4 style="margin-top:14px">Kop &amp; tanda tangan surat</h4><div class="grid2">' +
+          '<div>'+fieldText('atPenanda','Nama penandatangan', v('SPPenandatangan',''))+'</div>' +
+          '<div>'+fieldText('atJabatan','Jabatan penandatangan', v('SPJabatan','Mudir'))+'</div>' +
+          '<div>'+fieldText('atKode','Kode nomor surat', v('SPKodeSurat','PPWU'))+'</div>' +
+          '<div>'+fieldText('atKota','Kota (tempat surat)', v('SPKotaSurat','Poso'))+'</div></div>' +
+        '<h4 style="margin-top:14px">Notifikasi WhatsApp</h4>' +
+        '<label style="display:flex;align-items:center;gap:8px;font-weight:700"><input type="checkbox" id="atWA" style="width:auto"'+(b('SPWAAktif',false)?' checked':'')+'> Aktifkan notifikasi WhatsApp</label>' +
+        '<div id="atWADetail" style="margin:6px 0 0 4px">' +
+          '<label style="display:flex;align-items:center;gap:8px;font-weight:400"><input type="checkbox" id="atWAIzinBaru" style="width:auto"'+(b('SPWAIzinBaru',false)?' checked':'')+'> Ke Mudir/Admin saat guru mengajukan izin</label>' +
+          '<label style="display:flex;align-items:center;gap:8px;font-weight:400"><input type="checkbox" id="atWAIzinProses" style="width:auto"'+(b('SPWAIzinDiproses',false)?' checked':'')+'> Ke guru saat izinnya disetujui/ditolak</label>' +
+          '<label style="display:flex;align-items:center;gap:8px;font-weight:400"><input type="checkbox" id="atWASP" style="width:auto"'+(b('SPWASPTerbit',false)?' checked':'')+'> Ke guru saat Surat Peringatan diterbitkan</label>' +
+        '</div>' +
+        '<p class="muted" style="font-size:12px;margin-top:4px">Bawaannya nonaktif. Memakai token Fonnte yang sama dengan notifikasi WA lain di aplikasi, dan nomor WA dari data RoleAkses/Guru. Isi surat tidak dikirim lewat WA &mdash; guru hanya diberi tahu untuk membukanya di aplikasi. Notifikasi berjalan hanya selama aturan kehadiran aktif untuk pengajuan izin dan penerbitan SP.</p>' +
+        '<button id="btnSimpanAturan" style="margin-top:12px">Simpan Aturan</button><div id="pesanAturan"></div></div>';
+
+      // Penanda status yang selalu jelas: Nonaktif / Terjadwal / Aktif
+      function perbaruiStatus(){
+        var on = document.getElementById('atAktif').checked, m = document.getElementById('atMulai').value;
+        var el = document.getElementById('atStatus');
+        if (!on) { el.style.cssText += ';background:#f1f5f9;color:#475569'; el.innerHTML = '&#9899; <b>Nonaktif</b> &mdash; aturan tidak berjalan.'; }
+        else if (m && m > todayStr()) { el.style.cssText += ';background:#fef9c3;color:#854d0e'; el.innerHTML = '&#128337; <b>Terjadwal</b> &mdash; mulai berjalan '+fmtTglIndoSP(m)+'.'; }
+        else { el.style.cssText += ';background:#dcfce7;color:#166534'; el.innerHTML = '&#128994; <b>Aktif</b> &mdash; berjalan sejak '+(m?fmtTglIndoSP(m):'hari ini')+'.'; }
+        document.getElementById('atWADetail').style.opacity = document.getElementById('atWA').checked ? '1' : '.45';
+      }
+      document.getElementById('atAktif').onchange = perbaruiStatus;
+      document.getElementById('atMulai').onchange = perbaruiStatus;
+      document.getElementById('atWA').onchange = perbaruiStatus;
+      perbaruiStatus();
+
+      document.getElementById('btnSimpanAturan').onclick = function(){
+        var el = document.getElementById('pesanAturan');
+        var n = function(id){ return Number(document.getElementById(id).value); };
+        var t = n('atTeguran'), s1 = n('atSP1'), s2 = n('atSP2'), s3 = n('atSP3');
+        if (!(t >= 1 && s1 > t - 1 && s2 > s1 && s3 > s2)) { el.innerHTML = errBox('Batas harus berurutan naik: Teguran &le; SP-1 &lt; SP-2 &lt; SP-3, dan minimal 1.'); return; }
+        if (!(n('atKlar') >= 1 && n('atKlar') <= 14)) { el.innerHTML = errBox('Masa klarifikasi antara 1 sampai 14 hari.'); return; }
+        if (!(n('atMasa') >= 1 && n('atMasa') <= 12)) { el.innerHTML = errBox('Masa berlaku SP antara 1 sampai 12 bulan.'); return; }
+        var aktif = document.getElementById('atAktif').checked;
+        var mulai = document.getElementById('atMulai').value;
+        if (aktif && !mulai) { mulai = todayStr(); document.getElementById('atMulai').value = mulai; }
+        var hari = Array.prototype.map.call(isi.querySelectorAll('.atHari:checked'), function(x){ return x.value; }).join(',');
+        var data = {
+          SPAktif: aktif ? 'true' : 'false', SPMulaiBerlaku: mulai,
+          SPBatasTeguran: t, SPBatasSP1: s1, SPBatasSP2: s2, SPBatasSP3: s3,
+          SPBatasKlarifikasi: n('atKlar'), SPMasaBerlakuBulan: n('atMasa'),
+          SPHitungHalaqoh: document.getElementById('atHalaqoh').checked ? 'true' : 'false', SPHariHalaqoh: hari,
+          SPPenandatangan: document.getElementById('atPenanda').value.trim(), SPJabatan: document.getElementById('atJabatan').value.trim() || 'Mudir',
+          SPKodeSurat: document.getElementById('atKode').value.trim() || 'PPWU', SPKotaSurat: document.getElementById('atKota').value.trim() || 'Poso',
+          SPWAAktif: document.getElementById('atWA').checked ? 'true' : 'false',
+          SPWAIzinBaru: document.getElementById('atWAIzinBaru').checked ? 'true' : 'false',
+          SPWAIzinDiproses: document.getElementById('atWAIzinProses').checked ? 'true' : 'false',
+          SPWASPTerbit: document.getElementById('atWASP').checked ? 'true' : 'false'
+        };
+        var btn = this; loadingBtn(btn, 'Menyimpan...');
+        api('simpanPengaturanBatch', {data: data}).then(function(r){
+          resetBtn(btn, 'Simpan Aturan');
+          if (!r.ok) { el.innerHTML = errBox(r.error); return; }
+          Object.keys(data).forEach(function(k){ STATE.pengaturan[k] = data[k]; }); // surat langsung memakai nilai baru
+          el.innerHTML = '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;font-size:13px;color:#166534;margin-top:8px">&#9989; Aturan tersimpan.'+(!aktif ? ' Aturan dalam keadaan nonaktif.' : (mulai > todayStr() ? ' Terjadwal mulai berjalan '+fmtTglIndoSP(mulai)+'.' : ' Berjalan sejak '+fmtTglIndoSP(mulai)+'.'))+'</div>';
+        }).catch(function(){ resetBtn(btn, 'Simpan Aturan'); el.innerHTML = errBox('Gagal menyimpan.'); });
+      };
+    });
+  }
+
   function adminDiagnostikData(){
     var c = getContentEl();
     c.innerHTML = '<div class="card"><p class="muted">Memeriksa ukuran data...</p></div>';

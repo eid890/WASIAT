@@ -123,12 +123,15 @@ const PELANGGARAN_AKTIF_KEY = 'PELANGGARAN_SS_AKTIF_ID';
 
 const HARI_LIST = ['Minggu','Senin','Selasa','Rabu','Kamis',"Jum'at",'Sabtu'];
 const STATUS_LIST = ['Hadir','Sakit','Izin','Izin Pulang','Alpa'];
-const JENIS_HAFALAN_SETOR = ['Sabaq','Sabqi','Manzil','Murojaah','Tahsin'];
+// Tasmi' = memperdengarkan hafalan (biasanya per juz) di hadapan pengampu/penguji.
+// Dihitung setoran sah & santri hadir, tapi TIDAK menambah progres halaman baru --
+// progres juz tetap hanya dari Sabaq (lihat getProgressHafalan).
+const JENIS_HAFALAN_SETOR = ['Sabaq','Sabqi','Manzil','Murojaah','Tahsin',"Tasmi'"];
 const JENIS_HAFALAN_NONSETOR = ['Tidak Setor','Izin','Izin Pulang','Sakit','Ghaib'];
 // Untuk rekap kehadiran halaqoh: jenis-jenis ini dianggap HADIR (termasuk "Tidak Setor",
 // karena santri tetap hadir di halaqoh meski hari itu tidak menyetor hafalan). Hanya
 // Izin/Sakit/Ghaib yang dihitung sebagai status tersendiri (bukan Hadir).
-const JENIS_HAFALAN_DIANGGAP_HADIR = ['Sabaq','Sabqi','Manzil','Murojaah','Tahsin','Tidak Setor'];
+const JENIS_HAFALAN_DIANGGAP_HADIR = ['Sabaq','Sabqi','Manzil','Murojaah','Tahsin',"Tasmi'",'Tidak Setor'];
 
 // Logo default pesantren (disematkan langsung di kode supaya selalu tampil di
 // setiap laporan PDF tanpa bergantung pada link eksternal yang bisa mati/berubah).
@@ -291,6 +294,21 @@ function route(action, p) {
     case 'loginImamMasjid': return apiLoginImamMasjid(p);
     case 'tarikSaldoPemilikManual': return apiTarikSaldoPemilikManual(p);
     case 'getDaftarSaldoPemilik': return apiGetDaftarSaldoPemilik();
+    // Kehadiran mengajar guru, izin, dan SP
+    case 'getRekapKehadiranGuru': return apiGetRekapKehadiranGuru(p);
+    case 'getNotifKehadiranGuru': return apiGetNotifKehadiranGuru(p);
+    case 'getKehadiranSaya':      return apiGetKehadiranSaya(p);
+    case 'ajukanIzinGuru':        return apiAjukanIzinGuru(p);
+    case 'getIzinGuru':           return apiGetIzinGuru(p);
+    case 'prosesIzinGuru':        return apiProsesIzinGuru(p);
+    case 'batalkanIzinGuru':      return apiBatalkanIzinGuru(p);
+    case 'getDaftarSP':           return apiGetDaftarSP(p);
+    case 'terbitkanSP':           return apiTerbitkanSP(p);
+    case 'batalkanSP':            return apiBatalkanSP(p);
+    case 'tandaiSPDibaca':        return apiTandaiSPDibaca(p);
+    case 'getLiburPondok':        return apiGetLiburPondok();
+    case 'simpanLiburPondok':     return apiSimpanLiburPondok(p);
+    case 'hapusLiburPondok':      return apiHapusLiburPondok(p);
     case 'getSantriUntukTransaksiKantin': return {ok:true, data: getSantriUntukTransaksiKantin()};
     case 'prosesTransaksiKantin': return apiProsesTransaksiKantin(p);
     case 'getRiwayatTransaksiPemilik': return {ok:true, data: getRiwayatTransaksiPemilik(p.pemilik, p.tglMulai, p.tglAkhir)};
@@ -4832,11 +4850,28 @@ function hitungNilaiSikap(s1,s2,s3,s4){
   return Math.round(((s1+s2+s3+s4)*100/16)*100)/100;
 }
 
+// Tolak pencatatan untuk tanggal yang BELUM terjadi. Dipakai absensi mapel, absensi
+// halaqoh, dan setoran hafalan -- ketiganya dihitung sebagai jam mengajar guru, jadi
+// mengisi jadwal yang harinya belum tiba sama dengan mengklaim jam yang belum diajar.
+// Diperiksa di SERVER (bukan hanya di aplikasi) supaya tidak bisa diakali dengan
+// mengubah jam HP atau memanggil API langsung.
+// Tanggal yang sudah lewat tetap diterima: itu jalur sah untuk absen susulan dan untuk
+// data yang dikirim belakangan dari mode offline.
+function tolakTanggalMasaDepan(tanggal) {
+  const hariIni = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const t = String(tanggal || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return 'Format tanggal tidak valid.';
+  if (t > hariIni) return 'Tanggal ' + t + ' belum terjadi. Absensi/setoran hanya bisa dicatat untuk hari ini atau hari yang sudah lewat.';
+  return '';
+}
+
 function apiSubmitAbsensi(p) {
   if (!p || !p.items || !p.items.length) return {ok:false, error:'Tidak ada data santri untuk disimpan'};
   const sh = getAktifSS().getSheetByName(SHEET_ABSENSI);
   if (!sh) return {ok:false, error:'Sheet Absensi tidak ditemukan. Jalankan Migrasi Skema di menu Admin.'};
   const tanggal = p.tanggal || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const _galatTgl = tolakTanggalMasaDepan(tanggal);
+  if (_galatTgl) return {ok:false, error:_galatTgl};
   const daftarJamKe = (p.jamKeList && p.jamKeList.length) ? p.jamKeList : [p.jamKe];
   const existing = sh.getDataRange().getValues();
 
@@ -4898,6 +4933,8 @@ function apiSubmitAbsensiHalaqoh(p) {
   const sh = getAktifSS().getSheetByName(SHEET_ABSENSI);
   const tz = Session.getScriptTimeZone();
   const tanggal = p.tanggal || Utilities.formatDate(new Date(),tz,'yyyy-MM-dd');
+  const _galatTgl = tolakTanggalMasaDepan(tanggal);
+  if (_galatTgl) return {ok:false, error:_galatTgl};
   const waktuHalaqoh = norm(p.waktuHalaqoh)||'Maghrib';
   const namaHalaqoh = norm(p.namaHalaqoh);
   const pengampu = norm(p.pengampu);
@@ -5408,7 +5445,7 @@ function apiHapusPenggantian(p) {
 }
 
 // ============ REKAP KEHADIRAN HALAQOH (acuan: JENIS HAFALAN yang dipilih guru) ============
-// Sabaq/Sabqi/Manzil/Murojaah/Tahsin/Tidak Setor dihitung HADIR. Izin/Sakit/Ghaib dihitung
+// Sabaq/Sabqi/Manzil/Murojaah/Tahsin/Tasmi'/Tidak Setor dihitung HADIR. Izin/Sakit/Ghaib dihitung
 // statusnya masing-masing. Guru TIDAK perlu isi absen kehadiran terpisah -- cukup dari
 // jenis hafalan yang sudah ia catat di form Isi Hafalan.
 function getRekapKehadiranHalaqoh(nisn, tahunAjaranId) {
@@ -5936,6 +5973,8 @@ function apiSubmitHafalan(p) {
   if (!p || !p.items || !p.items.length) return {ok:false, error:'Tidak ada data santri untuk disimpan'};
   const sh = getAktifSS().getSheetByName(SHEET_HAFALAN);
   const tanggal = p.tanggal || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const _galatTgl = tolakTanggalMasaDepan(tanggal);
+  if (_galatTgl) return {ok:false, error:_galatTgl};
   const existing = sh.getDataRange().getValues();
 
   const [ty, tm, td] = tanggal.split('-').map(Number);
@@ -8037,7 +8076,7 @@ function apiGetStatusPondok(p) {
   }
 
   // Sumber 3: Hafalan (guru halaqoh) — HARI INI saja
-  // Untuk hafalan: jenis "Sabaq/Sabqi/Manzil/Murojaah/Tahsin/Tidak Setor" → dianggap HADIR
+  // Untuk hafalan: jenis "Sabaq/Sabqi/Manzil/Murojaah/Tahsin/Tasmi'/Tidak Setor" → dianggap HADIR
   //                jenis "Izin Pulang/Izin/Sakit/Ghaib" → status sesuai
   const shHafalan = ss.getSheetByName(SHEET_HAFALAN);
   if (shHafalan && shHafalan.getLastRow() > 1) {
@@ -9810,7 +9849,9 @@ function apiGetInfoLayarMasjid(p) {
 
   // Papan setoran hafalan terbanyak HARI INI (top 3), hanya jenis setoran nyata
   // (Sabaq/Sabqi/Manzil/Murojaah/Tahsin) -- Ghaib/Sakit/Izin tidak dihitung
-  // karena bukan bentuk setoran.
+  // karena bukan bentuk setoran. Tasmi' SENGAJA dikecualikan dari papan ini (atas
+  // permintaan pondok), walau di tempat lain tetap dihitung setoran sah & hadir.
+  const JENIS_PAPAN_SETORAN = JENIS_HAFALAN_SETOR.filter(function(j){ return j !== "Tasmi'"; });
   let topSetoran = [];
   try {
     const shH = ss.getSheetByName(SHEET_HAFALAN);
@@ -9820,7 +9861,7 @@ function apiGetInfoLayarMasjid(p) {
       rows.forEach(function(r){
         const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
         if (tgl !== todayStr) return;
-        if (JENIS_HAFALAN_SETOR.indexOf(norm(r[6])) === -1) return;
+        if (JENIS_PAPAN_SETORAN.indexOf(norm(r[6])) === -1) return;
         const nisn = norm(r[4]);
         if (!nisn) return;
         if (genderFilter && genderMap[nisn] !== genderFilter) return;
@@ -10000,4 +10041,583 @@ function apiGetDaftarSaldoPemilik() {
   } catch (e) {
     return {ok:false, error:'Gagal membaca saldo pemilik: ' + e.message};
   }
+}
+
+
+// ======================================================================
+// KEHADIRAN MENGAJAR GURU, IZIN, DAN SURAT PERINGATAN (SP)
+//
+// Cara kerja singkat:
+// 1. "Sesi wajib" = jadwal mapel (sheet MataPelajaran, per hari) + halaqoh (per waktu,
+//    pada hari aktif halaqoh). Dihitung per tanggal, mulai dari tanggal aturan berlaku
+//    sampai KEMARIN (hari ini belum dihitung karena belum selesai).
+// 2. Sesi dianggap HADIR kalau ada catatan Absensi (mapel+kelas+tanggal) atau Hafalan
+//    (halaqoh+waktu+tanggal). Dikecualikan: hari libur pondok, sesi yang ada guru
+//    penggantinya, dan izin yang disetujui.
+// 3. Sesi yang belum tercatat TIDAK langsung dianggap bolos: ada masa klarifikasi
+//    (bawaan 3 hari) supaya guru bisa mengisi susulan (lupa mencatat) atau mengajukan
+//    izin. Lewat dari itu tanpa klarifikasi -> "Tidak Masuk Tanpa Izin" (TMTI).
+// 4. Jumlah TMTI per bulan menentukan jenjang: Teguran -> SP1 -> SP2 -> SP3. SP naik
+//    berjenjang bila guru melanggar lagi selama SP sebelumnya masih berlaku.
+// 5. SP dibuat sebagai DRAF otomatis; baru tampil di dashboard guru setelah Mudir/Admin
+//    meninjau dan menerbitkannya. Teguran tampil otomatis (bukan surat resmi).
+//
+// Semua data aturan (izin, libur, SP) disimpan di spreadsheet MASTER supaya tetap ada
+// saat ganti semester -- masa berlaku SP bisa melewati pergantian semester.
+// ======================================================================
+const SHEET_IZIN_GURU    = 'IzinGuru';
+const SHEET_LIBUR_PONDOK = 'LiburPondok';
+const SHEET_SURAT_SP     = 'SuratSP';
+
+function sheetMasterAtur_(nama, header) {
+  const ss = getMasterSS();
+  let sh = ss.getSheetByName(nama);
+  if (!sh) { sh = ss.insertSheet(nama); sh.appendRow(header); sh.setFrozenRows(1); }
+  return sh;
+}
+function shIzinGuru_()    { return sheetMasterAtur_(SHEET_IZIN_GURU, ['ID','Tanggal','Guru','Alasan','Keterangan','BuktiURL','Status','DiprosesOleh','WaktuProses','CatatanProses','Diajukan']); }
+function shLiburPondok_() { return sheetMasterAtur_(SHEET_LIBUR_PONDOK, ['Tanggal','Keterangan','Dicatat']); }
+function shSuratSP_()     { return sheetMasterAtur_(SHEET_SURAT_SP, ['ID','NomorSurat','Guru','Level','Bulan','JumlahTMTI','Rincian','Status','Dibuat','DiterbitkanOleh','DiterbitkanPada','BerlakuSampai','DibacaPada','Catatan']); }
+
+// Nilai tanggal dari sel bisa berupa objek Date (Sheets mengubahnya otomatis) atau teks.
+function tglAtur_(v, tz) { return v instanceof Date ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : norm(v).slice(0,10); }
+function waktuAtur_(v, tz) { return v instanceof Date ? Utilities.formatDate(v, tz, 'yyyy-MM-dd HH:mm') : norm(v); }
+function hariIniAtur_() { return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'); }
+function selisihHariAtur_(dari, sampai) {
+  const a = dari.split('-').map(Number), b = sampai.split('-').map(Number);
+  return Math.round((Date.UTC(b[0],b[1]-1,b[2]) - Date.UTC(a[0],a[1]-1,a[2])) / 86400000);
+}
+function tambahBulanAtur_(tgl, n) {
+  const p = tgl.split('-').map(Number);
+  const d = new Date(p[0], p[1]-1+n, p[2]);
+  return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+function aturanKehadiranGuru_() {
+  const p = getPengaturan();
+  const angka = function(v, d){ const s = String(v==null?'':v).trim(); const n = Number(s); return (s !== '' && isFinite(n) && n >= 0) ? n : d; };
+  const benar = function(v, d){ if (v === undefined || v === null || String(v).trim() === '') return d; return v === true || String(v).toLowerCase() === 'true'; };
+  return {
+    aktif: benar(p.SPAktif, false),
+    mulai: norm(p.SPMulaiBerlaku).slice(0,10),
+    teguran: angka(p.SPBatasTeguran, 1), sp1: angka(p.SPBatasSP1, 3), sp2: angka(p.SPBatasSP2, 5), sp3: angka(p.SPBatasSP3, 7),
+    masaBerlakuBulan: angka(p.SPMasaBerlakuBulan, 3),
+    batasKlarifikasi: angka(p.SPBatasKlarifikasi, 3),
+    hitungHalaqoh: benar(p.SPHitungHalaqoh, true),
+    hariHalaqoh: norm(p.SPHariHalaqoh) || "Senin,Selasa,Rabu,Kamis,Jum'at,Sabtu,Minggu",
+    kodeSurat: norm(p.SPKodeSurat) || 'PPWU',
+    penandatangan: norm(p.SPPenandatangan), jabatan: norm(p.SPJabatan) || 'Mudir',
+    kota: norm(p.SPKotaSurat) || 'Poso',
+    // Notifikasi WhatsApp -- semuanya NONAKTIF secara bawaan. Sakelar utama + per jenis.
+    waAktif: benar(p.SPWAAktif, false),
+    waIzinBaru: benar(p.SPWAIzinBaru, false),         // ke Mudir/Admin saat guru mengajukan izin
+    waIzinDiproses: benar(p.SPWAIzinDiproses, false), // ke guru saat izin disetujui/ditolak
+    waSPTerbit: benar(p.SPWASPTerbit, false)          // ke guru saat SP diterbitkan
+  };
+}
+
+// Aturan benar-benar BERJALAN hanya bila sakelarnya aktif DAN tanggal mulainya sudah
+// tiba. Jadi Admin bisa menjadwalkan jauh hari (mis. aktif mulai 1 Oktober): sebelum
+// tanggal itu tidak ada widget di dashboard guru, tidak ada teguran, tidak ada draf SP.
+function statusAturanKehadiran_(cfg) {
+  if (!cfg.aktif) return {berjalan:false, status:'Nonaktif'};
+  if (cfg.mulai && hariIniAtur_() < cfg.mulai) return {berjalan:false, status:'Terjadwal', mulai: cfg.mulai};
+  return {berjalan:true, status:'Aktif', mulai: cfg.mulai};
+}
+
+// ---- Notifikasi WhatsApp (hanya bila diaktifkan di pengaturan) ----
+function noWaAkunAtur_(nama) {
+  try {
+    const rows = getAktifSS().getSheetByName(SHEET_ROLE).getDataRange().getValues().slice(1);
+    const r = rows.find(function(x){ return normNama(norm(x[0])) === normNama(nama); });
+    if (r && norm(r[1])) return norm(r[1]);
+    const g = getAktifSS().getSheetByName(SHEET_GURU).getDataRange().getValues().slice(1)
+      .find(function(x){ return normNama(norm(x[0])) === normNama(nama); });
+    return g ? norm(g[1]) : '';
+  } catch (e) { return ''; }
+}
+function noWaAdminMudirAtur_() {
+  try {
+    const hasil = [];
+    getAktifSS().getSheetByName(SHEET_ROLE).getDataRange().getValues().slice(1).forEach(function(r){
+      const lvl = norm(r[3]), wa = norm(r[1]);
+      if (wa && (lvl.indexOf('Mudir') !== -1 || lvl.indexOf('Admin') !== -1) && hasil.indexOf(wa) === -1) hasil.push(wa);
+    });
+    return hasil;
+  } catch (e) { return []; }
+}
+// jenis: 'waIzinBaru' | 'waIzinDiproses' | 'waSPTerbit'. Tidak pernah melempar error --
+// gagal kirim WA tidak boleh menggagalkan penyimpanan izin/SP.
+function kirimWAKehadiranAtur_(jenis, target, pesan) {
+  try {
+    const cfg = aturanKehadiranGuru_();
+    if (!cfg.waAktif || !cfg[jenis] || !target) return false;
+    kirimWAFonnteUmum(target, pesan);
+    return true;
+  } catch (e) { Logger.log('WA kehadiran gagal: ' + e.message); return false; }
+}
+
+function getLiburListAtur_() {
+  const tz = Session.getScriptTimeZone();
+  const sh = shLiburPondok_();
+  if (sh.getLastRow() < 2) return [];
+  return sh.getDataRange().getValues().slice(1).map(function(r, i){
+    return {rowIndex: i+2, tanggal: tglAtur_(r[0], tz), keterangan: norm(r[1])};
+  }).filter(function(x){ return x.tanggal; });
+}
+function getIzinGuruListAtur_() {
+  const tz = Session.getScriptTimeZone();
+  const sh = shIzinGuru_();
+  if (sh.getLastRow() < 2) return [];
+  return sh.getDataRange().getValues().slice(1).map(function(r, i){
+    return {rowIndex: i+2, id: norm(r[0]), tanggal: tglAtur_(r[1], tz), guru: norm(r[2]), alasan: norm(r[3]),
+      keterangan: norm(r[4]), buktiUrl: norm(r[5]), status: norm(r[6]) || 'Menunggu',
+      diprosesOleh: norm(r[7]), waktuProses: waktuAtur_(r[8], tz), catatanProses: norm(r[9]), diajukan: waktuAtur_(r[10], tz)};
+  }).filter(function(x){ return x.id; });
+}
+function getSuratSPListAtur_() {
+  const tz = Session.getScriptTimeZone();
+  const sh = shSuratSP_();
+  if (sh.getLastRow() < 2) return [];
+  return sh.getDataRange().getValues().slice(1).map(function(r, i){
+    let rincian = [];
+    try { rincian = JSON.parse(norm(r[6]) || '[]'); } catch (e) {}
+    return {rowIndex: i+2, id: norm(r[0]), nomor: norm(r[1]), guru: norm(r[2]), level: Number(r[3]) || 0,
+      bulan: norm(r[4]), jumlahTMTI: Number(r[5]) || 0, rincian: rincian, status: norm(r[7]) || 'Draf',
+      dibuat: waktuAtur_(r[8], tz), diterbitkanOleh: norm(r[9]), diterbitkanPada: tglAtur_(r[10], tz),
+      berlakuSampai: tglAtur_(r[11], tz), dibacaPada: waktuAtur_(r[12], tz), catatan: norm(r[13])};
+  }).filter(function(x){ return x.id; });
+}
+
+// Inti perhitungan: status setiap sesi wajib per guru dalam satu bulan.
+// guruFilter (opsional) = hitung satu guru saja.
+function hitungKehadiranGuruAtur_(bulan, tahun, guruFilter) {
+  bulan = Number(bulan); tahun = Number(tahun);
+  const cfg = aturanKehadiranGuru_();
+  const tz = Session.getScriptTimeZone();
+  const hariIni = hariIniAtur_();
+  const ss = getAktifSS();
+
+  const tanggalList = [];
+  const jmlHari = new Date(tahun, bulan, 0).getDate();
+  for (let d = 1; d <= jmlHari; d++) {
+    const t = tahun + '-' + String(bulan).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+    if (t >= hariIni) break;                    // hari ini & masa depan belum dihitung
+    if (cfg.mulai && t < cfg.mulai) continue;   // sebelum aturan berlaku tidak dihitung
+    tanggalList.push(t);
+  }
+  const setTgl = {}; tanggalList.forEach(function(t){ setTgl[t] = true; });
+
+  const libur = {};
+  getLiburListAtur_().forEach(function(l){ libur[l.tanggal] = l.keterangan || 'Libur pondok'; });
+
+  const izin = {};
+  getIzinGuruListAtur_().forEach(function(z){
+    const k = normNama(z.guru) + '|' + z.tanggal;
+    if (z.status === 'Disetujui') izin[k] = z;
+    else if (z.status === 'Menunggu' && !(izin[k] && izin[k].status === 'Disetujui')) izin[k] = z;
+  });
+
+  const pengganti = {};
+  try {
+    getDaftarPenggantian().forEach(function(x){
+      if (!setTgl[x.tanggal]) return;
+      if (x.jenisSesi === 'Halaqoh') pengganti['H|'+x.tanggal+'|'+normNama(x.halaqoh)+'|'+normNama(x.waktu)] = x.guruPengganti;
+      else pengganti['M|'+x.tanggal+'|'+normNama(x.mapel)+'|'+normNama(x.kelas)] = x.guruPengganti;
+    });
+  } catch (e) {}
+
+  const hadir = {};
+  const shA = ss.getSheetByName(SHEET_ABSENSI);
+  if (shA && shA.getLastRow() > 1) {
+    shA.getDataRange().getValues().slice(1).forEach(function(r){
+      const t = tglAtur_(r[0], tz); if (!setTgl[t]) return;
+      hadir['M|'+t+'|'+normNama(r[3])+'|'+normNama(r[4])] = true;
+    });
+  }
+  if (cfg.hitungHalaqoh) {
+    const shH = ss.getSheetByName(SHEET_HAFALAN);
+    if (shH && shH.getLastRow() > 1) {
+      shH.getDataRange().getValues().slice(1).forEach(function(r){
+        const t = tglAtur_(r[0], tz); if (!setTgl[t]) return;
+        hadir['H|'+t+'|'+normNama(r[2])+'|'+normNama(r[1])] = true;
+      });
+    }
+  }
+
+  // Jadwal mapel: satu sesi per (mapel, kelas, hari, guru) -- beberapa jam ke- di hari
+  // yang sama dihitung satu sesi, sama seperti satu kali pengisian absensi.
+  const jadwalMapel = [];
+  const shM = ss.getSheetByName(SHEET_MAPEL);
+  if (shM && shM.getLastRow() > 1) {
+    const kumpul = {};
+    shM.getDataRange().getValues().slice(1).forEach(function(r){
+      const mapel = norm(r[0]), kelas = norm(r[1]), guru = norm(r[2]), hari = norm(r[3]);
+      if (!mapel || !kelas || !guru || !hari) return; // jadwal tanpa hari tidak bisa dinilai
+      const k = normNama(mapel)+'|'+normNama(kelas)+'|'+normNama(hari)+'|'+normNama(guru);
+      if (kumpul[k]) { kumpul[k].jamKe.push(r[4]); return; }
+      kumpul[k] = {mapel: mapel, kelas: kelas, guru: guru, hari: hari, jamKe: [r[4]]};
+      jadwalMapel.push(kumpul[k]);
+    });
+  }
+  const halaqohList = cfg.hitungHalaqoh ? getHalaqohList() : [];
+  const hariHalaqoh = {};
+  cfg.hariHalaqoh.split(',').forEach(function(h){ if (norm(h)) hariHalaqoh[normNama(h)] = true; });
+
+  const perGuru = {};
+  function catat(guru, sesi) {
+    const k = normNama(guru);
+    if (guruFilter && k !== normNama(guruFilter)) return;
+    if (!perGuru[k]) perGuru[k] = {guru: guru, sesi: []};
+    perGuru[k].sesi.push(sesi);
+  }
+
+  tanggalList.forEach(function(t){
+    const p = t.split('-').map(Number);
+    const namaHari = HARI_LIST[new Date(p[0], p[1]-1, p[2]).getDay()];
+    const nh = normNama(namaHari);
+    const umur = selisihHariAtur_(t, hariIni);
+    function statusSesi(key, guru) {
+      if (libur[t]) return {status:'Libur', ket: libur[t]};
+      if (hadir[key]) return {status:'Hadir'};
+      if (pengganti[key]) return {status:'Digantikan', ket: 'oleh ' + pengganti[key]};
+      const iz = izin[normNama(guru) + '|' + t];
+      if (iz && iz.status === 'Disetujui') return {status:'Izin', ket: iz.alasan};
+      if (iz && iz.status === 'Menunggu') return {status:'MenungguIzin', ket: iz.alasan};
+      if (umur <= cfg.batasKlarifikasi) return {status:'BelumTercatat', sisaHari: cfg.batasKlarifikasi - umur + 1};
+      return {status:'TMTI'};
+    }
+    jadwalMapel.forEach(function(j){
+      if (normNama(j.hari) !== nh) return;
+      const key = 'M|'+t+'|'+normNama(j.mapel)+'|'+normNama(j.kelas);
+      catat(j.guru, Object.assign({tanggal:t, hari:namaHari, jenis:'Mapel', nama: j.mapel+' - '+j.kelas,
+        mapel:j.mapel, kelas:j.kelas, jamKe:j.jamKe, hariJadwal:j.hari}, statusSesi(key, j.guru)));
+    });
+    if (hariHalaqoh[nh]) {
+      halaqohList.forEach(function(h){
+        const key = 'H|'+t+'|'+normNama(h.namaHalaqoh)+'|'+normNama(h.waktu);
+        h.pengampuList.forEach(function(g){
+          catat(g, Object.assign({tanggal:t, hari:namaHari, jenis:'Halaqoh', nama: h.namaHalaqoh+' ('+h.waktu+')'}, statusSesi(key, g)));
+        });
+      });
+    }
+  });
+
+  return Object.keys(perGuru).map(function(k){
+    const g = perGuru[k];
+    const c = {Hadir:0, Digantikan:0, Izin:0, MenungguIzin:0, BelumTercatat:0, TMTI:0, Libur:0};
+    g.sesi.forEach(function(s){ c[s.status] = (c[s.status]||0) + 1; });
+    const wajib = g.sesi.length - c.Libur;
+    const persen = wajib ? Math.round((c.Hadir + c.Digantikan + c.Izin) * 100 / wajib) : 100;
+    return {guru: g.guru, ringkas: c, wajib: wajib, persen: persen, sesi: g.sesi};
+  }).sort(function(a,b){ return b.ringkas.TMTI - a.ringkas.TMTI || a.persen - b.persen; });
+}
+
+function levelDariTMTIAtur_(n, cfg) {
+  if (n >= cfg.sp3) return 3;
+  if (n >= cfg.sp2) return 2;
+  if (n >= cfg.sp1) return 1;
+  return 0;
+}
+
+// Jenjang SP yang DIREKOMENDASIKAN untuk guru pada bulan tertentu.
+// Berjenjang: kalau guru masih punya SP aktif (terbit di bulan sebelumnya & masa
+// berlakunya belum habis) lalu mencapai batas SP lagi, jenjangnya naik satu.
+function levelRekomendasiAtur_(guru, bulanStr, jumlahTMTI, cfg, daftarSP, hariIni) {
+  const dasar = levelDariTMTIAtur_(jumlahTMTI, cfg);
+  if (dasar === 0) return 0;
+  let aktifTertinggi = 0;
+  daftarSP.forEach(function(sp){
+    if (sp.status !== 'Diterbitkan' || normNama(sp.guru) !== normNama(guru)) return;
+    if (sp.bulan >= bulanStr) return;               // hanya SP dari bulan sebelumnya
+    if (sp.berlakuSampai && sp.berlakuSampai < hariIni) return; // sudah tidak berlaku
+    aktifTertinggi = Math.max(aktifTertinggi, sp.level);
+  });
+  return aktifTertinggi > 0 ? Math.min(3, Math.max(dasar, aktifTertinggi + 1)) : dasar;
+}
+
+// Buat/perbarui DRAF SP untuk satu bulan berdasarkan hasil perhitungan.
+// Tidak pernah menerbitkan sendiri -- penerbitan tetap lewat Mudir/Admin.
+function sinkronDrafSPAtur_(bulan, tahun, rekap) {
+  const cfg = aturanKehadiranGuru_();
+  if (!statusAturanKehadiran_(cfg).berjalan) return {dibuat:0, diperbarui:0, dibatalkan:0};
+  const bulanStr = tahun + '-' + String(bulan).padStart(2,'0');
+  const hariIni = hariIniAtur_();
+  const tz = Session.getScriptTimeZone();
+  const sh = shSuratSP_();
+  const daftarSP = getSuratSPListAtur_();
+  let dibuat = 0, diperbarui = 0, dibatalkan = 0;
+
+  rekap.forEach(function(g){
+    const tmti = g.sesi.filter(function(s){ return s.status === 'TMTI'; })
+      .map(function(s){ return {tanggal: s.tanggal, hari: s.hari, jenis: s.jenis, nama: s.nama}; });
+    const rek = levelRekomendasiAtur_(g.guru, bulanStr, tmti.length, cfg, daftarSP, hariIni);
+    const milikBulanIni = daftarSP.filter(function(sp){ return normNama(sp.guru) === normNama(g.guru) && sp.bulan === bulanStr; });
+    const terbitTertinggi = milikBulanIni.filter(function(sp){ return sp.status === 'Diterbitkan'; })
+      .reduce(function(m, sp){ return Math.max(m, sp.level); }, 0);
+    const draf = milikBulanIni.find(function(sp){ return sp.status === 'Draf'; });
+    const rincianJson = JSON.stringify(tmti).slice(0, 45000);
+
+    if (rek <= terbitTertinggi) {
+      // Tidak perlu SP baru. Draf yang tersisa (mis. TMTI berkurang karena izin
+      // disetujui belakangan) dibatalkan otomatis supaya tidak diterbitkan keliru.
+      if (draf) {
+        sh.getRange(draf.rowIndex, 8).setValue('Dibatalkan');
+        sh.getRange(draf.rowIndex, 14).setValue('Otomatis: jumlah TMTI tidak lagi mencapai batas SP berikutnya.');
+        dibatalkan++;
+      }
+      return;
+    }
+    if (draf) {
+      if (draf.level !== rek || draf.jumlahTMTI !== tmti.length) {
+        sh.getRange(draf.rowIndex, 4, 1, 4).setValues([[rek, bulanStr, tmti.length, rincianJson]]);
+        diperbarui++;
+      }
+    } else {
+      sh.appendRow(['SP-' + Utilities.getUuid().slice(0,8).toUpperCase(), '', g.guru, rek, bulanStr, tmti.length,
+        rincianJson, 'Draf', Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm'), '', '', '', '', '']);
+      dibuat++;
+    }
+  });
+  return {dibuat: dibuat, diperbarui: diperbarui, dibatalkan: dibatalkan};
+}
+
+// ---------------- ENDPOINT ----------------
+
+// Rekap semua guru (Admin/Mudir). Sekaligus menyinkronkan draf SP bulan itu.
+function apiGetRekapKehadiranGuru(p) {
+  if (!adminAtauMudir(p.oleh)) return {ok:false, error:'Hanya Admin/Mudir yang boleh melihat rekap ini.'};
+  const now = new Date();
+  const bulan = Number(p.bulan) || now.getMonth()+1, tahun = Number(p.tahun) || now.getFullYear();
+  const cfg = aturanKehadiranGuru_();
+  try {
+    const rekap = hitungKehadiranGuruAtur_(bulan, tahun, '');
+    const st = statusAturanKehadiran_(cfg);
+    let sinkron = null;
+    if (st.berjalan) sinkron = sinkronDrafSPAtur_(bulan, tahun, rekap);
+    const bulanStr = tahun + '-' + String(bulan).padStart(2,'0');
+    const sp = getSuratSPListAtur_().filter(function(x){ return x.bulan === bulanStr && x.status !== 'Dibatalkan'; });
+    return {ok:true, aktif: st.berjalan, statusAturan: st, cfg: cfg, rekap: rekap, sinkron: sinkron,
+      sp: sp.map(function(x){ return {guru:x.guru, level:x.level, status:x.status}; })};
+  } catch (e) {
+    return {ok:false, error:'Gagal menghitung rekap: ' + e.message};
+  }
+}
+
+// Ringkasan untuk kartu notifikasi di dashboard Admin/Mudir. Juga menjalankan
+// sinkron draf untuk bulan berjalan (dan bulan lalu di awal bulan), supaya draf SP
+// benar-benar muncul "otomatis" tanpa Mudir harus membuka halaman rekap dulu.
+function apiGetNotifKehadiranGuru(p) {
+  if (!adminAtauMudir(p.oleh)) return {ok:false, error:'Tidak berwenang.'};
+  const cfg = aturanKehadiranGuru_();
+  const izinMenunggu = getIzinGuruListAtur_().filter(function(z){ return z.status === 'Menunggu'; }).length;
+  if (!statusAturanKehadiran_(cfg).berjalan) return {ok:true, aktif:false, izinMenunggu: izinMenunggu, drafSP: 0};
+  try {
+    const now = new Date();
+    const bulan = now.getMonth()+1, tahun = now.getFullYear();
+    sinkronDrafSPAtur_(bulan, tahun, hitungKehadiranGuruAtur_(bulan, tahun, ''));
+    if (now.getDate() <= cfg.batasKlarifikasi + 2) {
+      const lalu = new Date(tahun, bulan-2, 1);
+      sinkronDrafSPAtur_(lalu.getMonth()+1, lalu.getFullYear(), hitungKehadiranGuruAtur_(lalu.getMonth()+1, lalu.getFullYear(), ''));
+    }
+  } catch (e) { Logger.log('Sinkron draf SP gagal: ' + e.message); }
+  const drafSP = getSuratSPListAtur_().filter(function(x){ return x.status === 'Draf'; }).length;
+  return {ok:true, aktif:true, izinMenunggu: izinMenunggu, drafSP: drafSP};
+}
+
+// Kehadiran guru yang sedang login: ringkasan bulan, sesi yang perlu diklarifikasi,
+// teguran, dan SP yang sudah diterbitkan untuknya (draf TIDAK pernah dikirim ke guru).
+function apiGetKehadiranSaya(p) {
+  const guru = norm(p.guru);
+  if (!guru) return {ok:false, error:'Nama guru kosong.'};
+  const cfg = aturanKehadiranGuru_();
+  const spSaya = getSuratSPListAtur_().filter(function(x){ return x.status === 'Diterbitkan' && normNama(x.guru) === normNama(guru); })
+    .sort(function(a,b){ return String(b.diterbitkanPada).localeCompare(String(a.diterbitkanPada)); });
+  if (!statusAturanKehadiran_(cfg).berjalan) return {ok:true, aktif:false, sp: spSaya};
+  try {
+    const now = new Date();
+    const bulan = Number(p.bulan) || now.getMonth()+1, tahun = Number(p.tahun) || now.getFullYear();
+    let sesi = [];
+    const hasil = hitungKehadiranGuruAtur_(bulan, tahun, guru)[0];
+    if (hasil) sesi = hasil.sesi;
+    // Sesi yang masih bisa diklarifikasi kadang jatuh di bulan lalu (awal bulan)
+    if (now.getDate() <= cfg.batasKlarifikasi && !p.bulan) {
+      const lalu = new Date(tahun, bulan-2, 1);
+      const h2 = hitungKehadiranGuruAtur_(lalu.getMonth()+1, lalu.getFullYear(), guru)[0];
+      if (h2) sesi = h2.sesi.filter(function(s){ return s.status === 'BelumTercatat'; }).concat(sesi);
+    }
+    const ringkas = hasil ? hasil.ringkas : {Hadir:0,Digantikan:0,Izin:0,MenungguIzin:0,BelumTercatat:0,TMTI:0,Libur:0};
+    const perluKlarifikasi = sesi.filter(function(s){ return s.status === 'BelumTercatat'; });
+    const teguran = ringkas.TMTI >= cfg.teguran && ringkas.TMTI < cfg.sp1;
+    return {ok:true, aktif:true, cfg: {teguran:cfg.teguran, sp1:cfg.sp1, sp2:cfg.sp2, sp3:cfg.sp3, batasKlarifikasi:cfg.batasKlarifikasi},
+      ringkas: ringkas, persen: hasil ? hasil.persen : 100, wajib: hasil ? hasil.wajib : 0,
+      perluKlarifikasi: perluKlarifikasi, tmti: sesi.filter(function(s){ return s.status === 'TMTI'; }),
+      teguran: teguran, sp: spSaya};
+  } catch (e) {
+    return {ok:false, error:'Gagal memuat kehadiran: ' + e.message};
+  }
+}
+
+function apiAjukanIzinGuru(p) {
+  const guru = norm(p.guru), tanggal = norm(p.tanggal).slice(0,10), alasan = norm(p.alasan);
+  if (!guru || !tanggal || !alasan) return {ok:false, error:'Tanggal dan alasan wajib diisi.'};
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(tanggal)) return {ok:false, error:'Format tanggal tidak valid.'};
+  const cfg = aturanKehadiranGuru_();
+  const hariIni = hariIniAtur_();
+  // Izin untuk hari yang sudah lewat hanya boleh dalam masa klarifikasi -- setelah
+  // itu status TMTI sudah final dan tidak bisa "dihapus" dengan izin belakangan.
+  if (tanggal < hariIni && selisihHariAtur_(tanggal, hariIni) > cfg.batasKlarifikasi) {
+    return {ok:false, error:'Masa klarifikasi untuk tanggal '+tanggal+' sudah lewat (maksimal '+cfg.batasKlarifikasi+' hari). Hubungi Mudir bila ada alasan khusus.'};
+  }
+  if (selisihHariAtur_(hariIni, tanggal) > 60) return {ok:false, error:'Izin hanya bisa diajukan paling jauh 60 hari ke depan.'};
+  const ada = getIzinGuruListAtur_().find(function(z){
+    return normNama(z.guru) === normNama(guru) && z.tanggal === tanggal && (z.status === 'Menunggu' || z.status === 'Disetujui');
+  });
+  if (ada) return {ok:false, error:'Sudah ada pengajuan izin untuk tanggal ini (status: '+ada.status+').'};
+  const tz = Session.getScriptTimeZone();
+  const id = 'IZ-' + Utilities.getUuid().slice(0,8).toUpperCase();
+  shIzinGuru_().appendRow([id, tanggal, guru, alasan, norm(p.keterangan), norm(p.buktiUrl), 'Menunggu', '', '', '',
+    Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm')]);
+  noWaAdminMudirAtur_().forEach(function(wa){
+    kirimWAKehadiranAtur_('waIzinBaru', wa, 'Assalamualaikum Wr. Wb.\n\n*PENGAJUAN IZIN GURU*\n\n' +
+      'Nama: *' + guru + '*\nTanggal: ' + tanggal + '\nAlasan: ' + alasan +
+      (norm(p.keterangan) ? '\nKeterangan: ' + norm(p.keterangan) : '') +
+      '\n\nMohon ditinjau di aplikasi WASIAT, menu Kehadiran Guru & SP.');
+  });
+  return {ok:true, id: id};
+}
+
+function apiGetIzinGuru(p) {
+  const semua = getIzinGuruListAtur_();
+  let data;
+  if (p.semua) {
+    if (!adminAtauMudir(p.oleh)) return {ok:false, error:'Tidak berwenang.'};
+    data = semua;
+  } else {
+    data = semua.filter(function(z){ return normNama(z.guru) === normNama(p.guru); });
+  }
+  data.sort(function(a,b){ return String(b.diajukan).localeCompare(String(a.diajukan)); });
+  return {ok:true, data: data.slice(0, 300)};
+}
+
+function apiProsesIzinGuru(p) {
+  if (!adminAtauMudir(p.oleh)) return {ok:false, error:'Hanya Admin/Mudir yang boleh memproses izin.'};
+  const keputusan = norm(p.keputusan);
+  if (keputusan !== 'Disetujui' && keputusan !== 'Ditolak') return {ok:false, error:'Keputusan tidak valid.'};
+  const z = getIzinGuruListAtur_().find(function(x){ return x.id === norm(p.id); });
+  if (!z) return {ok:false, error:'Pengajuan tidak ditemukan.'};
+  if (z.status !== 'Menunggu') return {ok:false, error:'Pengajuan ini sudah diproses ('+z.status+').'};
+  const tz = Session.getScriptTimeZone();
+  shIzinGuru_().getRange(z.rowIndex, 7, 1, 4).setValues([[keputusan, norm(p.oleh), Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm'), norm(p.catatan)]]);
+  kirimWAKehadiranAtur_('waIzinDiproses', noWaAkunAtur_(z.guru), 'Assalamualaikum Wr. Wb.\n\n' +
+    'Ustadz/Ustadzah *' + z.guru + '*, pengajuan izin Anda untuk tanggal ' + z.tanggal + ' (' + z.alasan + ') telah *' +
+    keputusan.toUpperCase() + '*' + (norm(p.catatan) ? '.\nCatatan: ' + norm(p.catatan) : '.') +
+    (keputusan === 'Ditolak' ? '\n\nSesi pada tanggal tersebut akan dihitung tidak masuk tanpa izin. Silakan hubungi Mudir bila perlu penjelasan.' : '') +
+    '\n\nWassalamualaikum Wr. Wb.');
+  return {ok:true};
+}
+
+function apiBatalkanIzinGuru(p) {
+  const z = getIzinGuruListAtur_().find(function(x){ return x.id === norm(p.id); });
+  if (!z) return {ok:false, error:'Pengajuan tidak ditemukan.'};
+  if (normNama(z.guru) !== normNama(p.guru)) return {ok:false, error:'Anda hanya bisa membatalkan pengajuan milik sendiri.'};
+  if (z.status !== 'Menunggu') return {ok:false, error:'Hanya pengajuan yang masih menunggu yang bisa dibatalkan.'};
+  shIzinGuru_().getRange(z.rowIndex, 7).setValue('Dibatalkan');
+  return {ok:true};
+}
+
+function apiGetDaftarSP(p) {
+  if (!adminAtauMudir(p.oleh)) return {ok:false, error:'Tidak berwenang.'};
+  const data = getSuratSPListAtur_().filter(function(x){ return x.status !== 'Dibatalkan' || p.termasukBatal; })
+    .sort(function(a,b){ return String(b.dibuat).localeCompare(String(a.dibuat)); });
+  return {ok:true, data: data.slice(0, 200), cfg: aturanKehadiranGuru_(), pesantren: {
+    nama: getPengaturan().NamaPesantren || 'Pondok Pesantren', alamat: getPengaturan().AlamatPesantren || ''}};
+}
+
+function romawiAtur_(n) { return ['','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'][n] || String(n); }
+
+function apiTerbitkanSP(p) {
+  if (!adminAtauMudir(p.oleh)) return {ok:false, error:'Hanya Admin/Mudir yang boleh menerbitkan SP.'};
+  const lock = LockService.getScriptLock();
+  try { lock.waitLock(15000); } catch (e) { return {ok:false, error:'Sistem sedang sibuk, coba lagi.'}; }
+  try {
+    const semua = getSuratSPListAtur_();
+    const sp = semua.find(function(x){ return x.id === norm(p.id); });
+    if (!sp) return {ok:false, error:'Draf SP tidak ditemukan.'};
+    if (sp.status !== 'Draf') return {ok:false, error:'SP ini sudah '+sp.status+'.'};
+    const cfg = aturanKehadiranGuru_();
+    const hariIni = hariIniAtur_();
+    const tahun = hariIni.slice(0,4);
+    // Nomor urut per tahun, hanya menghitung SP yang benar-benar diterbitkan
+    const urut = semua.filter(function(x){ return x.status === 'Diterbitkan' && String(x.diterbitkanPada).slice(0,4) === tahun; }).length + 1;
+    const nomor = String(urut).padStart(3,'0') + '/SP-' + sp.level + '/' + cfg.kodeSurat + '/' + romawiAtur_(Number(hariIni.slice(5,7))) + '/' + tahun;
+    const berlaku = tambahBulanAtur_(hariIni, cfg.masaBerlakuBulan);
+    const sh = shSuratSP_();
+    sh.getRange(sp.rowIndex, 2).setValue(nomor);
+    sh.getRange(sp.rowIndex, 8).setValue('Diterbitkan');
+    sh.getRange(sp.rowIndex, 10, 1, 3).setValues([[norm(p.oleh), hariIni, berlaku]]);
+    if (norm(p.catatan)) sh.getRange(sp.rowIndex, 14).setValue(norm(p.catatan));
+    kirimWAKehadiranAtur_('waSPTerbit', noWaAkunAtur_(sp.guru), 'Assalamualaikum Wr. Wb.\n\n' +
+      'Ustadz/Ustadzah *' + sp.guru + '*, pondok telah menerbitkan *Surat Peringatan (SP-' + sp.level + ')* ' +
+      'nomor ' + nomor + ' terkait kehadiran mengajar.\n\nMohon buka aplikasi WASIAT untuk membaca surat dan ' +
+      'menekan tombol "Saya telah membaca".\n\nWassalamualaikum Wr. Wb.');
+    return {ok:true, nomor: nomor, berlakuSampai: berlaku};
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function apiBatalkanSP(p) {
+  if (!adminAtauMudir(p.oleh)) return {ok:false, error:'Hanya Admin/Mudir yang boleh membatalkan SP.'};
+  const sp = getSuratSPListAtur_().find(function(x){ return x.id === norm(p.id); });
+  if (!sp) return {ok:false, error:'SP tidak ditemukan.'};
+  if (sp.status === 'Dibatalkan') return {ok:false, error:'SP ini sudah dibatalkan.'};
+  const sh = shSuratSP_();
+  sh.getRange(sp.rowIndex, 8).setValue('Dibatalkan');
+  sh.getRange(sp.rowIndex, 14).setValue('Dibatalkan oleh ' + norm(p.oleh) + (norm(p.alasan) ? ': ' + norm(p.alasan) : ''));
+  return {ok:true};
+}
+
+function apiTandaiSPDibaca(p) {
+  const sp = getSuratSPListAtur_().find(function(x){ return x.id === norm(p.id); });
+  if (!sp || sp.status !== 'Diterbitkan') return {ok:false, error:'Surat tidak ditemukan.'};
+  if (normNama(sp.guru) !== normNama(p.guru)) return {ok:false, error:'Surat ini bukan untuk Anda.'};
+  if (sp.dibacaPada) return {ok:true, dibacaPada: sp.dibacaPada};
+  const w = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
+  shSuratSP_().getRange(sp.rowIndex, 13).setValue(w);
+  return {ok:true, dibacaPada: w};
+}
+
+function apiGetLiburPondok() {
+  return {ok:true, data: getLiburListAtur_().sort(function(a,b){ return b.tanggal.localeCompare(a.tanggal); })};
+}
+
+function apiSimpanLiburPondok(p) {
+  if (!adminAtauMudir(p.oleh)) return {ok:false, error:'Hanya Admin/Mudir yang boleh mengatur hari libur.'};
+  const mulai = norm(p.mulai).slice(0,10), selesai = (norm(p.selesai) || norm(p.mulai)).slice(0,10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(mulai) || !/^\d{4}-\d{2}-\d{2}$/.test(selesai)) return {ok:false, error:'Tanggal tidak valid.'};
+  if (selesai < mulai) return {ok:false, error:'Tanggal selesai lebih awal dari tanggal mulai.'};
+  const jml = selisihHariAtur_(mulai, selesai) + 1;
+  if (jml > 120) return {ok:false, error:'Rentang libur terlalu panjang (maksimal 120 hari sekali simpan).'};
+  const ada = {}; getLiburListAtur_().forEach(function(l){ ada[l.tanggal] = true; });
+  const tz = Session.getScriptTimeZone();
+  const baris = [];
+  const p0 = mulai.split('-').map(Number);
+  for (let i = 0; i < jml; i++) {
+    const t = Utilities.formatDate(new Date(p0[0], p0[1]-1, p0[2] + i), tz, 'yyyy-MM-dd');
+    if (!ada[t]) baris.push([t, norm(p.keterangan) || 'Libur pondok', Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm')]);
+  }
+  if (baris.length) {
+    const sh = shLiburPondok_();
+    sh.getRange(sh.getLastRow()+1, 1, baris.length, 3).setValues(baris);
+  }
+  return {ok:true, ditambah: baris.length};
+}
+
+function apiHapusLiburPondok(p) {
+  if (!adminAtauMudir(p.oleh)) return {ok:false, error:'Hanya Admin/Mudir yang boleh mengatur hari libur.'};
+  const l = getLiburListAtur_().find(function(x){ return x.tanggal === norm(p.tanggal); });
+  if (!l) return {ok:false, error:'Tanggal libur tidak ditemukan.'};
+  shLiburPondok_().deleteRow(l.rowIndex);
+  return {ok:true};
 }
