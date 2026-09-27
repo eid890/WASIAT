@@ -10,8 +10,14 @@
 //
 // CACHE_VERSION diisi otomatis saat build — ubah ini kalau mau paksa re-cache semua.
 
-const CACHE_VERSION = 'wasiat-offline-v3'; // diupdate otomatis tiap build
+const CACHE_VERSION = 'wasiat-offline-v7'; // diupdate otomatis tiap build
 const CACHE_NAME = CACHE_VERSION;
+// Cache foto (produk kantin, galeri, logo) SENGAJA tidak diberi nomor versi aplikasi.
+// Kalau ikut versi, setiap kali aplikasi diperbarui semua foto akan terhapus dan
+// diunduh ulang -- boros kuota dan membuat halaman kasir terasa lambat sesudah tiap
+// pembaruan. Isi cache ini aman dipertahankan karena foto yang diganti selalu
+// menghasilkan URL baru (ID file Drive-nya berbeda).
+const CACHE_IMG = 'wasiat-img-v1';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -29,7 +35,14 @@ const APP_SHELL = [
 self.addEventListener('install', function(e) {
   e.waitUntil(
     caches.open(CACHE_NAME).then(function(cache) {
-      return cache.addAll(APP_SHELL);
+      // Diunduh SATU PER SATU. Sebelumnya memakai cache.addAll(): kalau satu saja berkas
+      // (mis. ikon) tidak ada di server, SELURUH pemasangan gagal dan mode offline tidak
+      // pernah aktif. Sekarang berkas yang gagal dilewati, sisanya tetap tersimpan.
+      return Promise.all(APP_SHELL.map(function(url) {
+        return fetch(url, { cache: 'no-cache' }).then(function(res) {
+          if (res && res.ok) return cache.put(url, res);
+        }).catch(function() { /* lewati berkas yang gagal */ });
+      }));
     })
     // CATATAN: skipWaiting() sengaja TIDAK dipanggil di sini.
     // Kalau dipanggil, versi baru langsung aktif dan memicu controllerchange di tab
@@ -47,7 +60,7 @@ self.addEventListener('activate', function(e) {
     caches.keys().then(function(keys) {
       return Promise.all(
         keys
-          .filter(function(k) { return k !== CACHE_NAME; })
+          .filter(function(k) { return k !== CACHE_NAME && k !== CACHE_IMG; })
           .map(function(k) { return caches.delete(k); })
       );
     }).then(function() {
@@ -68,6 +81,32 @@ self.addEventListener('fetch', function(e) {
   var req = e.request;
   var url = new URL(req.url);
 
+  // Foto dari Google Drive (produk kantin, galeri, logo): dilayani dengan strategi
+  // cache-first. Foto-foto ini praktis tidak pernah berubah isinya -- kalau Admin
+  // mengganti foto, URL-nya ikut berubah karena ID filenya baru. Jadi aman di-cache
+  // selamanya, dan ini yang membuat halaman kasir kantin tidak mengunduh ulang foto
+  // yang sama setiap kali dibuka. Bonus: foto tetap tampil saat offline.
+  if (url.hostname.indexOf('lh3.googleusercontent.com') !== -1 && req.method === 'GET') {
+    e.respondWith(
+      caches.open(CACHE_IMG).then(function(cache){
+        return cache.match(req).then(function(hit){
+          if (hit) return hit;
+          return fetch(req).then(function(res){
+            // Hanya simpan kalau benar-benar berhasil, supaya gambar gagal/rusak
+            // tidak ikut tersimpan dan terus tampil rusak.
+            if (res && res.ok) cache.put(req, res.clone());
+            return res;
+          }).catch(function(){
+            // Offline dan belum pernah di-cache: biarkan gambar kosong, jangan
+            // sampai menggagalkan halaman.
+            return new Response('', {status: 504});
+          });
+        });
+      })
+    );
+    return;
+  }
+
   // Jangan intercept: Apps Script, Google APIs, OneSignal (push), request non-GET
   //
   // OneSignal WAJIB dikecualikan: permintaan ke servernya harus selalu langsung ke
@@ -79,6 +118,7 @@ self.addEventListener('fetch', function(e) {
     url.hostname.indexOf('googleusercontent.com') !== -1 ||
     url.hostname.indexOf('googleapis.com') !== -1 ||
     url.hostname.indexOf('onesignal.com') !== -1 ||
+    url.hostname.indexOf('jsdelivr.net') !== -1 ||
     url.pathname.indexOf('/push/onesignal/') === 0 ||
     req.method !== 'GET'
   ) return;
@@ -90,24 +130,44 @@ self.addEventListener('fetch', function(e) {
               url.pathname.endsWith('/index.html');
 
   if (isNav) {
+    // Jaringan dulu (supaya selalu versi terbaru), TAPI dengan batas 5 detik bila salinan
+    // offline sudah ada. Sebelumnya tanpa batas: di sinyal lemah layar bisa putih lama
+    // sebelum akhirnya memakai salinan offline. Unduhan tetap berlanjut di belakang
+    // untuk memperbarui salinan.
+    function dariCache() {
+      return caches.match(req)
+        .then(function(c) { return c || caches.match('/index.html'); })
+        .then(function(c) { return c || caches.match('/'); });
+    }
+    var dariJaringan = fetch(req, { cache: 'no-cache' }).then(function(resp) {
+      if (resp && resp.status === 200) {
+        var salinan1 = resp.clone(), salinan2 = resp.clone();
+        caches.open(CACHE_NAME).then(function(cache) {
+          cache.put(req, salinan1);
+          // Simpan juga sebagai /index.html supaya alamat dengan parameter apa pun
+          // tetap punya cadangan saat offline
+          cache.put('/index.html', salinan2);
+        });
+      }
+      return resp;
+    });
     e.respondWith(
-      fetch(req, { cache: 'no-cache' })
-        .then(function(resp) {
-          // Simpan versi terbaru ke cache untuk offline
-          if (resp && resp.status === 200) {
-            var salinan = resp.clone();
-            caches.open(CACHE_NAME).then(function(cache) {
-              cache.put(req, salinan);
-            });
-          }
-          return resp;
-        })
-        .catch(function() {
-          // Offline: pakai cache
-          return caches.match(req).then(function(cached) {
-            return cached || caches.match('/index.html');
+      dariCache().then(function(cached) {
+        if (!cached) return dariJaringan.catch(function() { return new Response('Aplikasi belum pernah dibuka saat online di perangkat ini. Buka sekali dengan internet agar bisa dipakai offline.', {status: 503, headers: {'Content-Type': 'text/plain; charset=utf-8'}}); });
+        return new Promise(function(resolve) {
+          var selesai = false;
+          var penanda = setTimeout(function() { if (!selesai) { selesai = true; resolve(cached); } }, 5000);
+          dariJaringan.then(function(resp) {
+            if (selesai) return;
+            selesai = true; clearTimeout(penanda);
+            resolve(resp && resp.ok ? resp : cached);
+          }).catch(function() {
+            if (selesai) return;
+            selesai = true; clearTimeout(penanda);
+            resolve(cached);
           });
-        })
+        });
+      })
     );
     return;
   }
@@ -118,9 +178,9 @@ self.addEventListener('fetch', function(e) {
     caches.open(CACHE_NAME).then(function(cache) {
       return cache.match(req).then(function(cached) {
         var jaringan = fetch(req).then(function(resp) {
-          if (resp && resp.status === 200) {
-            cache.put(req, resp.clone());
-          }
+          var bolehSimpan = resp && (resp.status === 200 ||
+            (resp.type === 'opaque' && /cdnjs\.cloudflare\.com|fonts\.gstatic\.com/.test(url.hostname)));
+          if (bolehSimpan) cache.put(req, resp.clone());
           return resp;
         }).catch(function() { return cached; });
 

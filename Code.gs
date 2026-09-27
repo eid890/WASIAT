@@ -162,10 +162,61 @@ function doGet(e) {
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents || '{}');
-    return jsonOut(safeRoute(body.action, body.payload || {}));
+    return jsonOut(routeIdempoten_(body.action, body.payload || {}));
   } catch (err) {
     return jsonOut({ok:false, error: String(err)});
   }
+}
+
+// ======================================================================
+// PENCEGAH KIRIMAN GANDA (untuk data yang dikirim dari mode offline)
+//
+// Di sinyal lemah bisa terjadi: server SUDAH menyimpan data, tapi jawabannya hilang
+// di jalan. Aplikasi mengira gagal, lalu mengirim ulang dari antrian. Untuk absensi &
+// hafalan aman (datanya ditimpa), tapi pelanggaran/izin/tasmi' akan tercatat dua kali.
+//
+// Setiap kiriman membawa kunci unik (_idem). Kunci yang sudah pernah BERHASIL diingat
+// 6 jam -- kiriman ulang dengan kunci sama langsung dijawab dengan hasil sebelumnya
+// tanpa menyimpan lagi. Kiriman TANPA kunci (versi aplikasi lama) diproses seperti biasa.
+// ======================================================================
+const AKSI_IDEMPOTEN = ['submitAbsensi','submitAbsensiHalaqoh','submitAbsensiHarian','submitHafalan',
+  'submitNilai','simpanJurnal','updateAbsensi','updateHafalan','updateNilai',
+  'savePencatatanPelanggaran','catatPelanggaranPembina','simpanTugasPembina',
+  'ajukanIzinGuru','simpanRiwayatTasmi'];
+
+function routeIdempoten_(action, p) {
+  const kunci = norm(p && p._idem);
+  if (!kunci || AKSI_IDEMPOTEN.indexOf(action) === -1) return safeRoute(action, p);
+  const ck = 'idem_' + kunci.slice(0, 80);
+  let cache;
+  try { cache = CacheService.getScriptCache(); } catch (e) { return safeRoute(action, p); }
+
+  // Periksa & tandai "sedang diproses" di dalam kunci singkat, supaya dua kiriman
+  // yang tiba bersamaan tidak sama-sama lolos.
+  const lock = LockService.getScriptLock();
+  let terkunci = false;
+  try { lock.waitLock(10000); terkunci = true; } catch (e) {}
+  try {
+    const ada = cache.get(ck);
+    if (ada === '__proses__') {
+      return {ok:false, error:'Data yang sama sedang diproses server. Akan dicoba lagi otomatis.', _sedangDiproses:true};
+    }
+    if (ada) {
+      try { const lama = JSON.parse(ada); lama._duplikatDiabaikan = true; return lama; } catch (e) {}
+    }
+    cache.put(ck, '__proses__', 300);
+  } catch (e) {
+    // CacheService bermasalah: tetap proses seperti biasa daripada menolak data
+  } finally {
+    if (terkunci) lock.releaseLock();
+  }
+
+  const hasil = safeRoute(action, p);
+  try {
+    if (hasil && hasil.ok) cache.put(ck, JSON.stringify(hasil).slice(0, 90000), 21600);
+    else cache.remove(ck); // ditolak -> boleh dikirim ulang setelah diperbaiki
+  } catch (e) {}
+  return hasil;
 }
 
 function safeRoute(action, p) {
@@ -185,7 +236,7 @@ function route(action, p) {
     case 'setTahunAjaranAktif': return apiSetTahunAjaranAktif(p.id);
     case 'migrasiSkemaLama': return apiMigrasiSkemaLama();
 
-    case 'getPengaturan': return {ok:true, data: getPengaturan()};
+    case 'getPengaturan': return {ok:true, data: getPengaturanPublik_()};
     case 'getVersiData': return apiGetVersiData();
     // Notifikasi push (OneSignal)
     case 'kirimPushManual':      return apiKirimPushManual(p);
@@ -294,6 +345,10 @@ function route(action, p) {
     case 'loginImamMasjid': return apiLoginImamMasjid(p);
     case 'tarikSaldoPemilikManual': return apiTarikSaldoPemilikManual(p);
     case 'getDaftarSaldoPemilik': return apiGetDaftarSaldoPemilik();
+    case 'kirimPushUji': return apiKirimPushUji(p);
+    case 'cekStatusWablas': return apiCekStatusWablas(p);
+    case 'kirimWATes': return apiKirimWATes(p);
+    case 'getInfoPengaturanWA': return apiGetInfoPengaturanWA(p);
     // Kehadiran mengajar guru, izin, dan SP
     case 'getRekapKehadiranGuru': return apiGetRekapKehadiranGuru(p);
     case 'getNotifKehadiranGuru': return apiGetNotifKehadiranGuru(p);
@@ -302,6 +357,8 @@ function route(action, p) {
     case 'getIzinGuru':           return apiGetIzinGuru(p);
     case 'prosesIzinGuru':        return apiProsesIzinGuru(p);
     case 'batalkanIzinGuru':      return apiBatalkanIzinGuru(p);
+    case 'lampirkanBuktiIzin':   return apiLampirkanBuktiIzin(p);
+    case 'getTiketSusulan':      return apiGetTiketSusulan(p);
     case 'getDaftarSP':           return apiGetDaftarSP(p);
     case 'terbitkanSP':           return apiTerbitkanSP(p);
     case 'batalkanSP':            return apiBatalkanSP(p);
@@ -437,6 +494,8 @@ function route(action, p) {
     case 'submitAbsensiHarian': return apiSubmitAbsensiHarian(p);
     case 'getRekapAbsensiHarian': return apiGetRekapAbsensiHarian(p);
     case 'getStatusPondok': return apiGetStatusPondok(p);
+    case 'getTopSantriBulan': return apiGetTopSantriBulan(p);
+    case 'getSantriBeruntun': return apiGetSantriBeruntun(p);
     case 'getProgressHafalan':      return apiGetProgressHafalan(p);
     case 'getProgressHafalanMassal': return apiGetProgressHafalanMassal(p);
     case 'getProgresAwal':          return apiGetProgresAwal(p);
@@ -902,6 +961,8 @@ function buildPesanTagihanSPP(nama, bulanTunggak, totalTunggakan) {
 }
 
 function apiKirimTagihanSppSatuSantri(p) {
+  if (jenisWANonaktif_()['spp_tagihan_manual']) return {ok:false, error:'Pengiriman tagihan SPP lewat tombol sedang dinonaktifkan. Aktifkan di menu Pengaturan WhatsApp.'};
+  if (!waTerkonfigurasi_()) return {ok:false, error:'WhatsApp belum diatur. Isi token Wablas atau Fonnte di menu Pengaturan WhatsApp.'};
   const nisn = norm(p.nisn);
   if (!nisn) return {ok:false, error:'NISN wajib diisi'};
   const tunggakan = getTunggakanSantri();
@@ -909,17 +970,19 @@ function apiKirimTagihanSppSatuSantri(p) {
   if (!santri) return {ok:false, error:'Santri ini tidak memiliki tunggakan'};
   if (!santri.noWa) return {ok:false, error:'No WA wali santri ini tidak terdaftar'};
   const pesan = buildPesanTagihanSPP(santri.nama, santri.bulanTunggak, santri.tunggakanSPP);
-  kirimWAFonnteUmum(santri.noWa, pesan);
+  kirimWAKategori_('spp_tagihan_manual', santri.noWa, pesan);
   return {ok:true};
 }
 
 function apiKirimTagihanSppMassal() {
+  if (jenisWANonaktif_()['spp_tagihan_manual']) return {ok:false, error:'Pengiriman tagihan SPP lewat tombol sedang dinonaktifkan. Aktifkan di menu Pengaturan WhatsApp.'};
+  if (!waTerkonfigurasi_()) return {ok:false, error:'WhatsApp belum diatur. Isi token Wablas atau Fonnte di menu Pengaturan WhatsApp.'};
   const tunggakan = getTunggakanSantri();
   let terkirim = 0;
   tunggakan.forEach(function(t){
     if (!t.noWa) return;
     const pesan = buildPesanTagihanSPP(t.nama, t.bulanTunggak, t.tunggakanSPP);
-    kirimWAFonnteUmum(t.noWa, pesan);
+    kirimWAKategori_('spp_tagihan_manual', t.noWa, pesan);
     terkirim++;
     Utilities.sleep(300);
   });
@@ -987,7 +1050,7 @@ function migrasiSkemaLama() {
     log.push('Slide (Master): sudah ada, tidak diubah.');
   }
 
-  // 0b) Sheet PelanggaranSpreadsheet + pengaturan Fonnte di MASTER (fitur Catat
+  // 0b) Sheet PelanggaranSpreadsheet + pengaturan WhatsApp di MASTER (fitur Catat
   // Pelanggaran), plus buat spreadsheet Pelanggaran pertama otomatis kalau belum ada.
   if (!masterSS.getSheetByName(SHEET_PELANGGARAN_SS)) {
     const shPelSSBaru = masterSS.insertSheet(SHEET_PELANGGARAN_SS);
@@ -1851,7 +1914,45 @@ function getPengaturan() {
   cacheSimpan('pengaturan_v1', obj, 300);
   return obj;
 }
+// ======================================================================
+// NILAI RAHASIA DI PENGATURAN (token WA, API key notifikasi)
+//
+// Endpoint getPengaturan bisa dipanggil tanpa login (dipakai halaman depan). Sebelumnya
+// endpoint itu mengembalikan SELURUH pengaturan, termasuk token WA & API key -- siapa
+// pun yang membuka situs bisa membacanya. Sekarang nilai rahasia:
+//   - TIDAK PERNAH dikirim ke aplikasi; yang dikirim hanya tanda "sudah tersimpan"
+//   - kolom rahasia yang dikirim KOSONG saat menyimpan berarti "jangan diubah"
+//   - untuk menghapus, aplikasi mengirim penanda khusus __HAPUS__
+// Kode server tetap memakai getPengaturan() apa adanya, jadi pengiriman WA/notifikasi
+// tidak terpengaruh.
+// ======================================================================
+const KUNCI_RAHASIA = ['FonnteToken', 'WablasToken', 'WablasSecretKey', 'OneSignalApiKey'];
+const PENANDA_HAPUS_RAHASIA = '__HAPUS__';
+
+function getPengaturanPublik_() {
+  const asli = getPengaturan();
+  const salin = {};
+  const tersimpan = {};
+  Object.keys(asli).forEach(function(k){
+    if (KUNCI_RAHASIA.indexOf(k) !== -1) { tersimpan[k] = !!norm(asli[k]); return; }
+    salin[k] = asli[k];
+  });
+  salin._rahasiaTersimpan = tersimpan;
+  return salin;
+}
+// Mengubah nilai yang akan disimpan: null = lewati (jangan diubah)
+function nilaiSimpanPengaturan_(key, val) {
+  if (KUNCI_RAHASIA.indexOf(key) === -1) return val;
+  const v = String(val == null ? '' : val).trim();
+  if (v === '') return null;                      // kosong = tidak diubah
+  if (v === PENANDA_HAPUS_RAHASIA) return '';     // hapus
+  return v;
+}
+
 function apiSimpanPengaturan(p) {
+  const nilai = nilaiSimpanPengaturan_(p.key, p.value);
+  if (nilai === null) return {ok:true, tidakDiubah:true};
+  p = {key: p.key, value: nilai};
   const sh = getMasterSS().getSheetByName(SHEET_PENGATURAN);
   const rows = sh.getDataRange().getValues();
   for (let i=1;i<rows.length;i++) { if (rows[i][0] === p.key) { sh.getRange(i+1,2).setValue(p.value); cacheHapus('pengaturan_v1'); return {ok:true}; } }
@@ -1867,7 +1968,10 @@ function apiGetPengaturanBatch(p) {
   const obj = getPengaturan();
   const keys = p.keys || [];
   const hasil = {};
+  const tersimpan = {};
   keys.forEach(function(k){
+    // Nilai rahasia tidak pernah dikirim -- cukup tanda apakah sudah tersimpan
+    if (KUNCI_RAHASIA.indexOf(k) !== -1) { tersimpan[k] = !!norm(obj[k]); hasil[k] = undefined; return; }
     var v = obj[k];
     // Boolean: "true"/"false"/true/false → boolean
     if (v === true || v === 'TRUE' || v === 'true' || v === '1') hasil[k] = true;
@@ -1875,6 +1979,7 @@ function apiGetPengaturanBatch(p) {
     else if (v === undefined || v === '') hasil[k] = undefined;
     else hasil[k] = v;
   });
+  hasil._rahasiaTersimpan = tersimpan;
   return {ok:true, data: hasil};
 }
 
@@ -1883,8 +1988,12 @@ function apiSimpanPengaturanBatch(p) {
   const sh = getMasterSS().getSheetByName(SHEET_PENGATURAN);
   const rows = sh.getDataRange().getValues();
   const data = p.data || {};
+  // Token yang baru diisi menentukan penyedia "otomatis" (yang paling akhir diisi dipakai)
+  if (nilaiSimpanPengaturan_('WablasToken', data.WablasToken)) data.WAPenyediaTerakhir = 'wablas';
+  if (nilaiSimpanPengaturan_('FonnteToken', data.FonnteToken)) data.WAPenyediaTerakhir = 'fonnte';
   Object.keys(data).forEach(function(key) {
-    var val = data[key];
+    var val = nilaiSimpanPengaturan_(key, data[key]);
+    if (val === null) return; // kolom rahasia dikosongkan = tidak diubah
     var found = false;
     for (var i=1;i<rows.length;i++) {
       if (rows[i][0] === key) { sh.getRange(i+1,2).setValue(String(val)); rows[i][1] = String(val); found = true; break; }
@@ -2343,7 +2452,7 @@ function apiTarikSaldoSantriBendahara(p) {
       // Catat ke TransaksiKantin
       getAktifKantinSS().getSheetByName(SHEET_TRANSAKSI_KANTIN).appendRow(
         [tgl, wkt, nisn, nama, nominal, 'Penarikan', keterangan, 1, 0, oleh, 0, saldoSebelum, saldoSekarang]);
-      // Kirim WA ke ortu kalau Fonnte aktif
+      // Kirim WA ke ortu kalau WhatsApp (Wablas) diatur
       const noWa = norm(rows[i][iNoWa]);
       if (noWa) {
         const pesan = 'Assalamualaikum Wr. Wb.\n\nYth. Orang Tua/Wali Santri *'+nama+'*\n\n' +
@@ -2354,7 +2463,7 @@ function apiTarikSaldoSantriBendahara(p) {
           'Saldo sekarang: *Rp'+saldoSekarang.toLocaleString('id-ID')+'*\n\n' +
           'Dicatat oleh: '+oleh+'\n' +
           'Waktu: '+tgl+' '+wkt+'\n\nJazakumullah khairan.';
-        kirimWAFonnteUmum(noWa, pesan);
+        kirimWAKategori_('saldo_tarik', noWa, pesan);
       }
       try {
         kirimPushKeWali(nisn, '\uD83D\uDCB8 Penarikan Saldo',
@@ -2517,7 +2626,7 @@ function apiTambahSaldoSantriManual(p) {
               'Saldo sekarang: *Rp' + saldoBaru.toLocaleString('id-ID') + '*\n\n' +
               'Dicatat oleh: ' + oleh + '\n' +
               'Waktu: ' + tgl + ' ' + wkt + '\n\nJazakumullah khairan.';
-            kirimWAFonnteUmum(noWa, pesan);
+            kirimWAKategori_('saldo_tambah', noWa, pesan);
             waKirim = true;
           } catch(e) { Logger.log('Gagal kirim WA: ' + e.message); }
         }
@@ -3100,7 +3209,7 @@ function getSemuaPengajuanTopUp(hanyaPending) {
 }
 
 // Setujui pengajuan TARIK SALDO PEMILIK: potong SaldoPemilik, catat ke RiwayatSaldoPemilik,
-// tandai baris pengajuan jadi "Disetujui", kirim WA (kalau Fonnte diatur).
+// tandai baris pengajuan jadi "Disetujui", kirim WA (kalau WhatsApp diatur).
 function apiSetujuiPenarikan(p) {
   const rowIndex = Number(p.rowIndex);
   const disetujuiOleh = norm(p.disetujuiOleh);
@@ -3135,7 +3244,7 @@ function apiSetujuiPenarikan(p) {
     shRiwayat.appendRow([Utilities.formatDate(new Date(),tz,'yyyy-MM-dd'), Utilities.formatDate(new Date(),tz,'HH:mm:ss'), pemilik, 'Penarikan', nominal, saldoSebelum, saldoSekarang, 'Disetujui oleh '+disetujuiOleh, 'Disetujui']);
 
     if (noWa) {
-      kirimWAFonnteUmum(noWa, 'Assalamualaikum Wr. Wb.\n\n*PENARIKAN SALDO DISETUJUI*\n\nHalo *'+pemilik+'*,\nPengajuan tarik saldo Anda sebesar Rp'+nominal.toLocaleString('id-ID')+' telah disetujui.\n\nSisa saldo: Rp'+saldoSekarang.toLocaleString('id-ID')+'\n\nWassalamualaikum Wr. Wb.');
+      kirimWAKategori_('saldo_pemilik', noWa, 'Assalamualaikum Wr. Wb.\n\n*PENARIKAN SALDO DISETUJUI*\n\nHalo *'+pemilik+'*,\nPengajuan tarik saldo Anda sebesar Rp'+nominal.toLocaleString('id-ID')+' telah disetujui.\n\nSisa saldo: Rp'+saldoSekarang.toLocaleString('id-ID')+'\n\nWassalamualaikum Wr. Wb.');
     }
     return {ok:true};
   } finally {
@@ -3227,7 +3336,7 @@ function apiSetujuiTopUp(p) {
         'Diproses oleh: ' + disetujuiOleh + '\n' +
         'Waktu: ' + tglStr + ' ' + wktStr + '\n\n' +
         'Jazakumullah khairan. - ' + namaPesantren;
-      kirimWAFonnteUmum(noWaWali, pesan);
+      kirimWAKategori_('saldo_tambah', noWaWali, pesan);
     }
     return {ok:true, saldoSekarang:saldoSekarang, biayaAdmin:biayaAdmin, nominalBersih:nominalBersih};
   } finally {
@@ -3248,21 +3357,208 @@ function apiTolakTopUp(p) {
   return {ok:true};
 }
 
-// Kirim WA umum (dipakai modul Kantin) -- terpisah dari kirimWAFonnte milik modul
-// Pelanggaran karena target spreadsheetnya beda (Kantin: aktif tahun ajaran, bukan
-// spreadsheet Pelanggaran terpisah), tapi caranya sama: lewat Fonnte kalau token diatur.
-function kirimWAFonnteUmum(target, pesan) {
-  const token = getPengaturan().FonnteToken;
-  if (!target || !token) return;
+// ======================================================================
+// PENGIRIMAN WHATSAPP -- lewat WABLAS
+//
+// Semua pengiriman WA di WASIAT melewati kirimWA_() di bawah. Pengaturannya (alamat
+// server, token, secret key) diisi Admin di menu Kelola Pelanggaran > Pengaturan
+// WhatsApp -- TIDAK ditulis di kode, supaya tidak ikut tersebar bila berkas kode
+// diunggah ke GitHub.
+//
+// Masa peralihan: selama token Wablas belum diisi, token Fonnte lama (kalau masih ada)
+// tetap dipakai supaya notifikasi WA tidak berhenti mendadak. Begitu token Wablas
+// diisi, Fonnte tidak dipakai lagi sama sekali.
+// ======================================================================
+const NAMA_SHEET_LOG_WA = 'Log Gagal WA';
+
+// Semua JENIS pesan WA otomatis. Admin/Mudir bisa mematikan jenis tertentu di menu
+// Pengaturan WhatsApp. Bawaannya SEMUA AKTIF (yang dimatikan disimpan di WANonaktif),
+// supaya tidak ada pesan yang tiba-tiba berhenti setelah pembaruan.
+const JENIS_PESAN_WA = [
+  {k:'spp_tagihan_otomatis', grup:'SPP', label:'Pengingat tagihan SPP otomatis (terjadwal)', ke:'Wali santri'},
+  {k:'spp_tagihan_manual',   grup:'SPP', label:'Tagihan SPP yang dikirim lewat tombol', ke:'Wali santri'},
+  {k:'spp_lunas',            grup:'SPP', label:'Konfirmasi pembayaran SPP berhasil', ke:'Wali santri'},
+  {k:'spp_laporan_admin',    grup:'SPP', label:'Laporan pengingat SPP untuk Admin/Bendahara', ke:'Admin, Mudir, Bendahara'},
+  {k:'saldo_tambah',         grup:'Kantin & Saldo', label:'Saldo santri bertambah (top-up)', ke:'Wali santri'},
+  {k:'saldo_tarik',          grup:'Kantin & Saldo', label:'Penarikan saldo santri', ke:'Wali santri'},
+  {k:'topup_ke_bendahara',   grup:'Kantin & Saldo', label:'Pengajuan top-up baru', ke:'Bendahara'},
+  {k:'saldo_pemilik',        grup:'Kantin & Saldo', label:'Penarikan saldo pemilik barang', ke:'Pemilik barang'},
+  {k:'pelanggaran',          grup:'Pelanggaran', label:'Notifikasi pelanggaran anak', ke:'Wali santri'},
+  {k:'poin_habis',           grup:'Pelanggaran', label:'Poin santri habis', ke:'Wali santri'},
+  {k:'poin_habis_grup',      grup:'Pelanggaran', label:'Poin santri habis (ke grup pengajar)', ke:'Grup WA pengajar'},
+  {k:'absen_mapel',          grup:'Kehadiran Santri', label:'Santri tidak hadir di pelajaran', ke:'Wali santri'},
+  {k:'absen_harian',         grup:'Kehadiran Santri', label:'Santri alpa di absensi harian asrama', ke:'Wali santri'},
+  {k:'izin_santri_pengajuan',grup:'Perizinan Santri', label:'Pengajuan izin pulang santri', ke:'Wali santri'},
+  {k:'izin_santri_keputusan',grup:'Perizinan Santri', label:'Izin santri disetujui / ditolak', ke:'Wali santri'},
+  {k:'izin_santri_kembali',  grup:'Perizinan Santri', label:'Konfirmasi santri sudah kembali', ke:'Wali santri'},
+  {k:'guru_kehadiran',       grup:'Kehadiran Guru', label:'Izin guru & Surat Peringatan (rincian di menu Kehadiran Guru & SP)', ke:'Guru, Mudir, Admin'}
+];
+function jenisWANonaktif_() {
+  const s = norm(getPengaturan().WANonaktif);
+  const hasil = {};
+  s.split(',').map(function(x){ return x.trim(); }).filter(Boolean).forEach(function(k){ hasil[k] = true; });
+  return hasil;
+}
+
+function konfigWA_() {
+  const p = getPengaturan();
+  return {
+    host: (norm(p.WablasHost) || 'https://jkt.wablas.com').replace(/\/+$/, ''),
+    token: norm(p.WablasToken),
+    secret: norm(p.WablasSecretKey),
+    fonnte: norm(p.FonnteToken),
+    pilihan: norm(p.WAPenyedia) || 'otomatis',       // otomatis | wablas | fonnte
+    terakhir: norm(p.WAPenyediaTerakhir)             // token yang paling akhir diisi
+  };
+}
+// Penyedia yang BENAR-BENAR dipakai.
+// Otomatis: kalau hanya satu token terisi, itu yang dipakai. Kalau keduanya terisi,
+// dipakai yang tokennya paling akhir diisi -- sesuai kebiasaan "isi token Fonnte berarti
+// pakai Fonnte, isi token Wablas berarti pakai Wablas".
+// Pilihan tegas (wablas/fonnte) tidak diam-diam beralih ke penyedia lain: kalau token
+// penyedia yang dipilih kosong, pengiriman gagal dengan pesan yang jelas.
+function penyediaWAAktif_(k) {
+  k = k || konfigWA_();
+  if (k.pilihan === 'wablas') return k.token ? 'wablas' : '';
+  if (k.pilihan === 'fonnte') return k.fonnte ? 'fonnte' : '';
+  if (k.token && k.fonnte) return k.terakhir === 'fonnte' ? 'fonnte' : 'wablas';
+  return k.token ? 'wablas' : (k.fonnte ? 'fonnte' : '');
+}
+function waTerkonfigurasi_() { return !!penyediaWAAktif_(); }
+
+// Wablas mewajibkan format internasional tanpa "+" (62812...). Nomor di data pondok
+// banyak yang ditulis 0812..., jadi dinormalkan di sini.
+function normalNomorWA_(t) {
+  let n = String(t || '').trim();
+  if (/@g\.us$/i.test(n)) return n;             // ID grup: biarkan apa adanya
+  n = n.replace(/[^0-9]/g, '');
+  if (n.indexOf('0') === 0) n = '62' + n.slice(1);
+  else if (n.indexOf('8') === 0) n = '62' + n;
+  return n;
+}
+// ID grup WA: berakhiran @g.us, atau deret angka yang jauh lebih panjang dari nomor HP
+function adalahGrupWA_(t) {
+  const n = String(t || '').trim();
+  return /@g\.us$/i.test(n) || /^\d{17,}$/.test(n.replace(/[^0-9]/g, '')) || /^\d+-\d+$/.test(n);
+}
+
+// Kirim satu pesan. Mengembalikan {ok, error, via}. Tidak pernah melempar error --
+// kegagalan WA tidak boleh menggagalkan proses utama (simpan pelanggaran, SPP, dll).
+function kirimWA_(target, pesan, kategori) {
+  // Jenis pesan yang dimatikan Admin/Mudir: dilewati diam-diam (bukan kegagalan)
+  if (kategori && jenisWANonaktif_()[kategori]) return {ok:false, dilewati:true, error:'Jenis pesan ini dinonaktifkan Admin/Mudir'};
+  const daftar = String(target || '').split(',').map(function(x){ return x.trim(); }).filter(Boolean);
+  if (!daftar.length) return {ok:false, error:'Nomor tujuan kosong'};
+  const k = konfigWA_();
+  const via = penyediaWAAktif_(k);
+  if (!via) {
+    return {ok:false, error: k.pilihan === 'wablas' ? 'Wablas dipilih, tetapi token Wablas belum diisi'
+      : (k.pilihan === 'fonnte' ? 'Fonnte dipilih, tetapi token Fonnte belum diisi' : 'WhatsApp belum diatur (token Wablas/Fonnte kosong)')};
+  }
+  let semuaOk = true, galat = '';
+  daftar.forEach(function(t){
+    const h = via === 'wablas' ? kirimSatuWablas_(k, t, pesan) : kirimSatuFonnte_(k, t, pesan);
+    if (!h.ok) { semuaOk = false; galat = h.error; }
+  });
+  return {ok: semuaOk, error: galat, via: via};
+}
+
+function kirimSatuWablas_(k, target, pesan) {
+  const grup = adalahGrupWA_(target);
+  const tujuan = grup ? String(target).trim().replace(/@g\.us$/i, '') : normalNomorWA_(target);
+  let teks = '';
   try {
-    UrlFetchApp.fetch('https://api.fonnte.com/send', {
+    const resp = UrlFetchApp.fetch(k.host + (grup ? '/api/send-group' : '/api/send-message'), {
+      method: 'post', contentType: 'application/json',
+      headers: { 'Authorization': k.secret ? (k.token + '.' + k.secret) : k.token },
+      payload: JSON.stringify({ phone: tujuan, message: String(pesan || '') }),
+      muteHttpExceptions: true
+    });
+    teks = resp.getContentText();
+    let json = null;
+    try { json = JSON.parse(teks); } catch (e) {}
+    if (resp.getResponseCode() >= 200 && resp.getResponseCode() < 300 && json && json.status !== false) return {ok:true};
+    const galat = (json && json.message) ? String(json.message) : ('HTTP ' + resp.getResponseCode() + ': ' + teks.slice(0, 200));
+    catatGagalWA_(tujuan, pesan, galat);
+    return {ok:false, error: galat};
+  } catch (err) {
+    catatGagalWA_(tujuan, pesan, 'Error: ' + err);
+    return {ok:false, error: String(err)};
+  }
+}
+
+function kirimSatuFonnte_(k, target, pesan) {
+  try {
+    const resp = UrlFetchApp.fetch('https://api.fonnte.com/send', {
       method:'post', contentType:'application/json',
-      headers: {'Authorization': token},
+      headers: {'Authorization': k.fonnte},
       payload: JSON.stringify({target: target, message: pesan}),
       muteHttpExceptions: true
     });
-  } catch (err) { /* diamkan -- notifikasi WA tidak boleh menggagalkan proses utama */ }
+    const teks = resp.getContentText();
+    let json = null; try { json = JSON.parse(teks); } catch (e) {}
+    // Fonnte membalas HTTP 200 walau gagal; status sebenarnya ada di field "status"
+    if (resp.getResponseCode() === 200 && !(json && json.status === false)) return {ok:true};
+    const galat = (json && (json.reason || json.detail)) ? String(json.reason || json.detail) : ('Fonnte HTTP ' + resp.getResponseCode());
+    catatGagalWA_(target, pesan, 'Fonnte: ' + galat);
+    return {ok:false, error: galat};
+  } catch (err) { catatGagalWA_(target, pesan, 'Fonnte error: ' + err); return {ok:false, error: String(err)}; }
 }
+
+// Catat kegagalan ke sheet "Log Gagal WA" (spreadsheet Master). Kalau Wablas menolak
+// karena IP server tidak terdaftar, IP barunya diambil dari pesan error supaya Admin
+// tahu IP mana yang harus didaftarkan di dashboard Wablas.
+function catatGagalWA_(nomor, pesan, galat) {
+  try {
+    const ss = getMasterSS();
+    let sh = ss.getSheetByName(NAMA_SHEET_LOG_WA);
+    if (!sh) { sh = ss.insertSheet(NAMA_SHEET_LOG_WA); sh.appendRow(['Waktu','Nomor','Pesan','Error','IP Baru Terdeteksi']); }
+    const m = String(galat || '').match(/Your IP \(([\d.]+)\)/i) || String(galat || '').match(/\b(\d{1,3}(?:\.\d{1,3}){3})\b/);
+    sh.appendRow([new Date(), String(nomor), String(pesan || '').slice(0, 300), String(galat || '').slice(0, 500), m ? m[1] : '']);
+  } catch (e) { Logger.log('Gagal mencatat log WA: ' + e.message); }
+}
+
+// Status untuk dashboard Admin: apakah dalam 24 jam terakhir ada kegagalan karena IP.
+function getStatusWablas() {
+  try {
+    const sh = getMasterSS().getSheetByName(NAMA_SHEET_LOG_WA);
+    if (!sh || sh.getLastRow() <= 1) return {ok:true, adaMasalah:false};
+    const d = sh.getRange(sh.getLastRow(), 1, 1, 5).getValues()[0];
+    const waktu = d[0] instanceof Date ? d[0] : new Date(d[0]);
+    const selisihJam = (new Date() - waktu) / 3600000;
+    if (!(selisihJam <= 24) || !d[4]) return {ok:true, adaMasalah:false};
+    return {ok:true, adaMasalah:true, ipBaru: String(d[4]), errorMsg: String(d[3]),
+      waktu: Utilities.formatDate(waktu, Session.getScriptTimeZone(), 'dd MMM yyyy HH:mm')};
+  } catch (e) { return {ok:true, adaMasalah:false}; }
+}
+function apiGetInfoPengaturanWA(p) {
+  if (!adminAtauMudir(p.oleh)) return {ok:false, error:'Hanya Admin/Mudir.'};
+  const k = konfigWA_();
+  const mati = jenisWANonaktif_();
+  return {ok:true, host: k.host, pilihan: k.pilihan, terakhir: k.terakhir,
+    adaWablas: !!k.token, adaSecret: !!k.secret, adaFonnte: !!k.fonnte, dipakai: penyediaWAAktif_(k),
+    jenis: JENIS_PESAN_WA.map(function(j){ return {k:j.k, grup:j.grup, label:j.label, ke:j.ke, aktif: !mati[j.k]}; }),
+    grupPengajar: norm(getPengaturan().GrupPengajarWA), status: getStatusWablas()};
+}
+
+function apiCekStatusWablas(p) {
+  if (!adminAtauMudir(p.oleh)) return {ok:false, error:'Tidak berwenang.'};
+  return getStatusWablas();
+}
+// Kirim pesan uji dari halaman pengaturan -- hasilnya ditampilkan apa adanya supaya
+// Admin langsung tahu penyebabnya bila gagal (token salah, IP belum terdaftar, dll).
+function apiKirimWATes(p) {
+  if (!adminAtauMudir(p.oleh)) return {ok:false, error:'Hanya Admin/Mudir.'};
+  if (!norm(p.nomor)) return {ok:false, error:'Isi nomor tujuan.'};
+  const via = penyediaWAAktif_();
+  const h = kirimWA_(p.nomor, 'Tes pengiriman WhatsApp dari aplikasi WASIAT (lewat ' + (via === 'fonnte' ? 'Fonnte' : 'Wablas') + '). Bila pesan ini sampai, pengaturan WhatsApp sudah benar.');
+  return h.ok ? {ok:true, via: via} : {ok:false, error: h.error, via: via};
+}
+
+// Nama lama tetap ada supaya semua pemanggil yang sudah berjalan tidak perlu diubah.
+function kirimWAUmum(target, pesan, kategori) { kirimWA_(target, pesan, kategori); }
+function kirimWAKategori_(kategori, target, pesan) { kirimWA_(target, pesan, kategori); }
+function kirimWAFonnteUmum(target, pesan) { kirimWA_(target, pesan); }
 
 // ============ SPP: BIAYA BULANAN & STATUS PEMBAYARAN (36 bulan / 3 tahun dari TahunMasuk) ============
 const BULAN_INDO_SPP = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
@@ -3367,7 +3663,7 @@ function apiSetBiayaSpp(p){
 }
 
 // Tandai satu bulan LUNAS / batalkan (klik lagi buat kosongkan). Begitu baru saja
-// ditandai LUNAS, otomatis kirim WA konfirmasi ke wali santri (kalau Fonnte diatur
+// ditandai LUNAS, otomatis kirim WA konfirmasi ke wali santri (kalau WhatsApp diatur
 // dan No WA Ortu terisi).
 function apiToggleSppBulan(p){
   const nisn = norm(p.nisn);
@@ -3403,7 +3699,7 @@ function apiToggleSppBulan(p){
         var noWa = norm(santriRows[k][4]);
         var tahunMasuk = santriRows[k][2];
         if (noWa) {
-          kirimWAFonnteUmum(noWa, 'Assalamualaikum Wr. Wb.\n\nYth. Orang Tua/Wali Santri *'+nama+'*\n\nAlhamdulillah, pembayaran SPP bulan *'+labelBulanSPP(bulan, tahunMasuk)+'* telah berhasil diproses.\n\nJumlah: Rp'+biayaBaris.toLocaleString('id-ID')+'\nStatus: LUNAS \u2713\n\nJazakumullah khairan atas kerjasamanya.');
+          kirimWAKategori_('spp_lunas', noWa, 'Assalamualaikum Wr. Wb.\n\nYth. Orang Tua/Wali Santri *'+nama+'*\n\nAlhamdulillah, pembayaran SPP bulan *'+labelBulanSPP(bulan, tahunMasuk)+'* telah berhasil diproses.\n\nJumlah: Rp'+biayaBaris.toLocaleString('id-ID')+'\nStatus: LUNAS \u2713\n\nJazakumullah khairan atas kerjasamanya.');
         }
         // Push ke wali. Sengaja DI LUAR syarat noWa di atas: push tidak butuh nomor
         // telepon, jadi tetap terkirim walau nomor WA santri belum terisi.
@@ -3687,7 +3983,7 @@ function setupTriggerPengingatSPP() {
       rows.forEach(function(r) {
         const roles = norm(r[3]).split(',').map(function(s){ return s.trim(); });
         if ((roles.indexOf('Admin') !== -1 || roles.indexOf('Mudir') !== -1) && norm(r[1])) {
-          kirimWAFonnteUmum(norm(r[1]),
+          kirimWAKategori_('spp_laporan_admin', norm(r[1]),
             '✅ *WASIAT: Trigger Pengingat SPP Terpasang*\n\n' +
             'Pengingat SPP otomatis sudah aktif.\n' +
             'Sistem akan kirim WA ke wali santri yang menunggak setiap:\n' +
@@ -3723,6 +4019,9 @@ function hapusTriggerPengingatSPP() {
  * Tidak perlu dijalankan manual.
  */
 function jalankanPengingatSPP() {
+  // Dimatikan Admin/Mudir: tidak mengirim tagihan dan tidak mengirim laporan
+  // "sekian tagihan terkirim" yang menyesatkan.
+  if (jenisWANonaktif_()['spp_tagihan_otomatis']) { Logger.log('Pengingat SPP otomatis dinonaktifkan -- dilewati.'); return; }
   const tz = Session.getScriptTimeZone();
   const hari = Utilities.formatDate(new Date(), tz, 'dd MMMM yyyy');
   const jam  = Utilities.formatDate(new Date(), tz, 'HH:mm');
@@ -3759,10 +4058,10 @@ function jalankanPengingatSPP() {
 
     try {
       const pesan = buildPesanTagihanSPP(s.nama, s.bulanTunggak, s.tunggakanSPP);
-      kirimWAFonnteUmum(s.noWa, pesan);
+      kirimWAKategori_('spp_tagihan_otomatis', s.noWa, pesan);
       Logger.log('✅ Terkirim ke ' + s.nama + ' (' + s.noWa + ')');
       terkirim++;
-      // Jeda 1 detik antar pengiriman agar tidak dibatasi Fonnte
+      // Jeda 1 detik antar pengiriman agar tidak dibatasi penyedia WA
       Utilities.sleep(1000);
     } catch(e) {
       Logger.log('❌ Gagal kirim ke ' + s.nama + ': ' + e.message);
@@ -3788,7 +4087,7 @@ function jalankanPengingatSPP() {
         const roles = norm(r[3]).split(',').map(function(s){ return s.trim(); });
         if ((roles.indexOf('Admin') !== -1 || roles.indexOf('Mudir') !== -1 ||
              roles.indexOf('Bendahara') !== -1) && norm(r[1])) {
-          kirimWAFonnteUmum(norm(r[1]), laporan);
+          kirimWAKategori_('spp_laporan_admin', norm(r[1]), laporan);
         }
       });
     }
@@ -3869,7 +4168,7 @@ function getRiwayatTransaksiSantriKantin(nisn, tglMulai, tglAkhir) {
 
 // Wali mengajukan tambah saldo -- status "Pending" sampai Bendahara/Mudir menyetujui
 // (setelah menerima bukti transfer). Otomatis kirim notifikasi WA ke Bendahara (kalau
-// Fonnte diatur DAN ada akun ber-role Bendahara dengan No WA terisi).
+// WhatsApp diatur DAN ada akun ber-role Bendahara dengan No WA terisi).
 function apiAjukanTopUpSaldo(p) {
   const nisn = norm(p.nisn), namaSantri = norm(p.namaSantri), nominal = Number(p.nominal) || 0, noWaWali = norm(p.noWaWali);
   if (!nisn || nominal <= 0) return {ok:false, error:'Nominal wajib diisi dan lebih dari 0'};
@@ -3879,7 +4178,7 @@ function apiAjukanTopUpSaldo(p) {
 
   const noWaBendahara = getNoWABendahara();
   if (noWaBendahara) {
-    kirimWAFonnteUmum(noWaBendahara, 'Assalamualaikum Wr. Wb.\n\n*PENGAJUAN TAMBAH SALDO*\n\nSantri: *'+namaSantri+'*\nNominal: Rp'+nominal.toLocaleString('id-ID')+'\n\nMohon dicek bukti transfer dari wali santri, lalu setujui lewat dashboard Bendahara.\n\nWassalamualaikum Wr. Wb.');
+    kirimWAKategori_('topup_ke_bendahara', noWaBendahara, 'Assalamualaikum Wr. Wb.\n\n*PENGAJUAN TAMBAH SALDO*\n\nSantri: *'+namaSantri+'*\nNominal: Rp'+nominal.toLocaleString('id-ID')+'\n\nMohon dicek bukti transfer dari wali santri, lalu setujui lewat dashboard Bendahara.\n\nWassalamualaikum Wr. Wb.');
   }
   return {ok:true, noWaBendahara: noWaBendahara};
 }
@@ -4085,27 +4384,16 @@ function getModalPoinSantri() {
 
 // Kirim WA otomatis lewat Fonnte (kalau token sudah diatur Admin). Selalu dicatat di
 // sheet LogNotifikasi (berhasil maupun gagal) supaya bisa ditelusuri.
-function kirimWAFonnte(target, pesan) {
-  const token = getPengaturan().FonnteToken;
-  const ss = getPelanggaranAktifSS();
-  const shLog = ss.getSheetByName(SHEET_LOG_NOTIF);
-  if (!target || !token) {
-    if (shLog) shLog.appendRow([new Date(), target||'-', pesan.substring(0,200), token ? 'Gagal: nomor tujuan kosong' : 'Gagal: Token Fonnte belum diatur Admin']);
-    return;
-  }
-  try {
-    const resp = UrlFetchApp.fetch('https://api.fonnte.com/send', {
-      method:'post', contentType:'application/json',
-      headers: {'Authorization': token},
-      payload: JSON.stringify({target: target, message: pesan}),
-      muteHttpExceptions: true
-    });
-    const kode = resp.getResponseCode();
-    if (shLog) shLog.appendRow([new Date(), target, pesan.substring(0,200), kode===200 ? 'Berhasil' : ('Gagal HTTP '+kode)]);
-  } catch (err) {
-    if (shLog) shLog.appendRow([new Date(), target, pesan.substring(0,200), 'Error: '+err]);
-  }
+function kirimWALogPelanggaran(target, pesan, kategori) {
+  let shLog = null;
+  try { shLog = getPelanggaranAktifSS().getSheetByName(SHEET_LOG_NOTIF); } catch (e) {}
+  const h = kirimWA_(target, pesan, kategori);
+  if (h.dilewati) { if (shLog) shLog.appendRow([new Date(), target || '-', String(pesan || '').substring(0,200), 'Dilewati: dinonaktifkan Admin/Mudir']); return; }
+  if (shLog) shLog.appendRow([new Date(), target || '-', String(pesan || '').substring(0,200),
+    h.ok ? ('Berhasil (' + h.via + ')') : ('Gagal: ' + h.error)]);
 }
+function kirimWAFonnte(target, pesan) { kirimWALogPelanggaran(target, pesan); }
+function kirimWALogKategori_(kategori, target, pesan) { kirimWALogPelanggaran(target, pesan, kategori); }
 
 // Simpan pencatatan pelanggaran/prestasi + otomatis update poin bulan berjalan +
 // kirim notifikasi WA (kalau ada pelanggaran, dan/atau kalau poin sampai habis).
@@ -4165,7 +4453,7 @@ function apiSavePencatatanPelanggaran(p) {
 
   if (pelanggaran && noWaOrtu) {
     const pesan = 'Assalamualaikum Wr. Wb.\n\nYth. Orang Tua/Wali dari *'+namaSantri+'*\n\nPada tanggal '+tanggal+', ananda tercatat melakukan pelanggaran:\n\n*'+pelanggaran+'* (-'+poinPelanggaran+' poin)\n\nSisa poin bulan ini: *'+poinBaru+' / '+modal+' poin*\nStatus: '+(statusBaru==='Habis'?'*HABIS*':'Aktif')+'\n\nDemikian info ini kami sampaikan sebagai bahan nasihat dan penguatan bagi ananda.\n\nWassalamualaikum Wr. Wb.\n_Notifikasi otomatis dari aplikasi pondok_';
-    kirimWAFonnte(noWaOrtu, pesan);
+    kirimWALogKategori_('pelanggaran', noWaOrtu, pesan);
   }
   // Push ke wali -- di luar syarat noWaOrtu karena push tidak butuh nomor telepon.
   if (pelanggaran) {
@@ -4180,10 +4468,10 @@ function apiSavePencatatanPelanggaran(p) {
         'Poin ' + namaSantri + ' telah habis (0 poin) bulan ini. Ananda akan mendapat pembinaan sesuai aturan pondok.');
     } catch(e) { Logger.log('Notif wali poin habis gagal: ' + e.message); }
     if (noWaOrtu) {
-      kirimWAFonnte(noWaOrtu, 'Assalamualaikum Wr. Wb.\n\n*NOTIFIKASI POIN HABIS*\n\nPoin santri *'+namaSantri+'* telah *HABIS* (0 poin) pada bulan ini.\n\nDengan demikian ananda akan mendapat pembinaan sesuai aturan pondok. Untuk koordinasi bisa menghubungi pengurus.\n\nWassalamualaikum Wr. Wb.');
+      kirimWALogKategori_('poin_habis', noWaOrtu, 'Assalamualaikum Wr. Wb.\n\n*NOTIFIKASI POIN HABIS*\n\nPoin santri *'+namaSantri+'* telah *HABIS* (0 poin) pada bulan ini.\n\nDengan demikian ananda akan mendapat pembinaan sesuai aturan pondok. Untuk koordinasi bisa menghubungi pengurus.\n\nWassalamualaikum Wr. Wb.');
     }
     const grup = getPengaturan().GrupPengajarWA;
-    if (grup) kirimWAFonnte(grup, '*PERHATIAN - POIN HABIS*\n\nSantri: *'+namaSantri+'*\nKelas: '+kelasSantri+'\nSisa Poin: 0 / '+modal);
+    if (grup) kirimWALogKategori_('poin_habis_grup', grup, '*PERHATIAN - POIN HABIS*\n\nSantri: *'+namaSantri+'*\nKelas: '+kelasSantri+'\nSisa Poin: 0 / '+modal);
   }
   return {ok:true, poinTerbaru: poinBaru, status: statusBaru};
 }
@@ -4674,9 +4962,16 @@ function getJadwalGuruHariIni(pengampu) {
   const penggantianHariIni = getDaftarPenggantian().filter(function(x){
     return x.tanggal === hariIniTanggal && x.jenisSesi === 'Mapel';
   });
+  // Kunci dinormalkan (huruf besar/kecil, titik, spasi) supaya penulisan nama yang
+  // sedikit berbeda -- mis. "Ust Ahmad" vs "Ust. Ahmad" -- tetap dikenali sebagai
+  // guru yang sama. Sebelumnya dicocokkan apa adanya, sehingga jadwal yang sudah
+  // digantikan kadang masih muncul di dashboard guru aslinya.
+  const kunciGanti = function(mapel, kelas, jamKe, guru){
+    return normNama(mapel)+'|'+normNama(kelas)+'|'+String(Number(jamKe))+'|'+normNamaGuru_(guru);
+  };
   const sudahDigantikan = {};
   penggantianHariIni.forEach(function(x){
-    sudahDigantikan[x.mapel+'|'+x.kelas+'|'+x.jamKe+'|'+x.guruAsli] = true;
+    sudahDigantikan[kunciGanti(x.mapel, x.kelas, x.jamKe, x.guruAsli)] = true;
   });
 
   // Ambil SEMUA jadwal guru ini (semua hari, termasuk yang tidak ada harinya)
@@ -4685,7 +4980,7 @@ function getJadwalGuruHariIni(pengampu) {
     .filter(function(r){
       // Khusus hari ini: filter yang sudah digantikan
       if (normNama(norm(r[3])) === normNama(namaHariIni)) {
-        return !sudahDigantikan[norm(r[0])+'|'+norm(r[1])+'|'+r[4]+'|'+pengampu];
+        return !sudahDigantikan[kunciGanti(r[0], r[1], r[4], pengampu)];
       }
       return true;
     })
@@ -4698,7 +4993,7 @@ function getJadwalGuruHariIni(pengampu) {
 
   // Jadwal penggantian hari ini (guru ini menggantikan guru lain)
   const jadwalPengganti = penggantianHariIni
-    .filter(function(x){ return normNama(x.guruPengganti) === normNama(pengampu); })
+    .filter(function(x){ return samaGuru_(x.guruPengganti, pengampu); })
     .map(function(x){
       return {mapel:x.mapel, kelas:x.kelas, pengampu:pengampu,
         hari:namaHariIni, jamKe:x.jamKe, pengganti:true,
@@ -4865,6 +5160,60 @@ function tolakTanggalMasaDepan(tanggal) {
   return '';
 }
 
+// ======================================================================
+// PENJAGA SESI MENGAJAR (mapel & halaqoh)
+// Tujuannya satu: satu sesi = satu pencatat, supaya jam mengajar tidak terhitung
+// ganda dan data santri tidak tertimpa dua versi.
+// ======================================================================
+
+// Pembanding nama guru yang mengabaikan tanda baca & spasi ("Ust. Ahmad" = "Ust Ahmad").
+// Sengaja dipisah dari normNama() umum -- normNama dipakai di banyak pencocokan lain
+// (nama santri, halaqoh, mapel), jadi tidak diubah supaya perilaku lama tetap sama.
+function normNamaGuru_(s) { return normNama(s).replace(/[^a-z0-9]/g, ''); }
+function samaGuru_(a, b) { const x = normNamaGuru_(a); return !!x && x === normNamaGuru_(b); }
+
+// Apakah hak mengisi sesi ini sudah dialihkan ke guru pengganti?
+// Dipakai di sisi SERVER, jadi tetap berlaku walau sesi dibuka lewat jalur lain
+// (mis. absen susulan yang membuka jadwal hari lain).
+// Mengembalikan nama guru pengganti bila tertutup untuk pemanggil, atau '' bila boleh.
+function sesiDialihkanKePengganti_(opsi) {
+  try {
+    const pengampu = normNamaGuru_(opsi.pengampu || '');
+    if (!pengampu) return '';
+    const jamList = (opsi.jamKeList || []).map(function(x){ return String(Number(x)); });
+    const cocok = getDaftarPenggantian().find(function(x){
+      if (x.tanggal !== opsi.tanggal) return false;
+      if (normNamaGuru_(x.guruAsli) !== pengampu) return false;          // hanya menutup untuk guru aslinya
+      if (normNamaGuru_(x.guruPengganti) === pengampu) return false;     // dia sendiri penggantinya
+      if (opsi.jenis === 'Halaqoh') {
+        return x.jenisSesi === 'Halaqoh' && normNama(x.halaqoh) === normNama(opsi.halaqoh)
+          && (!opsi.waktu || !x.waktu || normNama(x.waktu) === normNama(opsi.waktu));
+      }
+      if (x.jenisSesi === 'Halaqoh') return false;
+      if (normNama(x.mapel) !== normNama(opsi.mapel) || normNama(x.kelas) !== normNama(opsi.kelas)) return false;
+      // Bila penggantian dicatat untuk jam ke- tertentu, cukup ada satu jam yang beririsan
+      if (!jamList.length || x.jamKe === '' || x.jamKe === null || x.jamKe === undefined) return true;
+      return jamList.indexOf(String(Number(x.jamKe))) !== -1;
+    });
+    return cocok ? cocok.guruPengganti : '';
+  } catch (e) { return ''; } // gagal membaca data penggantian tidak boleh memblokir pencatatan
+}
+
+// Siapa yang sudah tercatat mengisi sesi absensi mapel ini (kalau ada).
+function pemilikSesiAbsensi_(existing, tanggal, mapel, kelas, daftarJamKe) {
+  const tz = Session.getScriptTimeZone();
+  const jamList = (daftarJamKe || []).map(function(x){ return String(Number(x)); });
+  for (let i = 1; i < existing.length; i++) {
+    const r = existing[i];
+    const tgl = (r[0] instanceof Date) ? Utilities.formatDate(r[0], tz, 'yyyy-MM-dd') : norm(r[0]);
+    if (tgl !== tanggal) continue;
+    if (normNama(norm(r[3])) !== normNama(mapel) || normNama(norm(r[4])) !== normNama(kelas)) continue;
+    if (jamList.length && jamList.indexOf(String(Number(r[2]))) === -1) continue;
+    if (norm(r[5])) return norm(r[5]);
+  }
+  return '';
+}
+
 function apiSubmitAbsensi(p) {
   if (!p || !p.items || !p.items.length) return {ok:false, error:'Tidak ada data santri untuk disimpan'};
   const sh = getAktifSS().getSheetByName(SHEET_ABSENSI);
@@ -4874,6 +5223,23 @@ function apiSubmitAbsensi(p) {
   if (_galatTgl) return {ok:false, error:_galatTgl};
   const daftarJamKe = (p.jamKeList && p.jamKeList.length) ? p.jamKeList : [p.jamKe];
   const existing = sh.getDataRange().getValues();
+
+  // (1) Sesi yang sudah dialihkan ke guru pengganti tidak bisa diisi guru aslinya.
+  const penggantiSesi = sesiDialihkanKePengganti_({tanggal: tanggal, jenis: 'Mapel',
+    mapel: p.mapel, kelas: p.kelas, jamKeList: daftarJamKe, pengampu: p.pengampu});
+  if (penggantiSesi) {
+    return {ok:false, error:'Sesi ' + norm(p.mapel) + ' - ' + norm(p.kelas) + ' pada ' + tanggal +
+      ' sudah dialihkan ke guru pengganti (' + penggantiSesi + '), jadi tidak bisa Anda isi. ' +
+      'Bila penggantian ini keliru, minta Admin membatalkannya di menu Penggantian Guru.'};
+  }
+  // (2) Satu sesi hanya boleh diisi satu guru -- mencegah jam mengajar terhitung ganda
+  // dan data santri tertimpa dua versi. Guru yang sama boleh menyimpan ulang sesinya.
+  const pemilikSesi = pemilikSesiAbsensi_(existing, tanggal, p.mapel, p.kelas, daftarJamKe);
+  if (pemilikSesi && !samaGuru_(pemilikSesi, p.pengampu)) {
+    return {ok:false, error:'Sesi ' + norm(p.mapel) + ' - ' + norm(p.kelas) + ' pada ' + tanggal +
+      ' sudah diisi oleh ' + pemilikSesi + '. Tidak bisa diisi ulang oleh guru lain (mencegah data ganda). ' +
+      'Bila ada kesalahan pencatatan, minta ' + pemilikSesi + ' membetulkannya lewat menu Riwayat Absen, atau hubungi Admin.'};
+  }
 
   const [ty, tm, td] = tanggal.split('-').map(Number);
   const indexBaris = {};
@@ -5100,7 +5466,7 @@ function getDataRaporHalaqoh(nisn, tglMulai, tglAkhir) {
 
 function kirimNotifAbsensiKeOrtu(items, tanggal, mapel, kelas, pengampu) {
   const pengaturan = getPengaturan();
-  if (!pengaturan.FonnteToken) return; // Token belum diatur, skip
+  if (!waTerkonfigurasi_()) return; // WhatsApp belum diatur, skip
   const namaPesantren = pengaturan.NamaPesantren || 'Pondok Pesantren';
 
   // Ambil No WA ortu dari sheet Santri
@@ -5129,7 +5495,7 @@ function kirimNotifAbsensiKeOrtu(items, tanggal, mapel, kelas, pengampu) {
       'Mohon perhatiannya. Jika ada pertanyaan silakan hubungi pihak pesantren.\n\n' +
       'Jazakumullah khairan.\n' + namaPesantren;
 
-    kirimWAFonnteUmum(noWa, pesan);
+    kirimWAKategori_('absen_mapel', noWa, pesan);
     Utilities.sleep(200); // Jeda antar pengiriman agar tidak rate-limit
   });
 }
@@ -5543,18 +5909,50 @@ function getRekapJamMengajarGuru(pengampu, bulan, tahun, tahunAjaranId) {
   }
 
   const daftar = Object.keys(sesiUnik).map(k => sesiUnik[k]).sort((a,b) => a.tanggal.localeCompare(b.tanggal));
+  // Keterangan sesi yang TIDAK terisi diambil dari mesin kehadiran, supaya Mudir tahu
+  // alasannya (izin, sakit, digantikan, masih masa klarifikasi, atau tanpa izin) --
+  // bukan cuma melihat jamnya sedikit tanpa penjelasan.
+  // Dibungkus try/catch: kalau perhitungan kehadiran gagal, rekap jam tetap tampil.
+  function ketidakhadiranGuru_(namaGuru) {
+    try {
+      const h = hitungKehadiranGuruAtur_(bulan, tahun, namaGuru)[0];
+      if (!h) return null;
+      return {
+        ringkas: h.ringkas,
+        sesi: h.sesi.filter(function(x){ return x.status !== 'Hadir' && x.status !== 'Libur'; })
+          .map(function(x){ return {tanggal:x.tanggal, jenis:x.jenis, nama:x.nama, status:x.status, ket:x.ket || '', sisaHari:x.sisaHari || 0}; })
+      };
+    } catch (e) { Logger.log('Keterangan kehadiran gagal: ' + e.message); return null; }
+  }
+
   if (pengampu) {
     const totalJam = daftar.reduce((s,x) => s + x.jam, 0);
     // Rekap per hari juga disertakan -- dipakai dashboard guru untuk menampilkan
     // "sudah X jam bulan ini" tanpa harus menjumlahkan sendiri di sisi klien.
     const perHari = {};
     daftar.forEach(x => { perHari[x.tanggal] = (perHari[x.tanggal]||0) + x.jam; });
+    const kh = ketidakhadiranGuru_(pengampu);
     return { ok:true, mode:'detail', pengampu: pengampu, riwayat: daftar, totalJam: totalJam,
-             jumlahSesi: daftar.length, perHari: perHari };
+             jumlahSesi: daftar.length, perHari: perHari,
+             tidakMengajar: kh ? kh.sesi : [], kehadiran: kh ? kh.ringkas : null };
   }
   const perGuru = {};
   daftar.forEach(x => { perGuru[x.pengampu] = (perGuru[x.pengampu]||0) + x.jam; });
-  const ringkasan = Object.keys(perGuru).map(g => ({pengampu:g, totalJam: perGuru[g]})).sort((a,b) => b.totalJam - a.totalJam);
+  // Gabungkan dengan data kehadiran supaya baris guru yang jamnya sedikit langsung
+  // terlihat sebabnya. Guru yang punya jadwal tapi nol sesi pun tetap muncul.
+  let kehadiranSemua = [];
+  try { kehadiranSemua = hitungKehadiranGuruAtur_(bulan, tahun, ''); } catch (e) { Logger.log('Rekap kehadiran gagal: ' + e.message); }
+  const petaKehadiran = {};
+  kehadiranSemua.forEach(function(g){ petaKehadiran[normNamaGuru_(g.guru)] = g; });
+  Object.keys(petaKehadiran).forEach(function(k){
+    const nama = petaKehadiran[k].guru;
+    if (perGuru[nama] === undefined && !Object.keys(perGuru).some(function(n){ return normNamaGuru_(n) === k; })) perGuru[nama] = 0;
+  });
+  const ringkasan = Object.keys(perGuru).map(function(g){
+    const kh = petaKehadiran[normNamaGuru_(g)];
+    return {pengampu: g, totalJam: perGuru[g],
+      kehadiran: kh ? kh.ringkas : null, persen: kh ? kh.persen : null, wajib: kh ? kh.wajib : null};
+  }).sort((a,b) => b.totalJam - a.totalJam);
   return { ok:true, mode:'ringkasan', daftar: ringkasan };
 }
 
@@ -5889,16 +6287,18 @@ function getHalaqohGuru(pengampu, waktu) {
   const tz = Session.getScriptTimeZone();
   const hariIniTanggal = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
 
-  const penggantianHariIni = getDaftarPenggantian().filter(function(x){ return x.tanggal === hariIniTanggal && x.jenisSesi === 'Halaqoh' && x.waktu === waktu; });
+  const penggantianHariIni = getDaftarPenggantian().filter(function(x){
+    return x.tanggal === hariIniTanggal && x.jenisSesi === 'Halaqoh' && normNama(x.waktu) === normNama(waktu);
+  });
   const sudahDigantikan = {};
-  penggantianHariIni.forEach(function(x){ sudahDigantikan[x.halaqoh+'|'+x.guruAsli] = true; });
+  penggantianHariIni.forEach(function(x){ sudahDigantikan[normNama(x.halaqoh)+'|'+normNamaGuru_(x.guruAsli)] = true; });
 
   const daftarSendiri = getHalaqohList().filter(function(h){
     if (!pengampuCocok(h.pengampuList, pengampu) || normNama(h.waktu) !== normNama(waktu)) return false;
-    return !sudahDigantikan[h.namaHalaqoh+'|'+pengampu];
+    return !sudahDigantikan[normNama(h.namaHalaqoh)+'|'+normNamaGuru_(pengampu)];
   }).map(function(h){ return Object.assign({}, h, {pengganti:false}); });
 
-  const daftarPengganti = penggantianHariIni.filter(function(x){ return normNama(x.guruPengganti) === normNama(pengampu); })
+  const daftarPengganti = penggantianHariIni.filter(function(x){ return samaGuru_(x.guruPengganti, pengampu); })
     .map(function(x){
       const asli = getHalaqohList().find(function(h){ return h.namaHalaqoh === x.halaqoh; });
       return { namaHalaqoh: x.halaqoh, pengampu: pengampu, waktu: waktu, gender: asli ? asli.gender : '', pengganti:true, guruAsli: x.guruAsli };
@@ -5932,7 +6332,9 @@ function apiGetSantriUntukHafalan(namaHalaqoh, waktu, tanggal, pengampuDiminta) 
       const tglStr = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
       if (tglStr === tanggal && norm(r[1]) === norm(waktu) && norm(r[2]) === namaHalaqoh) {
         const pengampuSudahIsi = norm(r[3]);
-        if (pengampuSudahIsi && pengampuSudahIsi !== norm(pengampuDiminta)) {
+        // Dicocokkan dengan normalisasi supaya penulisan nama yang sedikit berbeda
+        // tidak membuat pengampu sendiri terkunci dari sesinya.
+        if (pengampuSudahIsi && !samaGuru_(pengampuSudahIsi, pengampuDiminta)) {
           return {ok:false, error:'Halaqoh "'+namaHalaqoh+'" untuk sesi tanggal '+tanggal+' ('+waktu+') sudah diisi oleh '+pengampuSudahIsi+'. Tidak bisa diisi ulang oleh pengampu lain (mencegah data ganda). Kalau ada kesalahan pencatatan, minta '+pengampuSudahIsi+' membetulkannya lewat menu Riwayat Hafalan > Edit.'};
         }
         break;
@@ -5977,14 +6379,32 @@ function apiSubmitHafalan(p) {
   if (_galatTgl) return {ok:false, error:_galatTgl};
   const existing = sh.getDataRange().getValues();
 
+  // Sesi yang sudah dialihkan ke guru pengganti tidak bisa diisi guru aslinya.
+  const penggantiHalaqoh = sesiDialihkanKePengganti_({tanggal: tanggal, jenis: 'Halaqoh',
+    halaqoh: p.halaqoh, waktu: p.waktu, pengampu: p.pengampu});
+  if (penggantiHalaqoh) {
+    return {ok:false, error:'Halaqoh ' + norm(p.halaqoh) + ' (' + norm(p.waktu) + ') pada ' + tanggal +
+      ' sudah dialihkan ke ' + penggantiHalaqoh + ', jadi tidak bisa Anda isi. ' +
+      'Bila penggantian ini keliru, minta Admin membatalkannya di menu Penggantian Guru.'};
+  }
+
   const [ty, tm, td] = tanggal.split('-').map(Number);
   const indexBaris = {};
+  let pemilikSesiHafalan = '';
   for (let i=1;i<existing.length;i++) {
     const r = existing[i];
     const d = (r[0] instanceof Date) ? r[0] : new Date(r[0]);
     if (d.getFullYear()===ty && (d.getMonth()+1)===tm && d.getDate()===td && norm(r[1])===norm(p.waktu) && norm(r[2])===norm(p.halaqoh)) {
       indexBaris[norm(r[4])] = i+1;
+      if (!pemilikSesiHafalan && norm(r[3])) pemilikSesiHafalan = norm(r[3]);
     }
+  }
+  // Pelengkap kunci sesi yang sudah ada saat membuka form: menutup celah bila form
+  // sudah terbuka lebih dulu lalu pengampu lain menyimpan duluan.
+  if (pemilikSesiHafalan && !samaGuru_(pemilikSesiHafalan, p.pengampu)) {
+    return {ok:false, error:'Halaqoh ' + norm(p.halaqoh) + ' (' + norm(p.waktu) + ') pada ' + tanggal +
+      ' sudah diisi oleh ' + pemilikSesiHafalan + '. Tidak bisa diisi ulang oleh pengampu lain (mencegah data ganda). ' +
+      'Bila ada kesalahan pencatatan, minta ' + pemilikSesiHafalan + ' membetulkannya lewat menu Riwayat Hafalan > Edit.'};
   }
 
   const rowsToAdd = [];
@@ -7661,7 +8081,7 @@ function apiAjukanIzin(p) {
     'No. Referensi: ' + id + '\n_Wassalamu\'alaikum Wr. Wb._';
 
   if (noWaOrtu) {
-    try { kirimWAFonnteUmum(noWaOrtu, pesanWali); } catch(e) {}
+    try { kirimWAKategori_('izin_santri_pengajuan', noWaOrtu, pesanWali); } catch(e) {}
   }
 
   return {ok:true, id:id, namaSantri:namaSantri, status:'Menunggu'};
@@ -7719,7 +8139,7 @@ function apiApproveIzin(p) {
       const tglPulang = norm(rows[i][8])+' '+norm(rows[i][9]);
       if (noWa) {
         try {
-          kirimWAFonnteUmum(noWa,
+          kirimWAKategori_('izin_santri_keputusan', noWa,
             '✅ *Izin Santri DISETUJUI*\n\n' +
             'Putra/putri Anda: *'+nama+'*\n' +
             'Jenis: *'+jenis+'*\n' +
@@ -7748,7 +8168,7 @@ function apiTolakIzin(p) {
       const nama  = norm(rows[i][2]);
       if (noWa) {
         try {
-          kirimWAFonnteUmum(noWa,
+          kirimWAKategori_('izin_santri_keputusan', noWa,
             '❌ *Izin Santri TIDAK Disetujui*\n\n' +
             'Putra/putri Anda: *'+nama+'*\n' +
             'Alasan: '+(p.alasan||'Tidak disebutkan')+'\n\n' +
@@ -7780,7 +8200,7 @@ function apiKonfirmasiKembali(p) {
       const nama  = norm(rows[i][2]);
       if (noWa) {
         try {
-          kirimWAFonnteUmum(noWa,
+          kirimWAKategori_('izin_santri_kembali', noWa,
             '🏠 *Santri Sudah Kembali ke Pondok*\n\n' +
             'Putra/putri Anda: *'+nama+'*\n' +
             'Telah kembali: '+Utilities.formatDate(now,tz,'dd/MM/yyyy HH:mm')+'\n' +
@@ -7913,7 +8333,7 @@ function apiSubmitAbsensiHarian(p) {
   const tidakHadir = p.items.filter(i => i.status === 'Alpa' && i.noWa);
   tidakHadir.forEach(s => {
     try {
-      kirimWAFonnteUmum(s.noWa,
+      kirimWAKategori_('absen_harian', s.noWa,
         '⚠️ *Informasi Kehadiran Santri*\n\n' +
         'Assalamu\'alaikum Wr. Wb.\n\n' +
         'Kami informasikan bahwa putra/putri Anda:\n' +
@@ -7958,12 +8378,13 @@ function apiGetRekapAbsensiHarian(p) {
     const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
     hariUnik.add(tgl);
     const nisn = norm(r[2]);
-    if (!perSantri[nisn]) perSantri[nisn] = {nisn, nama:norm(r[3]), kelas:norm(r[4]), hadir:0, sakit:0, izin:0, alpa:0, total:0};
+    if (!perSantri[nisn]) perSantri[nisn] = {nisn, nama:norm(r[3]), kelas:norm(r[4]), hadir:0, sakit:0, izin:0, izinPulang:0, alpa:0, total:0};
     const s = norm(r[5]);
     perSantri[nisn].total++;
     if (s==='Hadir') perSantri[nisn].hadir++;
     else if (s==='Sakit') perSantri[nisn].sakit++;
-    else if (s==='Izin' || s==='Izin Pulang') perSantri[nisn].izin++;
+    else if (s==='Izin') perSantri[nisn].izin++;
+    else if (s==='Izin Pulang') perSantri[nisn].izinPulang++;   // dulu digabung ke Izin
     else perSantri[nisn].alpa++;
   });
 
@@ -7986,6 +8407,184 @@ function apiGetRekapAbsensiHarian(p) {
   })).sort((a,b) => a.nama.localeCompare(b.nama));
 
   return {ok:true, data, totalHari: hariUnik.size};
+}
+
+// Kartu rekap bulanan: santri dengan setoran Sabaq terbanyak, izin terbanyak, dan
+// sakit terbanyak. Izin & sakit dihitung per HARI dari absensi harian pembina (bukan per
+// sesi), supaya santri yang dicatat pagi & malam tidak terhitung ganda.
+function apiGetTopSantriBulan(p) {
+  const tz = Session.getScriptTimeZone();
+  const now = new Date();
+  const bulan = Number(p.bulan) || now.getMonth() + 1, tahun = Number(p.tahun) || now.getFullYear();
+  const awal = tahun + '-' + String(bulan).padStart(2,'0') + '-01';
+  const akhir = tahun + '-' + String(bulan).padStart(2,'0') + '-31';
+  const gender = norm(p.gender || '');
+  const batas = Math.min(Number(p.jumlah) || 5, 10);
+  const ss = getAktifSS();
+
+  const info = {};
+  const shS = ss.getSheetByName(SHEET_SANTRI);
+  if (shS && shS.getLastRow() > 1) {
+    const rows = shS.getDataRange().getValues();
+    const iJK = rows[0].indexOf('Jenis Kelamin');
+    rows.slice(1).forEach(function(r){
+      if (!norm(r[0])) return;
+      const jk = norm(iJK > -1 ? r[iJK] : r[3]).toLowerCase();
+      info[norm(r[0])] = {nama: norm(r[1]), jk: jk === 'laki-laki' ? 'Putra' : (jk === 'perempuan' ? 'Putri' : '')};
+    });
+  }
+  const shR = ss.getSheetByName(SHEET_ROMBEL);
+  if (shR && shR.getLastRow() > 1) shR.getDataRange().getValues().slice(1).forEach(function(r){ if (info[norm(r[0])]) info[norm(r[0])].kelas = norm(r[2]); });
+  function cocokGender(nisn){ return !gender || (info[nisn] && info[nisn].jk === gender); }
+  function tgl(v){ return v instanceof Date ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : norm(v).slice(0,10); }
+  function hitungHalaman(v){
+    const m = String(v || '').match(/(\d+)\s*-\s*(\d+)/);
+    if (m) return Math.max(1, Number(m[2]) - Number(m[1]) + 1);
+    return /\d/.test(String(v || '')) ? 1 : 0;
+  }
+
+  // Sabaq (hafalan baru)
+  const sabaq = {};
+  const shH = ss.getSheetByName(SHEET_HAFALAN);
+  if (shH && shH.getLastRow() > 1) shH.getDataRange().getValues().slice(1).forEach(function(r){
+    const t = tgl(r[0]); if (t < awal || t > akhir) return;
+    if (norm(r[6]) !== 'Sabaq') return;
+    const n = norm(r[4]); if (!n || !cocokGender(n)) return;
+    if (!sabaq[n]) sabaq[n] = {setoran:0, halaman:0};
+    sabaq[n].setoran++; sabaq[n].halaman += hitungHalaman(r[10]);
+  });
+
+  // Izin & sakit dari absensi harian (per hari)
+  const izin = {}, sakit = {}, sudah = {};
+  const shA = ss.getSheetByName(SHEET_ABSENSI_HARIAN);
+  if (shA && shA.getLastRow() > 1) shA.getDataRange().getValues().slice(1).forEach(function(r){
+    const t = tgl(r[0]); if (t < awal || t > akhir) return;
+    const n = norm(r[2]); if (!n || !cocokGender(n)) return;
+    const st = norm(r[5]);
+    const jenis = st === 'Sakit' ? 'sakit' : (st === 'Izin' ? 'izin' : (st === 'Izin Pulang' ? 'pulang' : ''));
+    if (!jenis) return;
+    const k = n + '|' + jenis + '|' + t; if (sudah[k]) return; sudah[k] = true;
+    if (jenis === 'sakit') sakit[n] = (sakit[n] || 0) + 1;
+    else { if (!izin[n]) izin[n] = {total:0, izin:0, pulang:0}; izin[n].total++; izin[n][jenis]++; }
+  });
+
+  function susun(peta, nilai){
+    return Object.keys(peta).map(function(n){
+      const i = info[n] || {};
+      return Object.assign({nisn:n, nama:i.nama || n, kelas:i.kelas || '-', jk:i.jk || ''}, nilai(peta[n]));
+    });
+  }
+  return {ok:true, bulan: bulan, tahun: tahun, gender: gender,
+    sabaq: susun(sabaq, function(v){ return {setoran:v.setoran, halaman:v.halaman}; })
+      .sort(function(a,b){ return b.setoran - a.setoran || b.halaman - a.halaman; }).slice(0, batas),
+    izin: susun(izin, function(v){ return {hari:v.total, izin:v.izin, pulang:v.pulang}; })
+      .sort(function(a,b){ return b.hari - a.hari; }).slice(0, batas),
+    sakit: susun(sakit, function(v){ return {hari:v}; })
+      .sort(function(a,b){ return b.hari - a.hari; }).slice(0, batas)};
+}
+
+// ======================================================================
+// SANTRI TIDAK HADIR BERUNTUN (izin / izin pulang, sakit, alpa)
+//
+// Mendeteksi santri yang tercatat tidak hadir beberapa HARI BERTURUT-TURUT di absensi
+// harian pembina, supaya pembina, Kabag, Admin, dan Mudir bisa segera menindaklanjuti.
+//
+// Aturan hitung (sengaja dibuat adil):
+// - Satu hari dihitung satu kali, walau diabsen pagi & malam.
+// - Suatu hari masuk kategori bila ADA catatan kategori itu di hari tsb
+//   (mis. sakit pagi, hadir malam -> tetap terhitung hari sakit).
+// - Hari yang TIDAK diabsen untuk santri itu (libur, pembina tidak mengabsen) DILEWATI,
+//   tidak memutus deretan. Tanpa ini, santri yang sakit seminggu tampak "sembuh" hanya
+//   karena satu hari tidak tercatat.
+// - Deretan putus bila ada hari tercatat dengan kategori lain (mis. hadir).
+// ======================================================================
+const KATEGORI_BERUNTUN = [
+  {k:'izin',  label:'Izin / Izin Pulang', cocok:function(st){ return st === 'Izin' || st === 'Izin Pulang'; }},
+  {k:'sakit', label:'Sakit',              cocok:function(st){ return st === 'Sakit'; }},
+  {k:'alpa',  label:'Alpa',               cocok:function(st){ return st === 'Alpa' || st === 'Ghaib'; }}
+];
+
+function apiGetSantriBeruntun(p) {
+  const tz = Session.getScriptTimeZone();
+  const hariIni = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  const gender = norm(p.gender || '');
+  const batasMin = Math.max(2, Math.min(Number(p.minHari) || Number(getPengaturan().BatasBeruntunHari) || 3, 14));
+  const ss = getAktifSS();
+  function geserHari(t, n) { const q = t.split('-').map(Number); return Utilities.formatDate(new Date(q[0], q[1]-1, q[2] + n), tz, 'yyyy-MM-dd'); }
+  const awalData = geserHari(hariIni, -45);   // cukup untuk mengukur deretan panjang
+  const awalPekan = geserHari(hariIni, -7);   // deretan yang sudah selesai tetap dilaporkan 7 hari
+
+  // Data santri
+  const info = {};
+  const shS = ss.getSheetByName(SHEET_SANTRI);
+  if (shS && shS.getLastRow() > 1) {
+    const rows = shS.getDataRange().getValues();
+    const h = rows[0];
+    const iJK = h.indexOf('Jenis Kelamin'), iWA = h.indexOf('No WA Ortu');
+    rows.slice(1).forEach(function(r){
+      if (!norm(r[0])) return;
+      const jk = norm(iJK > -1 ? r[iJK] : r[3]).toLowerCase();
+      info[norm(r[0])] = {nama: norm(r[1]), jk: jk === 'laki-laki' ? 'Putra' : (jk === 'perempuan' ? 'Putri' : ''),
+        noWa: norm(iWA > -1 ? r[iWA] : r[4]), kelas: '-'};
+    });
+  }
+  const shR = ss.getSheetByName(SHEET_ROMBEL);
+  if (shR && shR.getLastRow() > 1) shR.getDataRange().getValues().slice(1).forEach(function(r){ if (info[norm(r[0])]) info[norm(r[0])].kelas = norm(r[2]); });
+
+  // Status per santri per hari (bisa lebih dari satu status dalam sehari)
+  const perSantri = {};
+  const shA = ss.getSheetByName(SHEET_ABSENSI_HARIAN);
+  if (shA && shA.getLastRow() > 1) {
+    shA.getDataRange().getValues().slice(1).forEach(function(r){
+      const t = r[0] instanceof Date ? Utilities.formatDate(r[0], tz, 'yyyy-MM-dd') : norm(r[0]).slice(0,10);
+      if (t < awalData || t > hariIni) return;
+      const n = norm(r[2]);
+      if (!n || !info[n]) return;
+      if (gender && info[n].jk !== gender) return;
+      if (!perSantri[n]) perSantri[n] = {};
+      if (!perSantri[n][t]) perSantri[n][t] = {};
+      perSantri[n][t][norm(r[5])] = true;
+    });
+  }
+
+  const hasil = [];
+  Object.keys(perSantri).forEach(function(n){
+    const hari = Object.keys(perSantri[n]).sort();           // hanya hari yang tercatat
+    const hariTerakhir = hari[hari.length - 1];
+    KATEGORI_BERUNTUN.forEach(function(kat){
+      // Kumpulkan deretan (run) hari tercatat yang berturut-turut masuk kategori ini
+      let run = null;
+      const runs = [];
+      hari.forEach(function(t){
+        const statusHari = Object.keys(perSantri[n][t]);
+        const masuk = statusHari.some(kat.cocok);
+        if (masuk) {
+          if (!run) run = {mulai: t, akhir: t, hari: 0, izin: 0, pulang: 0};
+          run.akhir = t; run.hari++;
+          if (kat.k === 'izin') { if (statusHari.indexOf('Izin Pulang') !== -1) run.pulang++; else run.izin++; }
+        } else if (run) { runs.push(run); run = null; }
+      });
+      if (run) runs.push(run);
+      runs.forEach(function(rn){
+        if (rn.hari < batasMin || rn.akhir < awalPekan) return;
+        // Masih berlangsung = deretan ini adalah catatan terakhir santri & catatannya masih baru
+        const berlangsung = rn.akhir === hariTerakhir && rn.akhir >= geserHari(hariIni, -2);
+        const i = info[n];
+        // Jejak 14 hari terakhir untuk ditampilkan sebagai garis waktu
+        const jejak = [];
+        for (let d = 13; d >= 0; d--) {
+          const t = geserHari(hariIni, -d), sh = perSantri[n][t];
+          let st = '';
+          if (sh) st = sh['Alpa'] || sh['Ghaib'] ? 'Alpa' : (sh['Sakit'] ? 'Sakit' : (sh['Izin Pulang'] ? 'Izin Pulang' : (sh['Izin'] ? 'Izin' : 'Hadir')));
+          jejak.push({t: t, s: st});
+        }
+        hasil.push({nisn: n, nama: i.nama, kelas: i.kelas, jk: i.jk, noWa: i.noWa, kategori: kat.k, labelKategori: kat.label,
+          hari: rn.hari, mulai: rn.mulai, akhir: rn.akhir, berlangsung: berlangsung, izin: rn.izin, pulang: rn.pulang, jejak: jejak});
+      });
+    });
+  });
+  hasil.sort(function(a,b){ return (b.berlangsung - a.berlangsung) || (b.hari - a.hari) || a.nama.localeCompare(b.nama); });
+  return {ok:true, hariIni: hariIni, minHari: batasMin, data: hasil};
 }
 
 // Info real-time keberadaan santri di pondok
@@ -8099,17 +8698,22 @@ function apiGetStatusPondok(p) {
   }
 
   // === HITUNG BREAKDOWN dari statusTerakhir ===
-  const izinPulangList = [];
+  const izinPulangList = [], sakitList = [], izinList = [];
   let hadir = 0, sakit = 0, izin = 0, alpa = 0;
   let putraIzin = 0, putriIzin = 0;
+  // Rincian per putra/putri -- sebelumnya hanya "izin pulang" yang dipisah, sehingga
+  // pembina putra/putri tidak pernah melihat jumlah santri sakit & izin di asramanya.
+  const perJk = {Putra:{hadir:0,sakit:0,izin:0,alpa:0}, Putri:{hadir:0,sakit:0,izin:0,alpa:0}};
 
   Object.keys(statusTerakhir).forEach(function(nisn) {
     var s = statusTerakhir[nisn];
     var status = s.status;
-    if (status === 'Hadir') hadir++;
-    else if (status === 'Sakit') sakit++;
-    else if (status === 'Izin') izin++;
-    else if (status === 'Alpa') alpa++;
+    var jkS = jkMap[nisn] === 'laki-laki' ? 'Putra' : 'Putri';
+    var dataS = {nisn: nisn, nama: namaMap[nisn] || '', kelas: kelasMap[nisn] || '-', keterangan: s.keterangan, sumber: s.sumber, jk: jkS};
+    if (status === 'Hadir') { hadir++; perJk[jkS].hadir++; }
+    else if (status === 'Sakit') { sakit++; perJk[jkS].sakit++; sakitList.push(dataS); }
+    else if (status === 'Izin') { izin++; perJk[jkS].izin++; izinList.push(dataS); }
+    else if (status === 'Alpa') { alpa++; perJk[jkS].alpa++; }
     else if (status === 'Izin Pulang') {
       var jk = jkMap[nisn] === 'laki-laki' ? 'Putra' : 'Putri';
       if (jk === 'Putra') putraIzin++;
@@ -8131,11 +8735,40 @@ function apiGetStatusPondok(p) {
   const putraDiPondok = totalPutra - putraIzin;
   const putriDiPondok = totalPutri - putriIzin;
 
+  // Sudah berapa kali (hari) santri yang sedang sakit/izin/izin pulang itu tercatat
+  // sakit, izin, dan izin pulang BULAN INI -- dari absensi harian pembina. Dihitung per
+  // HARI (bukan per sesi), supaya santri yang dicatat pagi & malam tidak terhitung dua kali.
+  const perluFrek = {};
+  sakitList.concat(izinList, izinPulangList).forEach(function(x){ perluFrek[x.nisn] = true; });
+  const frekuensiBulan = {};
+  if (Object.keys(perluFrek).length && shHarian && shHarian.getLastRow() > 1) {
+    const awalBulan = tanggalHariIni.slice(0, 8) + '01';
+    const hariTercatat = {};
+    shHarian.getDataRange().getValues().slice(1).forEach(function(r){
+      const nisnF = norm(r[2]);
+      if (!perluFrek[nisnF]) return;
+      const tgl = r[0] instanceof Date ? Utilities.formatDate(r[0],tz,'yyyy-MM-dd') : norm(r[0]);
+      if (tgl < awalBulan || tgl > tanggalHariIni) return;
+      const st = norm(r[5]);
+      const jenis = st === 'Sakit' ? 'sakit' : (st === 'Izin' ? 'izin' : (st === 'Izin Pulang' ? 'izinPulang' : ''));
+      if (!jenis) return;
+      const kunci = nisnF + '|' + jenis + '|' + tgl;
+      if (hariTercatat[kunci]) return;
+      hariTercatat[kunci] = true;
+      if (!frekuensiBulan[nisnF]) frekuensiBulan[nisnF] = {sakit:0, izin:0, izinPulang:0};
+      frekuensiBulan[nisnF][jenis]++;
+    });
+  }
+
   return {
     ok: true,
     tanggal: tanggalHariIni,
     hariIni: true,
     sudahAbsen: sudahAbsenHarian || Object.keys(statusTerakhir).length > 0,
+    perJk: perJk,
+    sakitList: sakitList,
+    izinList: izinList,
+    frekuensiBulan: frekuensiBulan,
     total: totalSantri,
     diPondok: diPondok,
     izinPulang: totalIzinPulang,
@@ -8655,7 +9288,14 @@ function keMenit(jamStr) {
 // nama pengguna, sama seperti yang dipakai di kolom Pengampu/Pembina).
 // Mengembalikan {ok, terkirim} -- tidak pernah melempar error supaya kegagalan
 // notifikasi tidak ikut menggagalkan proses lain yang memanggilnya.
-function kirimPushOneSignal(externalIds, judul, isi, tautan) {
+// opsi (opsional): {jenis, ttl, kirimSetelahDetik}
+//   jenis  -> ikut dikirim sebagai data, dipakai aplikasi untuk memilih nada alarm
+//   ttl    -> batas kedaluwarsa (detik). Pengingat jadwal tidak berguna kalau baru
+//             sampai setelah kelas selesai, jadi diberi batas pendek.
+//   kirimSetelahDetik -> tunda pengiriman (dipakai tombol uji: pengguna sempat mengunci
+//             layar dulu untuk memastikan HP berbunyi/bergetar saat aplikasi tertutup)
+function kirimPushOneSignal(externalIds, judul, isi, tautan, opsi) {
+  opsi = opsi || {};
   try {
     const p = getPengaturan();
     const appId = norm(p.OneSignalAppId);
@@ -8671,10 +9311,18 @@ function kirimPushOneSignal(externalIds, judul, isi, tautan) {
       target_channel: 'push',
       headings: { en: String(judul || 'WASIAT'), id: String(judul || 'WASIAT') },
       contents: { en: String(isi || ''), id: String(isi || '') },
-      // Muncul dengan suara & getaran bawaan sistem (perilaku default push Android).
-      android_channel_id: undefined,
+      // Prioritas TINGGI: di Android 6+ ini membangunkan HP dari mode hemat daya
+      // (doze). Tanpa ini, notifikasi bisa tertahan lama saat layar HP mati.
+      priority: 10,
+      // Kedaluwarsa: bawaan 1 jam. Notifikasi yang terlambat lebih dari itu (HP mati
+      // seharian) tidak dikirim, supaya tidak muncul pengingat yang sudah basi.
+      ttl: Number(opsi.ttl) > 0 ? Number(opsi.ttl) : 3600,
+      data: { jenis: String(opsi.jenis || 'umum') },
       url: tautan || undefined
     };
+    if (Number(opsi.kirimSetelahDetik) > 0) {
+      body.send_after = new Date(Date.now() + Number(opsi.kirimSetelahDetik) * 1000).toISOString();
+    }
 
     const resp = UrlFetchApp.fetch('https://api.onesignal.com/notifications', {
       method: 'post',
@@ -8774,7 +9422,8 @@ function cekJadwalKirimNotif() {
           [guru],
           '\u23F0 Jadwal mengajar segera dimulai',
           jedaMenit + ' menit lagi: ' + daftarKelas + ' (jam ke-' + jamKe + ', ' + jamMap[jamKe] + '). Jangan lupa isi absensi.',
-          ''
+          '',
+          { jenis: 'jadwal', ttl: 15 * 60 }
         );
       });
     });
@@ -8824,7 +9473,7 @@ function cekTugasPembinaKirimNotif() {
       if (selisih > 0 || selisih <= -6) return;
       const kunci = 'tugas|' + jam;
       if (sudahDikirimHariIni(kunci)) return;
-      kirimPushOneSignal(pembina, '\u2705 Tugas Harian (' + jam + ')', pesan, '');
+      kirimPushOneSignal(pembina, '\u2705 Tugas Harian (' + jam + ')', pesan, '', { jenis: 'tugas', ttl: 30 * 60 });
     });
   } catch (e) {
     Logger.log('cekTugasPembinaKirimNotif error: ' + e.message);
@@ -8885,7 +9534,20 @@ function apiKirimPushManual(p) {
   } else if (Array.isArray(p.penerima)) {
     penerima = p.penerima;
   }
-  return kirimPushOneSignal(penerima, judul, isi, '');
+  return kirimPushOneSignal(penerima, judul, isi, '', { jenis: 'pengumuman' });
+}
+
+// Uji notifikasi ke HP pengguna sendiri, DITUNDA 30 detik -- supaya pengguna sempat
+// menutup aplikasi & mengunci layar, lalu memastikan HP-nya benar-benar berbunyi /
+// bergetar saat notifikasi datang dalam keadaan aplikasi tertutup (keadaan yang paling
+// sering bermasalah karena diatur oleh pengaturan Android, bukan oleh aplikasi).
+function apiKirimPushUji(p) {
+  const nama = norm(p.nama);
+  if (!nama) return {ok:false, error:'Nama pengguna tidak diketahui.'};
+  const tunda = Math.min(Math.max(Number(p.tundaDetik) || 30, 0), 120);
+  return kirimPushOneSignal([nama], '\uD83D\uDD14 Uji Notifikasi WASIAT',
+    'Kalau Anda mendengar bunyi/getar saat pesan ini muncul, notifikasi di HP ini sudah berfungsi dengan baik.',
+    '', { jenis: 'uji', ttl: 600, kirimSetelahDetik: tunda });
 }
 
 
@@ -8943,7 +9605,7 @@ function kirimPushKeWali(nisn, judul, isi) {
     if (!norm(p.OneSignalAppId) || !norm(p.OneSignalApiKey)) return;
     const wali = cariNamaWaliDariNisn(nisn);
     if (!wali.length) return;
-    kirimPushOneSignal(wali, judul, isi, '');
+    kirimPushOneSignal(wali, judul, isi, '', { jenis: 'wali' });
   } catch (e) {
     Logger.log('kirimPushKeWali error: ' + e.message);
   }
@@ -10018,7 +10680,7 @@ function apiTarikSaldoPemilikManual(p) {
 
     if (noWa) {
       try {
-        kirimWAFonnteUmum(noWa, 'Assalamualaikum Wr. Wb.\n\n*PENARIKAN SALDO DICATAT*\n\nHalo *'+pemilik+'*,\nPenarikan saldo sebesar Rp'+nominal.toLocaleString('id-ID')+' telah dicatat oleh '+oleh+'.\nKeterangan: '+keterangan+'\n\nSisa saldo: Rp'+saldoSekarang.toLocaleString('id-ID')+'\n\nBila ada yang tidak sesuai, segera hubungi Bendahara.\n\nWassalamualaikum Wr. Wb.');
+        kirimWAKategori_('saldo_pemilik', noWa, 'Assalamualaikum Wr. Wb.\n\n*PENARIKAN SALDO DICATAT*\n\nHalo *'+pemilik+'*,\nPenarikan saldo sebesar Rp'+nominal.toLocaleString('id-ID')+' telah dicatat oleh '+oleh+'.\nKeterangan: '+keterangan+'\n\nSisa saldo: Rp'+saldoSekarang.toLocaleString('id-ID')+'\n\nBila ada yang tidak sesuai, segera hubungi Bendahara.\n\nWassalamualaikum Wr. Wb.');
       } catch(e) { Logger.log('WA penarikan manual gagal: ' + e.message); }
     }
 
@@ -10112,7 +10774,11 @@ function aturanKehadiranGuru_() {
     waAktif: benar(p.SPWAAktif, false),
     waIzinBaru: benar(p.SPWAIzinBaru, false),         // ke Mudir/Admin saat guru mengajukan izin
     waIzinDiproses: benar(p.SPWAIzinDiproses, false), // ke guru saat izin disetujui/ditolak
-    waSPTerbit: benar(p.SPWASPTerbit, false)          // ke guru saat SP diterbitkan
+    waSPTerbit: benar(p.SPWASPTerbit, false),         // ke guru saat SP diterbitkan
+    // Izin "Sudah mengajar, lupa mencatat": bila disetujui, guru mendapat akses mengisi
+    // absensi tanggal itu. Bisa dimatikan/dinyalakan Admin/Mudir kapan saja.
+    lupaAktif: benar(p.SusulanLupaAktif, true),
+    lupaBerlakuHari: angka(p.SusulanLupaBerlakuHari, 3)
   };
 }
 
@@ -10152,7 +10818,7 @@ function kirimWAKehadiranAtur_(jenis, target, pesan) {
   try {
     const cfg = aturanKehadiranGuru_();
     if (!cfg.waAktif || !cfg[jenis] || !target) return false;
-    kirimWAFonnteUmum(target, pesan);
+    kirimWAKategori_('guru_kehadiran', target, pesan);
     return true;
   } catch (e) { Logger.log('WA kehadiran gagal: ' + e.message); return false; }
 }
@@ -10191,7 +10857,8 @@ function getSuratSPListAtur_() {
 
 // Inti perhitungan: status setiap sesi wajib per guru dalam satu bulan.
 // guruFilter (opsional) = hitung satu guru saja.
-function hitungKehadiranGuruAtur_(bulan, tahun, guruFilter) {
+function hitungKehadiranGuruAtur_(bulan, tahun, guruFilter, opsiHitung) {
+  opsiHitung = opsiHitung || {};
   bulan = Number(bulan); tahun = Number(tahun);
   const cfg = aturanKehadiranGuru_();
   const tz = Session.getScriptTimeZone();
@@ -10203,7 +10870,7 @@ function hitungKehadiranGuruAtur_(bulan, tahun, guruFilter) {
   for (let d = 1; d <= jmlHari; d++) {
     const t = tahun + '-' + String(bulan).padStart(2,'0') + '-' + String(d).padStart(2,'0');
     if (t >= hariIni) break;                    // hari ini & masa depan belum dihitung
-    if (cfg.mulai && t < cfg.mulai) continue;   // sebelum aturan berlaku tidak dihitung
+    if (cfg.mulai && t < cfg.mulai && !opsiHitung.abaikanMulai) continue;   // sebelum aturan berlaku tidak dihitung
     tanggalList.push(t);
   }
   const setTgl = {}; tanggalList.forEach(function(t){ setTgl[t] = true; });
@@ -10213,7 +10880,7 @@ function hitungKehadiranGuruAtur_(bulan, tahun, guruFilter) {
 
   const izin = {};
   getIzinGuruListAtur_().forEach(function(z){
-    const k = normNama(z.guru) + '|' + z.tanggal;
+    const k = normNamaGuru_(z.guru) + '|' + z.tanggal;
     if (z.status === 'Disetujui') izin[k] = z;
     else if (z.status === 'Menunggu' && !(izin[k] && izin[k].status === 'Disetujui')) izin[k] = z;
   });
@@ -10254,7 +10921,7 @@ function hitungKehadiranGuruAtur_(bulan, tahun, guruFilter) {
     shM.getDataRange().getValues().slice(1).forEach(function(r){
       const mapel = norm(r[0]), kelas = norm(r[1]), guru = norm(r[2]), hari = norm(r[3]);
       if (!mapel || !kelas || !guru || !hari) return; // jadwal tanpa hari tidak bisa dinilai
-      const k = normNama(mapel)+'|'+normNama(kelas)+'|'+normNama(hari)+'|'+normNama(guru);
+      const k = normNama(mapel)+'|'+normNama(kelas)+'|'+normNama(hari)+'|'+normNamaGuru_(guru);
       if (kumpul[k]) { kumpul[k].jamKe.push(r[4]); return; }
       kumpul[k] = {mapel: mapel, kelas: kelas, guru: guru, hari: hari, jamKe: [r[4]]};
       jadwalMapel.push(kumpul[k]);
@@ -10266,8 +10933,8 @@ function hitungKehadiranGuruAtur_(bulan, tahun, guruFilter) {
 
   const perGuru = {};
   function catat(guru, sesi) {
-    const k = normNama(guru);
-    if (guruFilter && k !== normNama(guruFilter)) return;
+    const k = normNamaGuru_(guru);
+    if (guruFilter && k !== normNamaGuru_(guruFilter)) return;
     if (!perGuru[k]) perGuru[k] = {guru: guru, sesi: []};
     perGuru[k].sesi.push(sesi);
   }
@@ -10281,7 +10948,7 @@ function hitungKehadiranGuruAtur_(bulan, tahun, guruFilter) {
       if (libur[t]) return {status:'Libur', ket: libur[t]};
       if (hadir[key]) return {status:'Hadir'};
       if (pengganti[key]) return {status:'Digantikan', ket: 'oleh ' + pengganti[key]};
-      const iz = izin[normNama(guru) + '|' + t];
+      const iz = izin[normNamaGuru_(guru) + '|' + t];
       if (iz && iz.status === 'Disetujui') return {status:'Izin', ket: iz.alasan};
       if (iz && iz.status === 'Menunggu') return {status:'MenungguIzin', ket: iz.alasan};
       if (umur <= cfg.batasKlarifikasi) return {status:'BelumTercatat', sisaHari: cfg.batasKlarifikasi - umur + 1};
@@ -10297,7 +10964,8 @@ function hitungKehadiranGuruAtur_(bulan, tahun, guruFilter) {
       halaqohList.forEach(function(h){
         const key = 'H|'+t+'|'+normNama(h.namaHalaqoh)+'|'+normNama(h.waktu);
         h.pengampuList.forEach(function(g){
-          catat(g, Object.assign({tanggal:t, hari:namaHari, jenis:'Halaqoh', nama: h.namaHalaqoh+' ('+h.waktu+')'}, statusSesi(key, g)));
+          catat(g, Object.assign({tanggal:t, hari:namaHari, jenis:'Halaqoh', nama: h.namaHalaqoh+' ('+h.waktu+')',
+            halaqoh: h.namaHalaqoh, waktu: h.waktu}, statusSesi(key, g)));
         });
       });
     }
@@ -10328,7 +10996,7 @@ function levelRekomendasiAtur_(guru, bulanStr, jumlahTMTI, cfg, daftarSP, hariIn
   if (dasar === 0) return 0;
   let aktifTertinggi = 0;
   daftarSP.forEach(function(sp){
-    if (sp.status !== 'Diterbitkan' || normNama(sp.guru) !== normNama(guru)) return;
+    if (sp.status !== 'Diterbitkan' || normNamaGuru_(sp.guru) !== normNamaGuru_(guru)) return;
     if (sp.bulan >= bulanStr) return;               // hanya SP dari bulan sebelumnya
     if (sp.berlakuSampai && sp.berlakuSampai < hariIni) return; // sudah tidak berlaku
     aktifTertinggi = Math.max(aktifTertinggi, sp.level);
@@ -10352,7 +11020,7 @@ function sinkronDrafSPAtur_(bulan, tahun, rekap) {
     const tmti = g.sesi.filter(function(s){ return s.status === 'TMTI'; })
       .map(function(s){ return {tanggal: s.tanggal, hari: s.hari, jenis: s.jenis, nama: s.nama}; });
     const rek = levelRekomendasiAtur_(g.guru, bulanStr, tmti.length, cfg, daftarSP, hariIni);
-    const milikBulanIni = daftarSP.filter(function(sp){ return normNama(sp.guru) === normNama(g.guru) && sp.bulan === bulanStr; });
+    const milikBulanIni = daftarSP.filter(function(sp){ return normNamaGuru_(sp.guru) === normNamaGuru_(g.guru) && sp.bulan === bulanStr; });
     const terbitTertinggi = milikBulanIni.filter(function(sp){ return sp.status === 'Diterbitkan'; })
       .reduce(function(m, sp){ return Math.max(m, sp.level); }, 0);
     const draf = milikBulanIni.find(function(sp){ return sp.status === 'Draf'; });
@@ -10431,7 +11099,7 @@ function apiGetKehadiranSaya(p) {
   const guru = norm(p.guru);
   if (!guru) return {ok:false, error:'Nama guru kosong.'};
   const cfg = aturanKehadiranGuru_();
-  const spSaya = getSuratSPListAtur_().filter(function(x){ return x.status === 'Diterbitkan' && normNama(x.guru) === normNama(guru); })
+  const spSaya = getSuratSPListAtur_().filter(function(x){ return x.status === 'Diterbitkan' && normNamaGuru_(x.guru) === normNamaGuru_(guru); })
     .sort(function(a,b){ return String(b.diterbitkanPada).localeCompare(String(a.diterbitkanPada)); });
   if (!statusAturanKehadiran_(cfg).berjalan) return {ok:true, aktif:false, sp: spSaya};
   try {
@@ -10458,33 +11126,137 @@ function apiGetKehadiranSaya(p) {
   }
 }
 
+// Jenis izin yang wajib dilampiri bukti (surat dokter / surat tugas / undangan).
+// Guru yang belum memegang suratnya tetap bisa mengajukan dengan menandai
+// "bukti menyusul" -- catatannya ikut terlihat Mudir supaya bisa ditagih.
+const IZIN_WAJIB_BUKTI = ['Sakit', 'Tugas dari pondok', 'Kegiatan/undangan tertentu'];
+const IZIN_JENIS_SAH = ['Sakit', 'Izin keperluan pribadi/keluarga', 'Tugas dari pondok',
+  'Kegiatan/undangan tertentu', 'Sudah mengajar, lupa mencatat'];
+const PENANDA_BUKTI_MENYUSUL = '[Bukti menyusul]';
+const IZIN_LUPA_MENCATAT = 'Sudah mengajar, lupa mencatat';
+
 function apiAjukanIzinGuru(p) {
-  const guru = norm(p.guru), tanggal = norm(p.tanggal).slice(0,10), alasan = norm(p.alasan);
-  if (!guru || !tanggal || !alasan) return {ok:false, error:'Tanggal dan alasan wajib diisi.'};
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(tanggal)) return {ok:false, error:'Format tanggal tidak valid.'};
+  const guru = norm(p.guru);
+  const tanggal = norm(p.tanggal).slice(0,10);
+  const tanggalSelesai = (norm(p.tanggalSelesai) || tanggal).slice(0,10);
+  const alasan = norm(p.alasan);
+  const keterangan = norm(p.keterangan);
+  const buktiUrl = norm(p.buktiUrl);
+  const buktiMenyusul = (p.buktiMenyusul === true || p.buktiMenyusul === 'true');
+
+  if (!guru) return {ok:false, error:'Nama guru tidak diketahui. Masuk ulang ke aplikasi lalu coba lagi.'};
+  if (!tanggal || !/^\d{4}-\d{2}-\d{2}$/.test(tanggal)) return {ok:false, error:'Tanggal tidak valid.'};
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(tanggalSelesai)) return {ok:false, error:'Tanggal selesai tidak valid.'};
+  if (tanggalSelesai < tanggal) return {ok:false, error:'Tanggal selesai lebih awal daripada tanggal mulai.'};
+  if (!alasan || IZIN_JENIS_SAH.indexOf(alasan) === -1) return {ok:false, error:'Jenis izin belum dipilih.'};
+  if (alasan === IZIN_LUPA_MENCATAT && !aturanKehadiranGuru_().lupaAktif) {
+    return {ok:false, error:'Pengajuan "lupa mencatat" sedang dinonaktifkan oleh Admin/Mudir. Hubungi Admin untuk dibukakan akses absen susulan.'};
+  }
+  // Keterangan WAJIB -- supaya Mudir punya dasar yang jelas saat menyetujui/menolak,
+  // dan rekapnya bisa dipertanggungjawabkan.
+  if (keterangan.length < 10) return {ok:false, error:'Keterangan wajib diisi minimal 10 huruf, jelaskan singkat alasannya.'};
+  if (IZIN_WAJIB_BUKTI.indexOf(alasan) !== -1 && !buktiUrl && !buktiMenyusul) {
+    return {ok:false, error:'Jenis "'+alasan+'" wajib dilampiri foto surat/bukti. Bila suratnya belum ada, centang "bukti menyusul" dan jelaskan di keterangan.'};
+  }
+
   const cfg = aturanKehadiranGuru_();
   const hariIni = hariIniAtur_();
+  const jmlHari = selisihHariAtur_(tanggal, tanggalSelesai) + 1;
+  if (jmlHari > 30) return {ok:false, error:'Sekali pengajuan maksimal 30 hari. Ajukan terpisah bila lebih lama.'};
   // Izin untuk hari yang sudah lewat hanya boleh dalam masa klarifikasi -- setelah
   // itu status TMTI sudah final dan tidak bisa "dihapus" dengan izin belakangan.
   if (tanggal < hariIni && selisihHariAtur_(tanggal, hariIni) > cfg.batasKlarifikasi) {
     return {ok:false, error:'Masa klarifikasi untuk tanggal '+tanggal+' sudah lewat (maksimal '+cfg.batasKlarifikasi+' hari). Hubungi Mudir bila ada alasan khusus.'};
   }
-  if (selisihHariAtur_(hariIni, tanggal) > 60) return {ok:false, error:'Izin hanya bisa diajukan paling jauh 60 hari ke depan.'};
-  const ada = getIzinGuruListAtur_().find(function(z){
-    return normNama(z.guru) === normNama(guru) && z.tanggal === tanggal && (z.status === 'Menunggu' || z.status === 'Disetujui');
+  if (selisihHariAtur_(hariIni, tanggalSelesai) > 60) return {ok:false, error:'Izin hanya bisa diajukan paling jauh 60 hari ke depan.'};
+
+  const sudahAda = {};
+  getIzinGuruListAtur_().forEach(function(z){
+    if (normNamaGuru_(z.guru) === normNamaGuru_(guru) && (z.status === 'Menunggu' || z.status === 'Disetujui')) sudahAda[z.tanggal] = z.status;
   });
-  if (ada) return {ok:false, error:'Sudah ada pengajuan izin untuk tanggal ini (status: '+ada.status+').'};
+
   const tz = Session.getScriptTimeZone();
-  const id = 'IZ-' + Utilities.getUuid().slice(0,8).toUpperCase();
-  shIzinGuru_().appendRow([id, tanggal, guru, alasan, norm(p.keterangan), norm(p.buktiUrl), 'Menunggu', '', '', '',
-    Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm')]);
+  const waktuAju = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm');
+  const ketSimpan = (buktiMenyusul && !buktiUrl ? PENANDA_BUKTI_MENYUSUL + ' ' : '') + keterangan;
+  const p0 = tanggal.split('-').map(Number);
+  const baris = [], dilewati = [], idBaru = [];
+  for (let i = 0; i < jmlHari; i++) {
+    const t = Utilities.formatDate(new Date(p0[0], p0[1]-1, p0[2] + i), tz, 'yyyy-MM-dd');
+    if (sudahAda[t]) { dilewati.push(t + ' (' + sudahAda[t] + ')'); continue; }
+    const id = 'IZ-' + Utilities.getUuid().slice(0,8).toUpperCase();
+    idBaru.push(id);
+    baris.push([id, t, guru, alasan, ketSimpan, buktiUrl, 'Menunggu', '', '', '', waktuAju]);
+  }
+  if (!baris.length) {
+    return {ok:false, error:'Semua tanggal yang dipilih sudah punya pengajuan izin (' + dilewati.join(', ') + ').'};
+  }
+  const sh = shIzinGuru_();
+  sh.getRange(sh.getLastRow()+1, 1, baris.length, 11).setValues(baris);
+
   noWaAdminMudirAtur_().forEach(function(wa){
     kirimWAKehadiranAtur_('waIzinBaru', wa, 'Assalamualaikum Wr. Wb.\n\n*PENGAJUAN IZIN GURU*\n\n' +
-      'Nama: *' + guru + '*\nTanggal: ' + tanggal + '\nAlasan: ' + alasan +
-      (norm(p.keterangan) ? '\nKeterangan: ' + norm(p.keterangan) : '') +
+      'Nama: *' + guru + '*\nTanggal: ' + tanggal + (jmlHari > 1 ? ' s/d ' + tanggalSelesai + ' (' + baris.length + ' hari)' : '') +
+      '\nJenis: ' + alasan + '\nKeterangan: ' + keterangan +
+      (buktiUrl ? '\nBukti: terlampir' : (buktiMenyusul ? '\nBukti: menyusul' : '')) +
       '\n\nMohon ditinjau di aplikasi WASIAT, menu Kehadiran Guru & SP.');
   });
-  return {ok:true, id: id};
+  return {ok:true, id: idBaru[0], jumlah: baris.length, dilewati: dilewati};
+}
+
+// Melampirkan bukti untuk izin yang sudah diajukan (mis. surat dokter baru didapat).
+// Hanya untuk pengajuan milik sendiri yang masih menunggu.
+function apiLampirkanBuktiIzin(p) {
+  const buktiUrl = norm(p.buktiUrl);
+  if (!buktiUrl) return {ok:false, error:'Tidak ada berkas bukti yang dikirim.'};
+  const z = getIzinGuruListAtur_().find(function(x){ return x.id === norm(p.id); });
+  if (!z) return {ok:false, error:'Pengajuan tidak ditemukan.'};
+  if (normNamaGuru_(z.guru) !== normNamaGuru_(p.guru)) return {ok:false, error:'Anda hanya bisa melengkapi pengajuan milik sendiri.'};
+  if (z.status !== 'Menunggu') return {ok:false, error:'Pengajuan ini sudah diproses ('+z.status+'), buktinya tidak bisa diubah lagi.'};
+  const sh = shIzinGuru_();
+  sh.getRange(z.rowIndex, 6).setValue(buktiUrl);
+  // Penanda "bukti menyusul" dihapus supaya Mudir tahu buktinya sudah masuk
+  sh.getRange(z.rowIndex, 5).setValue(norm(z.keterangan).replace(PENANDA_BUKTI_MENYUSUL, '').trim());
+  return {ok:true};
+}
+
+// Izin "lupa mencatat" yang sudah disetujui dan masih berlaku, beserta sesi pada
+// tanggal itu dan statusnya (sudah/belum diisi). Dipakai halaman Jadwal & Absen guru
+// untuk menampilkan tombol yang langsung membuka form absensi sesi yang dimaksud.
+function apiGetTiketSusulan(p) {
+  const guru = norm(p.guru);
+  if (!guru) return {ok:false, error:'Nama guru kosong.'};
+  const cfg = aturanKehadiranGuru_();
+  if (!cfg.lupaAktif) return {ok:true, aktif:false, data:[]};
+  const hariIni = hariIniAtur_();
+  const tiket = getIzinGuruListAtur_().filter(function(z){
+    if (z.status !== 'Disetujui' || z.alasan !== IZIN_LUPA_MENCATAT) return false;
+    if (normNamaGuru_(z.guru) !== normNamaGuru_(guru)) return false;
+    const tglSetuju = String(z.waktuProses || '').slice(0,10) || z.tanggal;
+    return selisihHariAtur_(tglSetuju, hariIni) <= cfg.lupaBerlakuHari;
+  });
+  const hasil = [];
+  const cacheBulan = {};
+  tiket.forEach(function(z){
+    const kunciBulan = z.tanggal.slice(0,7);
+    if (!cacheBulan[kunciBulan]) {
+      const b = z.tanggal.split('-').map(Number);
+      const r = hitungKehadiranGuruAtur_(b[1], b[0], guru, {abaikanMulai:true})[0];
+      cacheBulan[kunciBulan] = r ? r.sesi : [];
+    }
+    const sesi = cacheBulan[kunciBulan].filter(function(x){ return x.tanggal === z.tanggal && x.status !== 'Libur' && x.status !== 'Digantikan'; })
+      .map(function(x){
+        return {jenis:x.jenis, nama:x.nama, mapel:x.mapel||'', kelas:x.kelas||'', jamKe:x.jamKe||[],
+          hariJadwal:x.hariJadwal||x.hari, halaqoh:x.halaqoh||'', waktu:x.waktu||'', sudahDiisi: x.status === 'Hadir'};
+      });
+    const tglSetuju = String(z.waktuProses || '').slice(0,10) || z.tanggal;
+    hasil.push({id:z.id, tanggal:z.tanggal, disetujuiOleh:z.diprosesOleh, catatan:z.catatanProses,
+      berlakuSampai: tambahHariAtur_(tglSetuju, cfg.lupaBerlakuHari), sesi:sesi});
+  });
+  return {ok:true, aktif:true, data:hasil};
+}
+function tambahHariAtur_(tgl, n) {
+  const p = tgl.split('-').map(Number);
+  return Utilities.formatDate(new Date(p[0], p[1]-1, p[2] + n), Session.getScriptTimeZone(), 'yyyy-MM-dd');
 }
 
 function apiGetIzinGuru(p) {
@@ -10494,7 +11266,7 @@ function apiGetIzinGuru(p) {
     if (!adminAtauMudir(p.oleh)) return {ok:false, error:'Tidak berwenang.'};
     data = semua;
   } else {
-    data = semua.filter(function(z){ return normNama(z.guru) === normNama(p.guru); });
+    data = semua.filter(function(z){ return normNamaGuru_(z.guru) === normNamaGuru_(p.guru); });
   }
   data.sort(function(a,b){ return String(b.diajukan).localeCompare(String(a.diajukan)); });
   return {ok:true, data: data.slice(0, 300)};
@@ -10509,6 +11281,16 @@ function apiProsesIzinGuru(p) {
   if (z.status !== 'Menunggu') return {ok:false, error:'Pengajuan ini sudah diproses ('+z.status+').'};
   const tz = Session.getScriptTimeZone();
   shIzinGuru_().getRange(z.rowIndex, 7, 1, 4).setValues([[keputusan, norm(p.oleh), Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm'), norm(p.catatan)]]);
+  // "Lupa mencatat" disetujui -> guru diberi tahu lewat notifikasi push untuk segera
+  // mengisi absensinya. Tombol isi absen muncul paling atas di halaman Jadwal & Absen.
+  if (keputusan === 'Disetujui' && z.alasan === IZIN_LUPA_MENCATAT) {
+    try {
+      const cfgL = aturanKehadiranGuru_();
+      kirimPushOneSignal([z.guru], '\u2705 Izin lupa absen disetujui',
+        'Silakan isi absensi tanggal ' + z.tanggal + ' sekarang. Buka aplikasi WASIAT, tombol isi absen ada di bagian paling atas. Berlaku ' + cfgL.lupaBerlakuHari + ' hari.',
+        '', { jenis: 'susulan', ttl: cfgL.lupaBerlakuHari * 86400 });
+    } catch (e) { Logger.log('Push izin lupa gagal: ' + e.message); }
+  }
   kirimWAKehadiranAtur_('waIzinDiproses', noWaAkunAtur_(z.guru), 'Assalamualaikum Wr. Wb.\n\n' +
     'Ustadz/Ustadzah *' + z.guru + '*, pengajuan izin Anda untuk tanggal ' + z.tanggal + ' (' + z.alasan + ') telah *' +
     keputusan.toUpperCase() + '*' + (norm(p.catatan) ? '.\nCatatan: ' + norm(p.catatan) : '.') +
@@ -10520,7 +11302,7 @@ function apiProsesIzinGuru(p) {
 function apiBatalkanIzinGuru(p) {
   const z = getIzinGuruListAtur_().find(function(x){ return x.id === norm(p.id); });
   if (!z) return {ok:false, error:'Pengajuan tidak ditemukan.'};
-  if (normNama(z.guru) !== normNama(p.guru)) return {ok:false, error:'Anda hanya bisa membatalkan pengajuan milik sendiri.'};
+  if (normNamaGuru_(z.guru) !== normNamaGuru_(p.guru)) return {ok:false, error:'Anda hanya bisa membatalkan pengajuan milik sendiri.'};
   if (z.status !== 'Menunggu') return {ok:false, error:'Hanya pengajuan yang masih menunggu yang bisa dibatalkan.'};
   shIzinGuru_().getRange(z.rowIndex, 7).setValue('Dibatalkan');
   return {ok:true};
@@ -10581,7 +11363,7 @@ function apiBatalkanSP(p) {
 function apiTandaiSPDibaca(p) {
   const sp = getSuratSPListAtur_().find(function(x){ return x.id === norm(p.id); });
   if (!sp || sp.status !== 'Diterbitkan') return {ok:false, error:'Surat tidak ditemukan.'};
-  if (normNama(sp.guru) !== normNama(p.guru)) return {ok:false, error:'Surat ini bukan untuk Anda.'};
+  if (normNamaGuru_(sp.guru) !== normNamaGuru_(p.guru)) return {ok:false, error:'Surat ini bukan untuk Anda.'};
   if (sp.dibacaPada) return {ok:true, dibacaPada: sp.dibacaPada};
   const w = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
   shSuratSP_().getRange(sp.rowIndex, 13).setValue(w);
