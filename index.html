@@ -131,6 +131,9 @@
   #absensi-app .badge-hafalan.izin{background:#2563eb}
   #absensi-app .badge-hafalan.sakit{background:#f59e0b}
   #absensi-app .badge-hafalan.ghaib{background:#dc2626}
+  #absensi-app .badge-hafalan.hadir{background:#16a34a}
+  #absensi-app .badge-hafalan.alpa{background:#dc2626}
+  #absensi-app .badge-hafalan.pulang{background:#ea580c}
   #absensi-app .progress{background:#e2e8f0;border-radius:8px;overflow:hidden;height:14px;width:100%}
   #absensi-app .progress-bar{background:var(--tema);height:14px}
 
@@ -352,7 +355,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycby5i7dLUcNWYN5t9o9UBcYD5zOiYCOqClWPESatUXnIOz4rvR4wZJb74Daww3cFHvOf/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -662,7 +665,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.09.27-g';
+  var VERSI_APP = '2026.09.28-d';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -1155,7 +1158,8 @@
     var nama = STATE.user ? STATE.user.nama : '';
     var roles = (STATE.user && STATE.user.roles) ? STATE.user.roles : [];
     var punya = function(r){ return roles.indexOf(r) !== -1; };
-    var isGuru = punya('Guru') || punya('Admin') || punya('Mudir') || punya('KabagPutra') || punya('KabagPutri');
+    var isGuru = punya('Guru') || punya('Admin') || punya('Mudir') || punya('KabagPutra') || punya('KabagPutri') ||
+                 punya('Pembina') || punya('PembinaPutra') || punya('PembinaPutri');
 
     // Tahap 1: data dasar yang tidak bergantung data lain
     var tahap1 = [
@@ -1394,8 +1398,9 @@
     'Admin':        ['santri','guru','mapel','kelas','halaqoh','jadwal','roleakses','tugaspembina','pengaturan','sop'],
     'Mudir':        ['santri','guru','mapel','kelas','halaqoh','jadwal','roleakses','tugaspembina','pengaturan','sop'],
     'Guru':         ['santri','guru','mapel','kelas','halaqoh','jadwal','sop'],
-    'PembinaPutra': ['santri','kelas','halaqoh','tugaspembina','sop'],
-    'PembinaPutri': ['santri','kelas','halaqoh','tugaspembina','sop'],
+    'Pembina':      ['santri','guru','mapel','kelas','halaqoh','jadwal','tugaspembina','sop'],
+    'PembinaPutra': ['santri','guru','mapel','kelas','halaqoh','jadwal','tugaspembina','sop'],
+    'PembinaPutri': ['santri','guru','mapel','kelas','halaqoh','jadwal','tugaspembina','sop'],
     'KabagPutra':   ['santri','guru','mapel','kelas','halaqoh','jadwal','sop'],
     'KabagPutri':   ['santri','guru','mapel','kelas','halaqoh','jadwal','sop'],
     'WaliSantri':   ['santri','kelas','halaqoh','jadwal','pengaturan'],
@@ -2160,7 +2165,14 @@
             STATE.user = null; hapusSesiTersimpan(); showBeranda(true, res.pesan || 'Sesi Anda telah berakhir. Silakan login kembali.');
           } else if (res.user) {
             // Update data user terbaru (misal role berubah) tanpa refresh halaman
+            var anakLama = JSON.stringify((STATE.user && STATE.user.nisnAnakList) || []);
             STATE.user = res.user; simpanSesi();
+            // NISN anak berubah (mis. Admin mengganti NISN santri): gambar ulang dashboard
+            // wali, supaya tidak tetap memakai NISN lama & tampil kosong
+            var r2 = res.user.roles || [res.user.level];
+            if (r2.length === 1 && r2[0] === 'WaliSantri' && anakLama !== JSON.stringify(res.user.nisnAnakList || [])) {
+              try { dashboardWali(); } catch (e) {}
+            }
           }
         }).catch(function(){}); // gagal (offline) → biarkan sesi lama
       }
@@ -2699,8 +2711,20 @@
   ['Putra','Putri'].forEach(function(g){
     MENU_PER_ROLE['Kabag'+g] = [
       {key:'kabag_asrama_'+g.toLowerCase(), label:'Kondisi Asrama '+g, icon:'&#127969;'},
-      {key:'kabag_rekap_'+g.toLowerCase(),  label:'Rekap Absensi Harian', icon:'&#128202;'}
+      {key:'kabag_rekap_'+g.toLowerCase(),  label:'Rekap Absensi Harian', icon:'&#128202;'},
+      {judul:'Menu Guru'}
     ].concat(MENU_PER_ROLE['Guru'] || []);
+  });
+  // Pembina: menu pembina + SELURUH menu Guru, supaya tidak perlu dua peran (Pembina dan
+  // Guru) untuk bisa mengisi absensi, hafalan, nilai, dst. Menu yang sudah ada di Pembina
+  // tidak diulang (Profil Saya; "Pelanggaran" Guru = form yang sama dengan "Catat
+  // Pelanggaran" Pembina).
+  ['Pembina','PembinaPutra','PembinaPutri'].forEach(function(r){
+    var dasar = (MENU_PER_ROLE[r] || []).filter(function(m){ return m.key; });
+    var sudah = {};
+    dasar.forEach(function(m){ sudah[m.key] = true; });
+    var dariGuru = (MENU_PER_ROLE['Guru'] || []).filter(function(m){ return m.key && !sudah[m.key] && m.key !== 'pelanggaran'; });
+    MENU_PER_ROLE[r] = dasar.concat([{judul:'Menu Guru'}], dariGuru);
   });
 
   function dashboardMultiRole(roles, activeRoleTab, activeMenuKey){
@@ -2710,10 +2734,11 @@
     activeRoleTab = activeRoleTab || validRoles[0];
     STATE._contentId = 'multi-content';
     var menuAktif = MENU_PER_ROLE[activeRoleTab] || [];
-    activeMenuKey = activeMenuKey || (menuAktif[0] && menuAktif[0].key) || '';
+    activeMenuKey = activeMenuKey || ((menuAktif.filter(function(m){ return m.key; })[0] || {}).key) || '';
 
     // Bangun sidebar menu
     var navHtml = menuAktif.map(function(n){
+      if (n.judul) return '<div class="nav-judul" style="font-size:10.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#94a3b8;padding:14px 14px 4px">'+esc(n.judul)+'</div>';
       return '<div class="nav-item'+(n.key===activeMenuKey?' active':'')+'" data-key="'+n.key+'">'+
         '<span class="ic">'+n.icon+'</span><span>'+esc(n.label)+'</span></div>';
     }).join('');
@@ -4661,6 +4686,7 @@
   function renderSidebarShell(opts){
     var logo = logoSrc() ? '<img class="app-logo-img" src="'+esc(logoSrc())+'">' : '<div style="width:38px;height:38px;background:#fff;border-radius:8px;flex-shrink:0"></div>';
     var navHtml = opts.navItems.map(function(n){
+      if (n.judul) return '<div class="nav-judul" style="font-size:10.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#94a3b8;padding:14px 14px 4px">'+esc(n.judul)+'</div>';
       return '<div class="nav-item'+(n.key===opts.activeKey?' active':'')+'" data-key="'+n.key+'"><span class="ic">'+n.icon+'</span><span>'+esc(n.label)+'</span></div>';
     }).join('');
     render(
@@ -4918,7 +4944,10 @@
     });
   }
   function guruCatatPelanggaran(){
-    renderFormCatatPelanggaran('dg-content');
+    // Dulu selalu ke 'dg-content' (wadah Dashboard Guru), sehingga di dashboard
+    // multi-peran / Admin layarnya kosong. Sekarang mengikuti wadah yang aktif.
+    var el = getContentEl();
+    renderFormCatatPelanggaran((el && el.id) || STATE._contentId || 'dg-content');
   }
 
   function guruProfilSaya(){
@@ -4938,8 +4967,12 @@
         if(!res.ok){ document.getElementById('pesanProfilGuru').innerHTML = errBox(res.error); return; }
         STATE.user.nama = namaBaru;
         if (noWaBaru) STATE.user.noWa = noWaBaru;
-        document.getElementById('pesanProfilGuru').innerHTML = '<p class="muted">Tersimpan.</p>';
-        dashboardGuru('profilsaya');
+        try { simpanSesi(); } catch (e) {}   // supaya nama baru tetap dipakai saat aplikasi dibuka lagi
+        // Tetap di dashboard yang sedang dipakai (Guru, Pembina, Kepala Bagian, Admin, Mudir).
+        // Dulu selalu pindah ke Dashboard Guru, sehingga akun peran lain kehilangan menunya.
+        guruProfilSaya();
+        var pesan = document.getElementById('pesanProfilGuru');
+        if (pesan) pesan.innerHTML = '<p style="color:#166534">&#9989; Profil tersimpan.</p>';
       });
     };
   }
@@ -5945,6 +5978,16 @@
         (daftarTA.length>1 ? ('<label class="muted">Tahun Ajaran</label><select id="'+containerId+'_ta">' +
           daftarTA.map(function(t){return '<option value="'+esc(t.id)+'" '+(t.id===taDefault?'selected':'')+'>'+esc(t.nama)+(t.aktif?' (aktif)':'')+'</option>';}).join('') + '</select>') : '') +
         '<div id="'+containerId+'_rekapAbsensi">Memuat...</div></div>' +
+        '<div class="card"><h3>Riwayat Catatan Absensi</h3>' +
+        '<div class="grid2"><div><label class="muted">Bulan</label><select id="'+containerId+'_absBulan">' +
+          [['1','Januari'],['2','Februari'],['3','Maret'],['4','April'],['5','Mei'],['6','Juni'],['7','Juli'],['8','Agustus'],['9','September'],['10','Oktober'],['11','November'],['12','Desember']]
+            .map(function(m){return '<option value="'+m[0]+'" '+(Number(m[0])===now.getMonth()+1?'selected':'')+'>'+m[1]+'</option>';}).join('') + '</select></div>' +
+        '<div><label class="muted">Tahun</label><input id="'+containerId+'_absTahun" value="'+now.getFullYear()+'"></div></div>' +
+        '<label class="muted">Jenis Absensi</label><select id="'+containerId+'_absJenis">' +
+          '<option value="semua">Semua</option><option value="harian">Absen Harian (Asrama)</option>' +
+          '<option value="mapel">Per Mata Pelajaran</option><option value="halaqoh">Per Halaqoh</option></select>' +
+        '<button class="small" id="'+containerId+'_btnAbsRiwayat" style="margin-top:8px">Tampilkan</button>' +
+        '<div id="'+containerId+'_riwayatAbsensi"></div></div>' +
         '<div class="card"><h3>Rekap Kehadiran Halaqoh</h3>' +
         warnBox('Dihitung dari jenis hafalan yang dicatat pengampu: Sabaq/Sabqi/Manzil/Murojaah/Tahsin/Tasmi\'/Tidak Setor = Hadir. Izin/Sakit/Ghaib sesuai keterangan itu.') +
         '<div id="'+containerId+'_rekapHalaqoh">Memuat...</div></div>' +
@@ -5999,6 +6042,33 @@
           setHtmlSafe(containerId+'_progresHafalan', '<p>Total Juz Selesai: <b>'+h.totalJuzSelesai+'</b>'+(h.rataNilaiHafalan!=null?(' | Rata-rata Nilai Hafalan: <b>'+h.rataNilaiHafalan+'</b>'):'')+'</p><p>Juz Selesai: '+chipsSelesai+'</p><p>Juz Sedang Diproses: '+chipsProses+'</p>');
         });
       }
+      function muatRiwayatAbsensi(){
+        var bEl = document.getElementById(containerId+'_absBulan'), tEl = document.getElementById(containerId+'_absTahun'), jEl = document.getElementById(containerId+'_absJenis');
+        if (!bEl || !tEl || !jEl) return;
+        var bulan = Number(bEl.value), tahun = Number(tEl.value) || now.getFullYear();
+        var dari = tahun+'-'+String(bulan).padStart(2,'0')+'-01';
+        var sampai = tahun+'-'+String(bulan).padStart(2,'0')+'-'+String(new Date(tahun, bulan, 0).getDate()).padStart(2,'0');
+        if (!setHtmlSafe(containerId+'_riwayatAbsensi', '<p class="muted">Memuat...</p>')) return;
+        api('getRiwayatAbsensiSantri', {nisn:nisn, jenis:jEl.value, tanggalMulai:dari, tanggalAkhir:sampai, tahunAjaranId: taSelected()}).then(function(res){
+          if (!res.ok) { setHtmlSafe(containerId+'_riwayatAbsensi', errBox(res.error)); return; }
+          if (!res.data.length) { setHtmlSafe(containerId+'_riwayatAbsensi', '<p class="muted" style="margin-top:10px">Belum ada catatan absensi pada bulan ini.</p>'); return; }
+          var KELAS = {'Hadir':'hadir','Sakit':'sakit','Izin':'izin','Izin Pulang':'pulang','Alpa':'alpa','Ghaib':'ghaib'};
+          var r = res.ringkas || {};
+          var ringkas = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">' +
+            [['Hadir','hadir'],['Sakit','sakit'],['Izin','izin'],['Izin Pulang','pulang'],['Alpa','alpa']].map(function(x){
+              return '<span class="badge-hafalan '+x[1]+'" style="font-size:12px;padding:4px 10px">'+x[0]+': '+(r[x[0]]||0)+'</span>';
+            }).join('') + '</div>';
+          var html = ringkas + '<div style="overflow-x:auto"><table><tr><th>Tanggal</th><th>Status</th><th>Kegiatan</th></tr>' +
+            res.data.map(function(x){
+              return '<tr><td style="white-space:nowrap">'+esc(x.tanggal)+'</td>' +
+                '<td><span class="badge-hafalan '+(KELAS[x.status]||'tidaksetor')+'">'+esc(x.status)+'</span></td>' +
+                '<td>'+esc(x.kegiatan)+(x.ket?'<br><span class="muted" style="font-size:11.5px">'+esc(x.ket)+'</span>':'')+'</td></tr>';
+            }).join('') + '</table></div>' +
+            (res.total > res.data.length ? '<p class="muted" style="font-size:12px">Menampilkan '+res.data.length+' dari '+res.total+' catatan.</p>' : '');
+          setHtmlSafe(containerId+'_riwayatAbsensi', html);
+        }).catch(function(){ setHtmlSafe(containerId+'_riwayatAbsensi', errBox('Gagal memuat riwayat absensi.')); });
+      }
+
       function muatRiwayatHafalanBulan(){
         var bulanEl = document.getElementById(containerId+'_bulan'), tahunEl = document.getElementById(containerId+'_tahun');
         if (!bulanEl || !tahunEl) return;
@@ -6061,13 +6131,15 @@
       }
 
       var taEl = document.getElementById(containerId+'_ta');
-      if (taEl) taEl.onchange = function(){ muatRekapAbsensi(); muatRekapHalaqoh(); muatProgresHafalan(); };
+      if (taEl) taEl.onchange = function(){ muatRekapAbsensi(); muatRekapHalaqoh(); muatProgresHafalan(); muatRiwayatAbsensi(); };
       document.getElementById(containerId+'_btnFilterBulan').onclick = muatRiwayatHafalanBulan;
+      document.getElementById(containerId+'_btnAbsRiwayat').onclick = muatRiwayatAbsensi;
+      document.getElementById(containerId+'_absJenis').onchange = muatRiwayatAbsensi;
       document.getElementById(containerId+'_btnGrafik').onclick = muatGrafik;
       var btnTrx = document.getElementById(containerId+'_btnTrx');
       if (btnTrx) btnTrx.onclick = muatTransaksi;
 
-      muatRekapAbsensi(); muatRekapHalaqoh(); muatProgresHafalan(); muatRiwayatHafalanBulan(); muatSaldo();
+      muatRekapAbsensi(); muatRiwayatAbsensi(); muatRekapHalaqoh(); muatProgresHafalan(); muatRiwayatHafalanBulan(); muatSaldo();
     });
   }
 
@@ -8006,10 +8078,48 @@
       '<span style="color:#64748b;font-size:12px">'+label+'</span>'+
       '<span style="font-size:12px;text-align:right;max-width:60%">'+val+'</span></div>';
   }
+  // Kartu satu kali: menambah kolom "Nama Santri" di spreadsheet SPP. Hanya untuk
+  // Admin/Mudir, dan hanya bila server sudah memakai kode terbaru (dicek lewat versi) --
+  // supaya penyisipan kolom tidak terjadi selagi aplikasi versi lama masih melayani.
+  var VERSI_SERVER_DIBUTUHKAN = '2026.09.28-b';
+  function kartuKolomNamaSpp(c){
+    var roles = (STATE.user && (STATE.user.roles || [STATE.user.level])) || [];
+    if (!roles.some(function(r){ return r === 'Admin' || r === 'Mudir'; })) return;
+    api('statusKolomNamaSpp', {}).then(function(st){
+      if (!st || !st.ok || st.ada) return;
+      var kartu = document.createElement('div');
+      kartu.className = 'card';
+      kartu.style.border = '2px solid #0d9488';
+      kartu.innerHTML = '<b>&#128221; Tampilkan nama santri di spreadsheet SPP</b>' +
+        '<p style="font-size:13px;margin:6px 0">Menambahkan kolom <b>Nama Santri</b> setelah kolom NISN di Google Sheets SPP, supaya mudah dibaca saat mengecek langsung di spreadsheet. Dijalankan <b>sekali saja</b>. Sebelum diubah, salinan sheet SPP disimpan otomatis sebagai cadangan.</p>' +
+        '<p class="muted" style="font-size:12px;margin:0 0 8px">Pastikan Code.gs terbaru sudah di-deploy lewat <i>Manage deployments &rarr; Edit &rarr; New version</i> (bukan <i>New deployment</i>).</p>' +
+        '<button id="btnKolomNamaSpp">Tambahkan Kolom Nama Santri</button><div id="pesanKolomNamaSpp" style="margin-top:6px"></div>';
+      c.insertBefore(kartu, c.firstChild);
+      document.getElementById('btnKolomNamaSpp').onclick = function(){
+        var btn = this, el = document.getElementById('pesanKolomNamaSpp');
+        loadingBtn(btn, 'Memeriksa versi server...');
+        api('versiServer', {}).then(function(v){
+          if (!v || !v.ok || v.versi < VERSI_SERVER_DIBUTUHKAN) {
+            resetBtn(btn, 'Tambahkan Kolom Nama Santri');
+            el.innerHTML = errBox('Code.gs di server belum versi terbaru. Deploy dulu lewat Manage deployments &rarr; Edit &rarr; New version, lalu coba lagi.');
+            return;
+          }
+          if (!confirm('Tambahkan kolom Nama Santri ke spreadsheet SPP?\n\nSalinan sheet SPP akan disimpan dulu sebagai cadangan.')) { resetBtn(btn, 'Tambahkan Kolom Nama Santri'); return; }
+          btn.textContent = 'Menambahkan...';
+          api('siapkanKolomNamaSpp', {oleh: STATE.user.nama}).then(function(r){
+            if (!r.ok) { resetBtn(btn, 'Tambahkan Kolom Nama Santri'); el.innerHTML = errBox(r.error); return; }
+            kartu.innerHTML = '<span style="color:#166534">&#9989; Kolom <b>Nama Santri</b> sudah ditambahkan di spreadsheet SPP. Cadangan susunan lama tersimpan sebagai sheet "Cadangan SPP ..." di spreadsheet yang sama.</span>';
+          });
+        }).catch(function(){ resetBtn(btn, 'Tambahkan Kolom Nama Santri'); el.innerHTML = errBox('Gagal menghubungi server.'); });
+      };
+    }).catch(function(){});
+  }
+
   function renderSppSantri(containerId){
     var c = document.getElementById(containerId || STATE._contentId || 'db-content');
     if (!c) { console.error('renderSppSantri: container tidak ditemukan:', containerId); return; }
     c.innerHTML = '<p>Memuat data SPP...</p>';
+    setTimeout(function(){ kartuKolomNamaSpp(c); }, 1500); // setelah halaman SPP tergambar
     // Cek apakah ini dashboard Bendahara (tampilkan tab tambahan)
     var userRoles = STATE.user.roles || [STATE.user.level];
     var isBendahara = STATE.user && (
@@ -11923,6 +12033,7 @@
       {key:'kehadiranguru', label:'Kehadiran Guru & SP', icon:'&#128232;'},
       {key:'rekapharianasrama', label:'Rekap Absensi Harian', icon:'&#128202;'},
       {key:'pengaturanwa', label:'Pengaturan WhatsApp', icon:'&#128172;'},
+      {key:'gantinisn', label:'Ganti NISN Santri', icon:'&#128260;'},
       {key:'absensusulan', label:'Izin Absen Susulan Guru', icon:'&#128197;'},
       {key:'diagnostikdata', label:'Diagnostik Ukuran Data', icon:'&#128202;'}
     ];
@@ -11938,8 +12049,27 @@
       progresshafalan: function(){ renderRekapProgressHafalan(''); },
       kelolatugas: adminKelolaTugasPembina,
       rekaptugas: adminRekapTugasPembina,
-      pengaturanwali: adminPengaturanWali, diagnostikdata: adminDiagnostikData, absensusulan: adminIzinAbsenSusulan, kehadiranguru: function(){ adminKehadiranGuru(); }, rekapharianasrama: function(){ pembinaRekapHarian(''); }, pengaturanwa: adminPengaturanWA,
+      pengaturanwali: adminPengaturanWali, diagnostikdata: adminDiagnostikData, absensusulan: adminIzinAbsenSusulan, kehadiranguru: function(){ adminKehadiranGuru(); }, rekapharianasrama: function(){ pembinaRekapHarian(''); }, pengaturanwa: adminPengaturanWA, gantinisn: adminGantiNisn,
       tampilan:adminTampilan};
+
+    // ---- Menu Guru di dalam dashboard Admin/Mudir ----
+    // Supaya Admin/Mudir yang juga mengajar cukup memakai SATU peran. Menu diambil dari
+    // daftar menu Guru (ikut berubah otomatis bila menu Guru ditambah), dengan kunci
+    // berawalan "g_" agar tidak bentrok dengan menu Admin yang namanya sama.
+    // Tidak diulang karena versi Admin sudah mencakup: Pelanggaran (form yang sama),
+    // Flyer & Riwayat Tasmi' (fungsi yang sama), Progres Hafalan & SOP (versi Admin
+    // lebih lengkap).
+    var mapGuru = getMapFungsi('Guru');
+    var LEWATI_DI_ADMIN = {pelanggaran:1, flyertasmi:1, riwayattasmi:1, progresshafalan:1, sop:1};
+    var menuGuruAdmin = (MENU_PER_ROLE['Guru'] || []).filter(function(m){ return m.key && !LEWATI_DI_ADMIN[m.key] && mapGuru[m.key]; });
+    if (menuGuruAdmin.length) {
+      navItems.push({judul:'Menu Guru'});
+      menuGuruAdmin.forEach(function(m){
+        var k = 'g_' + m.key;
+        navItems.push({key:k, label: m.key === 'modulajar' ? 'Modul Ajar Saya' : m.label, icon:m.icon});
+        map[k] = mapGuru[m.key];
+      });
+    }
     activeKey = activeKey && map[activeKey] ? activeKey : 'ringkasan';
     renderSidebarShell({title:'Dashboard '+STATE.user.level, navItems:navItems, activeKey:activeKey, contentId:'da-content',
       extraTop: adaRoleLain ?
@@ -14032,6 +14162,99 @@
         }).catch(function(){ resetBtn(btn, 'Simpan Pilihan Pesan'); el.innerHTML = errBox('Gagal menyimpan.'); });
       };
     }).catch(function(){ c.innerHTML = '<div class="card">'+errBox('Gagal memuat pengaturan.')+'</div>'; });
+  }
+
+  // ======================================================================
+  // GANTI NISN SANTRI (Admin & Mudir)
+  // Pratinjau dampak dulu -> konfirmasi -> semua data santri ikut pindah ke NISN baru.
+  // ======================================================================
+  function adminGantiNisn(){
+    var c = getContentEl();
+    c.innerHTML = '<div class="card"><p class="muted">Memuat data santri...</p></div>';
+    api('getMasterData', {sheet:'Santri'}).then(function(res){
+      var santri = (res.ok && res.data && res.data.data) ? res.data.data.filter(function(s){ return String(s.NISN||'').trim(); }) : [];
+      santri.sort(function(a,b){ return String(a.Nama||'').localeCompare(String(b.Nama||'')); });
+      c.innerHTML = '<div class="card"><h3>&#128260; Ganti NISN Santri</h3>' +
+        warnBox('Dipakai bila NISN santri berubah, mis. NISN sementara diganti NISN resmi. <b>Semua data santri ikut dipindah</b> ke NISN baru: absensi, hafalan, nilai, SPP, saldo &amp; transaksi kantin, pelanggaran, perizinan, tasmi\', akun wali, termasuk arsip tahun ajaran sebelumnya. Riwayatnya tetap terbaca seperti biasa.') +
+        '<label>Santri</label><select id="gnSantri"><option value="">-- pilih santri --</option>' +
+          santri.map(function(s){ return '<option value="'+esc(String(s.NISN).trim())+'">'+esc(s.Nama)+' &mdash; '+esc(String(s.NISN).trim())+'</option>'; }).join('') + '</select>' +
+        '<label>NISN baru</label><input id="gnBaru" inputmode="numeric" placeholder="Ketik NISN baru" autocomplete="off">' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button id="gnPeriksa">Periksa Dampak</button></div>' +
+        '<div id="gnHasil" style="margin-top:12px"></div></div>' +
+        '<div class="card"><h4 style="margin-top:0">Riwayat Penggantian NISN</h4><div id="gnRiwayat"><p class="muted">Memuat...</p></div></div>';
+
+      function muatRiwayat(){
+        api('getRiwayatGantiNisn', {oleh: STATE.user.nama}).then(function(r){
+          var el = document.getElementById('gnRiwayat'); if (!el) return;
+          if (!r.ok || !r.data.length) { el.innerHTML = '<p class="muted">Belum ada penggantian NISN.</p>'; return; }
+          el.innerHTML = '<p class="muted" style="font-size:12px;margin-top:0">Data yang dikirim belakangan masih dengan NISN lama (mis. absensi dari HP yang sedang offline saat penggantian) bisa dipindahkan dengan <b>Sapu Ulang</b>. Disarankan 1&ndash;2 hari setelah penggantian.</p>' +
+            '<div style="overflow-x:auto"><table><tr><th>Waktu</th><th>Santri</th><th>NISN Lama</th><th>NISN Baru</th><th>Baris</th><th>Status</th><th></th></tr>' +
+            r.data.map(function(x, i){
+              var belum = x.status === 'Diproses';
+              return '<tr><td style="font-size:12px">'+esc(x.waktu)+'<br><span class="muted">'+esc(x.oleh)+'</span></td><td>'+esc(x.nama)+'</td><td>'+esc(x.lama)+'</td><td><b>'+esc(x.baru)+'</b></td><td>'+x.jumlah+(x.sapu?' <span class="muted" style="font-size:11px">(sapu)</span>':'')+'</td>' +
+                '<td>'+(belum ? '<b style="color:#dc2626">Belum tuntas</b>' : '<span style="color:#166534">Selesai</span>')+'</td>' +
+                '<td><button class="small secondary gnSapu" data-i="'+i+'">'+(belum?'Lanjutkan':'Sapu Ulang')+'</button></td></tr>';
+            }).join('') + '</table></div>';
+          el.querySelectorAll('.gnSapu').forEach(function(b){
+            b.onclick = function(){
+              var x = r.data[Number(b.dataset.i)];
+              loadingBtn(b, 'Memeriksa...');
+              api('gantiNisn', {oleh: STATE.user.nama, nisnLama: x.lama, nisnBaru: x.baru, jalankan: false}).then(function(pv){
+                if (!pv.ok) { resetBtn(b, 'Sapu Ulang'); alert(pv.error); return; }
+                if (!pv.total) { resetBtn(b, 'Sapu Ulang'); alert('Tidak ada sisa data dengan NISN lama '+x.lama+'. Semua sudah berpindah ke '+x.baru+'.'); return; }
+                if (!confirm('Ditemukan '+pv.total+' baris yang masih memakai NISN lama '+x.lama+':\n\n'+pv.rincian.map(function(q){ return '- '+q.spreadsheet+' / '+q.sheet+': '+q.jumlah; }).join('\n')+'\n\nPindahkan ke '+x.baru+' sekarang?')) { resetBtn(b, 'Sapu Ulang'); return; }
+                b.textContent = 'Memindahkan...';
+                api('gantiNisn', {oleh: STATE.user.nama, nisnLama: x.lama, nisnBaru: x.baru, jalankan: true}).then(function(h){
+                  alert(h.ok ? (h.total+' baris berhasil dipindahkan ke NISN '+x.baru+'.') : h.error);
+                  muatRiwayat();
+                });
+              }).catch(function(){ resetBtn(b, 'Sapu Ulang'); });
+            };
+          });
+        });
+      }
+      muatRiwayat();
+
+      function kirim(jalankan){
+        var lama = document.getElementById('gnSantri').value;
+        var baru = document.getElementById('gnBaru').value.trim();
+        var el = document.getElementById('gnHasil');
+        if (!lama) { el.innerHTML = errBox('Pilih santri dulu.'); return Promise.resolve(); }
+        if (!baru) { el.innerHTML = errBox('Isi NISN baru.'); return Promise.resolve(); }
+        return api('gantiNisn', {oleh: STATE.user.nama, nisnLama: lama, nisnBaru: baru, jalankan: jalankan});
+      }
+
+      document.getElementById('gnPeriksa').onclick = function(){
+        var btn = this, el = document.getElementById('gnHasil');
+        loadingBtn(btn, 'Memeriksa semua spreadsheet...');
+        el.innerHTML = '<p class="muted" style="font-size:13px">Memeriksa seluruh spreadsheet aplikasi, termasuk arsip. Bisa memakan waktu sekitar setengah menit.</p>';
+        var p = kirim(false);
+        if (!p || !p.then) { resetBtn(btn, 'Periksa Dampak'); return; }
+        p.then(function(r){
+          resetBtn(btn, 'Periksa Dampak');
+          if (!r) return;
+          if (!r.ok) { el.innerHTML = errBox(r.error); return; }
+          el.innerHTML = '<div style="border:1px solid #bfdbfe;background:#eff6ff;border-radius:10px;padding:12px">' +
+            '<b>'+esc(r.nama)+'</b>: NISN <b>'+esc(r.nisnLama)+'</b> &rarr; <b style="color:#1d4ed8">'+esc(r.nisnBaru)+'</b><br>' +
+            '<span style="font-size:13px">Akan mengubah <b>'+r.total+' baris</b> di '+r.rincian.length+' tempat:</span>' +
+            (r.rincian.length ? '<div style="overflow-x:auto;margin-top:6px"><table style="font-size:12.5px"><tr><th>Spreadsheet</th><th>Sheet</th><th>Kolom</th><th>Baris</th></tr>' +
+              r.rincian.map(function(x){ return '<tr><td>'+esc(x.spreadsheet)+'</td><td>'+esc(x.sheet)+'</td><td>'+esc(x.kolom)+'</td><td>'+x.jumlah+'</td></tr>'; }).join('') + '</table></div>' : '') +
+            '<button id="gnJalankan" style="margin-top:10px;background:#dc2626">Ganti NISN Sekarang</button></div>';
+          document.getElementById('gnJalankan').onclick = function(){
+            if (!confirm('Ganti NISN '+r.nama+' dari '+r.nisnLama+' menjadi '+r.nisnBaru+'?\n\n'+r.total+' baris di seluruh spreadsheet akan diubah. Pastikan NISN baru sudah benar.')) return;
+            var b2 = this; loadingBtn(b2, 'Mengganti...');
+            kirim(true).then(function(h){
+              if (!h.ok) { resetBtn(b2, 'Ganti NISN Sekarang'); el.innerHTML = errBox(h.error); return; }
+              el.innerHTML = '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px;color:#166534">' +
+                '&#9989; <b>Berhasil.</b> NISN '+esc(h.nama)+' kini <b>'+esc(h.nisnBaru)+'</b>. '+h.total+' baris data ikut dipindahkan.' +
+                '<div style="font-size:12.5px;color:#334155;margin-top:6px">1&ndash;2 hari lagi, tekan <b>Sapu Ulang</b> di riwayat bawah untuk memindahkan data yang mungkin terkirim belakangan dari HP yang sedang offline.</div>' +
+                '<div style="font-size:12.5px;color:#334155;margin-top:6px">Tindak lanjut: bila santri ini punya <b>kartu QR kantin</b> yang sudah dicetak, cetak ulang kartunya karena kartu lama masih memuat NISN lama. Minta wali santri <b>memuat ulang</b> aplikasinya.</div></div>';
+              muatRiwayat();
+            }).catch(function(){ resetBtn(b2, 'Ganti NISN Sekarang'); el.innerHTML = errBox('Gagal menghubungi server. Periksa riwayat di bawah sebelum mencoba lagi.'); });
+          };
+        }).catch(function(){ resetBtn(btn, 'Periksa Dampak'); el.innerHTML = errBox('Gagal menghubungi server.'); });
+      };
+    }).catch(function(){ c.innerHTML = '<div class="card">'+errBox('Gagal memuat data santri.')+'</div>'; });
   }
 
   function adminDiagnostikData(){
