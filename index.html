@@ -355,7 +355,7 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxwsrB3stYeMuA60TkNKstj-74yDMARcwlPBuGed08i3wsrimaQdcz8nBVIKVirVPEy/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -665,7 +665,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.09.28-d';
+  var VERSI_APP = '2026.09.28-f';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -2272,8 +2272,11 @@
         '<div class="brand2">'+(logo?'<img src="'+esc(logo)+'">':'')+'<span>'+esc(p.NamaPesantren)+'</span></div>' +
         '<div class="site-nav-links">' +
           '<a id="navTentang">Tentang</a><a id="navProgram">Program</a><a id="navPPDB">PPDB</a><a id="navBerita">Berita</a><a id="navKontak">Kontak</a>' +
-          '<a class="btn-masuk" href="jam-sholat/" target="_blank" rel="noopener" style="background:#0A2621;text-decoration:none;display:inline-flex;align-items:center">&#128992; Jam Sholat</a>' +
+          // Tombol berupa tautan (<a>) diberi color:#fff tegas -- aturan ".site-nav-links a"
+          // (abu-abu) lebih kuat daripada .btn-masuk, sehingga tulisannya sempat gelap.
+          '<a class="btn-masuk" href="jam-sholat/" target="_blank" rel="noopener" style="background:#0A2621;color:#fff;text-decoration:none;display:inline-flex;align-items:center">&#128992; Jam Sholat</a>' +
           '<button class="btn-masuk" id="btnBukaKantin" style="background:#f59e0b">&#128717; Kantin</button>' +
+          '<a class="btn-masuk" href="https://khutbah-wahdahposo.netlify.app/" target="_blank" rel="noopener" style="background:#7c3aed;color:#fff;text-decoration:none;display:inline-flex;align-items:center">&#128332; Jadwal Khutbah</a>' +
           '<button class="btn-masuk" id="btnBukaLogin">Masuk</button>' +
         '</div>' +
       '</nav>' +
@@ -6294,7 +6297,6 @@
       if(!res.data.length){ wrap.innerHTML = warnBox(res.peringatan); return; }
       var datalistHtml = ''; // select dropdown}).join('') + '</datalist>';
       var opsiHalaman = Array.from({length:22},function(_,i){return i+1;});
-      var opsiNilai = Array.from({length:10},function(_,i){return (i+1)*10;});
       var html = datalistHtml + '<h4>Halaqoh: '+esc(namaHalaqoh)+' (' + esc(waktu) + ')</h4>' +
         warnBox('Isian akan otomatis terisi mengikuti riwayat terakhir santri untuk jenis hafalan yang dipilih -- tinggal ubah bagian yang berbeda saja (misalnya Ayat).') +
         '<div id="formHafalan">';
@@ -6366,7 +6368,9 @@
           '<p class="faded" style="font-size:11px">Cocok untuk setoran beberapa surah pendek sekaligus.</p>' +
           '</div>' +
           '<label class="muted">Nilai Hafalan</label>' +
-          '<select class="nilaiSelect"><option value="">-- Pilih Nilai --</option>' + opsiNilai.map(function(n){return '<option value="'+n+'">'+n+'</option>';}).join('') + '</select>' +
+          // Kotak angka 1-100 (dulu daftar pilihan 10,20,...,100). Nama kelas "nilaiSelect"
+          // dipertahankan karena dipakai draf tersimpan, isian otomatis, & penyimpanan.
+          '<input type="number" class="nilaiSelect" min="1" max="100" step="1" inputmode="numeric" placeholder="1 - 100" style="max-width:140px">' +
           '</div></div>';
       });
       html += '</div><button type="button" id="btnSimpanHafalan">Simpan Hafalan</button>' +
@@ -6600,11 +6604,14 @@
           var jenis = row.querySelector('.jenisSelect').value;
           var it = {nisn: row.dataset.nisn, nama: row.dataset.nama, jenisHafalan: jenis};
           if (JENIS_HAFALAN_SETOR.indexOf(jenis) !== -1) {
-            it.nilai = row.querySelector('.nilaiSelect').value;
+            it.nilai = String(row.querySelector('.nilaiSelect').value || '').trim();
             var mode = row.querySelector('.modeInput').value;
             // Nilai wajib untuk semua jenis setoran. Tanpa ini catatan hafalan
             // tersimpan tanpa nilai dan tidak berguna untuk rekap maupun rapor.
-            if (!it.nilai) { adaError = true; pesanError = 'Nilai belum dipilih untuk ' + it.nama + '.'; }
+            if (!it.nilai) { adaError = true; pesanError = 'Nilai belum diisi untuk ' + it.nama + '.'; }
+            else if (!/^\d{1,3}$/.test(it.nilai) || Number(it.nilai) < 1 || Number(it.nilai) > 100) {
+              adaError = true; pesanError = 'Nilai untuk ' + it.nama + ' harus angka bulat 1 sampai 100.';
+            }
 
             if (mode === 'ayat') {
               // MODE 1: Per Ayat (existing)
@@ -6723,7 +6730,6 @@
     }
 
     var opsiJuz30 = Array.from({length:30},function(_,i){return i+1;});
-    var opsiNilai = Array.from({length:10},function(_,i){return (i+1)*10;});
     var datalistHtml = '<datalist id="editDaftarSurah">' + DAFTAR_SURAH.map(function(s){return '<option value="'+esc(s)+'">';}).join('') + '</datalist>';
 
     var fieldsHtml = datalistHtml +
@@ -6785,8 +6791,8 @@
       '<p class="faded" style="font-size:11px">Cocok untuk setoran beberapa surah pendek sekaligus.</p>' +
       '</div>' +
 
-      '<label class="muted">Nilai Hafalan</label><select id="ehNilai"><option value="">-- Tidak diisi --</option>' +
-      opsiNilai.map(function(n){return '<option value="'+n+'" '+(String(row.nilai)===String(n)?'selected':'')+'>'+n+'</option>';}).join('') + '</select>' +
+      '<label class="muted">Nilai Hafalan (1 - 100)</label>' +
+      '<input type="number" id="ehNilai" min="1" max="100" step="1" inputmode="numeric" placeholder="Kosongkan bila tidak diisi" value="'+esc(row.nilai!=null?String(row.nilai):'')+'">' +
       '</div>';
 
     var modal = openModal('Edit Riwayat Hafalan - '+row.nama, fieldsHtml, function(m){
@@ -6795,7 +6801,10 @@
 
       if (JENIS_HAFALAN_SETOR.indexOf(jenisBaru) !== -1) {
         var mode = m.querySelector('#ehMode').value;
-        payload.nilai = m.querySelector('#ehNilai').value;
+        payload.nilai = String(m.querySelector('#ehNilai').value || '').trim();
+        if (payload.nilai && (!/^\d{1,3}$/.test(payload.nilai) || Number(payload.nilai) < 1 || Number(payload.nilai) > 100)) {
+          alert('Nilai hafalan harus angka bulat 1 sampai 100, atau dikosongkan.'); return false;
+        }
 
         if (mode === 'ayat') {
           payload.surah = m.querySelector('#ehSurah').value;
