@@ -350,12 +350,264 @@
     #absensi-app .hero h1{font-size:30px}
     #absensi-app .artikel-grid{grid-template-columns:repeat(3,1fr)}
   }
+  /* =====================================================================
+     BERANDA v2 (navy & emas) -- HANYA berlaku untuk halaman depan publik.
+     Semua aturan dibatasi di dalam ".bv2" dan memakai nama class baru ("bv-"),
+     jadi dashboard, kasir, absensi, dll. sama sekali tidak tersentuh.
+     Warna halaman depan sengaja tetap navy-emas; Warna Tema dari Admin tetap
+     dipakai untuk dashboard seperti biasa.
+     ===================================================================== */
+  #absensi-app .bv2{
+    --navy:#0b2c5f;--navy-tua:#071d40;--emas:#f2b705;--tinta:#0f1b33;--redup:#5b6779;
+    --garis:#dfe5ee;--latar-alt:#f3f6fa;--wa:#25d366;
+    --tema:#0b2c5f;--tema-dark:#071d40;
+    --bv-font:'Plus Jakarta Sans','Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    font-family:var(--bv-font);color:var(--tinta);background:#fff;line-height:1.6;overflow-x:clip
+  }
+  #absensi-app .bv2 .bv-isi{max-width:1120px;margin:0 auto;padding-left:20px;padding-right:20px}
+  #absensi-app .bv2 h1,#absensi-app .bv2 h2,#absensi-app .bv2 h3,#absensi-app .bv2 h4{font-family:var(--bv-font);color:var(--tinta)}
+  #absensi-app .bv2 .bv-label{display:inline-flex;align-items:center;gap:10px;font-size:11.5px;font-weight:700;letter-spacing:.28em;text-transform:uppercase;color:var(--navy);margin-bottom:12px}
+  #absensi-app .bv2 .bv-label::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--emas);flex:none}
+  #absensi-app .bv2 .bv-gelap .bv-label{color:#cfd9ea}
+
+  /* Navigasi */
+  /* Menu atas menempel di layar saat digulir. Pakai fixed (bukan sticky) karena wadah
+     aplikasi memakai overflow-x:hidden yang membuat sticky tidak bekerja. */
+  #absensi-app .bv2{padding-top:71px}
+  #absensi-app .bv2 .bv-nav{position:fixed;top:0;left:0;right:0;max-width:1300px;margin:0 auto;z-index:600;background:#fff;border-bottom:1px solid var(--garis)}
+  #absensi-app .bv2 .bv-sec{scroll-margin-top:71px}
+  #absensi-app .bv2 .bv-nav>.bv-isi{display:flex;align-items:center;justify-content:space-between;gap:14px;padding-top:12px;padding-bottom:12px}
+  #absensi-app .bv2 .bv-brand{display:flex;align-items:center;gap:12px;min-width:0}
+  #absensi-app .bv2 .bv-brand .bv-logo{width:46px;height:46px;flex:none;display:grid;place-items:center;background:#fff;padding:2px}
+  #absensi-app .bv2 .bv-brand .bv-logo img{width:100%;height:100%;object-fit:contain;display:block}
+  #absensi-app .bv2 .bv-brand .bv-nama{display:flex;flex-direction:column;min-width:0}
+  #absensi-app .bv2 .bv-brand b{font-weight:800;font-size:15px;letter-spacing:.12em;text-transform:uppercase;color:var(--navy);line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  @media (min-width:901px){ #absensi-app .bv2 .bv-brand b{white-space:normal;letter-spacing:.08em;font-size:14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical} }
+  /* Laci login yang tersembunyi di luar layar tidak perlu bayangan (dulu tampak garis abu di tepi kanan) */
+  #absensi-app .bv2 .login-drawer:not(.show){box-shadow:none}
+  #absensi-app .bv2 .bv-brand small{font-size:9.5px;letter-spacing:.32em;text-transform:uppercase;color:var(--redup);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #absensi-app .bv2 .bv-links{display:flex;align-items:center;gap:6px}
+  #absensi-app .bv2 .bv-links a.bv-tautan{font-size:13px;font-weight:600;color:var(--tinta);text-decoration:none;padding:8px 10px;cursor:pointer}
+  #absensi-app .bv2 .bv-links a.bv-tautan:hover{color:var(--navy)}
+  #absensi-app .bv2 .bv-tombol-baris{display:flex;gap:6px;align-items:center}
+  #absensi-app .bv2 .bv-btn{font:700 12.5px var(--bv-font);letter-spacing:.04em;border:1px solid transparent;border-radius:2px;padding:9px 14px;margin:0;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;color:#fff;background:var(--navy);width:auto}
+  #absensi-app .bv2 .bv-btn:hover{background:var(--navy-tua);color:#fff}
+  #absensi-app .bv2 .bv-btn.garis{background:#fff;color:var(--navy);border-color:var(--garis)}
+  #absensi-app .bv2 .bv-btn.garis:hover{border-color:var(--navy)}
+  #absensi-app .bv2 .bv-btn.emas{background:var(--emas);color:var(--navy-tua)}
+  #absensi-app .bv2 .bv-menu-btn{display:none;width:44px;height:44px;border:0;background:none;cursor:pointer;padding:10px;margin:0;flex:none;border-radius:0}
+  #absensi-app .bv2 .bv-menu-btn:hover{background:none}
+  #absensi-app .bv2 .bv-menu-btn span{display:block;height:3px;margin:5px 0;background:var(--navy)}
+  #absensi-app .bv2 .bv-menu-btn span:nth-child(2){background:var(--emas);width:70%}
+  #absensi-app .bv2 .bv-menu-btn span:nth-child(3){width:45%}
+  @media (max-width:900px){
+    #absensi-app .bv2 .bv-menu-btn{display:block}
+    #absensi-app .bv2 .bv-links{display:none;position:absolute;left:0;right:0;top:100%;background:#fff;border-bottom:1px solid var(--garis);flex-direction:column;align-items:stretch;padding:8px 20px 16px;box-shadow:0 12px 24px rgba(11,44,95,.08)}
+    #absensi-app .bv2 .bv-nav.buka .bv-links{display:flex}
+    #absensi-app .bv2 .bv-links a.bv-tautan{padding:12px 0;border-bottom:1px solid var(--garis)}
+    #absensi-app .bv2 .bv-links .bv-btn{padding:12px}
+    #absensi-app .bv2 .bv-tombol-baris{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+  }
+
+  /* Hero */
+  #absensi-app .bv2 .bv-hero{position:relative;background:linear-gradient(180deg,#fff 0%,var(--latar-alt) 100%);border-bottom:1px solid var(--garis);overflow:hidden}
+  #absensi-app .bv2 .bv-hero>.bv-isi{padding-top:56px;padding-bottom:64px;position:relative;z-index:1}
+  #absensi-app .bv2 .bv-hero::after{content:"";position:absolute;right:-60px;top:-40px;width:340px;height:340px;border:1px solid var(--garis);transform:rotate(45deg);opacity:.7}
+  #absensi-app .bv2 .bv-hero.ada-gambar{background-size:cover;background-position:center;border-bottom:0}
+  #absensi-app .bv2 .bv-hero.ada-gambar::before{content:"";position:absolute;inset:0;background:linear-gradient(100deg,rgba(7,29,64,.92) 0%,rgba(11,44,95,.78) 55%,rgba(11,44,95,.45) 100%)}
+  #absensi-app .bv2 .bv-hero.ada-gambar::after{border-color:rgba(255,255,255,.18)}
+  #absensi-app .bv2 .bv-tagline{display:inline-flex;align-items:center;gap:12px;border:1px solid var(--garis);background:#fff;padding:10px 18px;font-size:11.5px;font-weight:700;letter-spacing:.3em;text-transform:uppercase;color:var(--navy)}
+  #absensi-app .bv2 .bv-tagline::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--emas);flex:none}
+  #absensi-app .bv2 .bv-hero h1{font-weight:800;font-size:clamp(32px,7vw,62px);line-height:1.08;letter-spacing:-.01em;margin:22px 0 0;max-width:16ch}
+  #absensi-app .bv2 .bv-hero h1 em{font-style:normal;color:var(--navy)}
+  #absensi-app .bv2 .bv-garis-emas{width:72px;height:3px;background:var(--navy);margin:22px 0;position:relative}
+  #absensi-app .bv2 .bv-garis-emas::after{content:"";position:absolute;left:100%;top:0;width:18px;height:3px;background:var(--emas)}
+  #absensi-app .bv2 .bv-hero p{font-size:16.5px;color:var(--redup);max-width:58ch;margin:0 0 28px;white-space:pre-line}
+  #absensi-app .bv2 .bv-hero.ada-gambar .bv-tagline{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.3);color:#fff}
+  #absensi-app .bv2 .bv-hero.ada-gambar h1,#absensi-app .bv2 .bv-hero.ada-gambar h1 em{color:#fff}
+  #absensi-app .bv2 .bv-hero.ada-gambar .bv-garis-emas{background:#fff}
+  #absensi-app .bv2 .bv-hero.ada-gambar p{color:#dfe6f1}
+  #absensi-app .bv2 .bv-aksi{display:flex;gap:12px;flex-wrap:wrap}
+  #absensi-app .bv2 .bv-cta{font:700 13px var(--bv-font);letter-spacing:.14em;text-transform:uppercase;padding:16px 26px;margin:0;border-radius:2px;border:1px solid var(--navy);background:var(--navy);color:#fff;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:10px;width:auto}
+  #absensi-app .bv2 .bv-cta:hover{background:var(--navy-tua);color:#fff}
+  #absensi-app .bv2 .bv-cta.garis{background:#fff;color:var(--navy);border-color:var(--garis)}
+  #absensi-app .bv2 .bv-cta.garis::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--emas)}
+  #absensi-app .bv2 .bv-cta.emas{background:var(--emas);border-color:var(--emas);color:var(--navy-tua)}
+  #absensi-app .bv2 .bv-hero.ada-gambar .bv-cta{background:var(--emas);border-color:var(--emas);color:var(--navy-tua)}
+  #absensi-app .bv2 .bv-hero.ada-gambar .bv-cta.garis{background:transparent;color:#fff;border-color:rgba(255,255,255,.5)}
+  @media (max-width:600px){ #absensi-app .bv2 .bv-aksi .bv-cta{flex:1 1 100%} }
+
+  /* Statistik */
+  #absensi-app .bv2 .bv-stat{background:var(--navy-tua);color:#fff}
+  #absensi-app .bv2 .bv-stat-grid{display:grid;grid-template-columns:repeat(4,1fr)}
+  #absensi-app .bv2 .bv-stat-item{padding:28px 18px;border-left:1px solid rgba(255,255,255,.12)}
+  #absensi-app .bv2 .bv-stat-item:first-child{border-left:0}
+  #absensi-app .bv2 .bv-stat-item .angka{font-weight:800;font-size:clamp(28px,5vw,40px);line-height:1;font-variant-numeric:tabular-nums}
+  #absensi-app .bv2 .bv-stat-item .angka::after{content:"";display:block;width:22px;height:3px;background:var(--emas);margin-top:12px}
+  #absensi-app .bv2 .bv-stat-item .ket{margin-top:10px;font-size:11.5px;letter-spacing:.18em;text-transform:uppercase;color:#b9c6dc}
+  @media (max-width:700px){
+    #absensi-app .bv2 .bv-stat-grid{grid-template-columns:1fr 1fr}
+    #absensi-app .bv2 .bv-stat-item:nth-child(odd){border-left:0}
+    #absensi-app .bv2 .bv-stat-item{border-top:1px solid rgba(255,255,255,.12)}
+    #absensi-app .bv2 .bv-stat-item:nth-child(-n+2){border-top:0}
+  }
+
+  /* Bagian umum */
+  #absensi-app .bv2 .bv-sec{padding-top:72px;padding-bottom:72px}
+  #absensi-app .bv2 .bv-sec.alt{background:var(--latar-alt)}
+  #absensi-app .bv2 .bv-sec.bv-gelap{background:var(--navy-tua);color:#e6ecf5}
+  #absensi-app .bv2 .bv-head{margin-bottom:34px;max-width:680px}
+  #absensi-app .bv2 .bv-head h2{font-weight:800;font-size:clamp(26px,4.4vw,38px);line-height:1.15;margin:0;color:var(--tinta)}
+  #absensi-app .bv2 .bv-gelap .bv-head h2{color:#fff}
+  #absensi-app .bv2 .bv-head h2::after{content:"";display:block;width:56px;height:3px;background:var(--navy);margin-top:18px;box-shadow:18px 0 0 0 var(--emas)}
+  #absensi-app .bv2 .bv-gelap .bv-head h2::after{background:var(--emas);box-shadow:none}
+  #absensi-app .bv2 .bv-head p{color:var(--redup);margin:16px 0 0}
+  #absensi-app .bv2 .bv-gelap .bv-head p{color:#b9c6dc}
+  #absensi-app .bv2 .bv-kosong{color:var(--redup);font-size:14px;margin:0;grid-column:1/-1}
+  #absensi-app .bv2 .bv-gelap .bv-kosong{color:#b9c6dc}
+  @media (max-width:600px){ #absensi-app .bv2 .bv-sec{padding-top:56px;padding-bottom:56px} }
+
+  /* Tentang */
+  #absensi-app .bv2 .bv-tentang{display:grid;grid-template-columns:1fr 1.1fr;gap:48px;align-items:center}
+  #absensi-app .bv2 .bv-tentang.tanpa-foto{grid-template-columns:1fr}
+  #absensi-app .bv2 .bv-bingkai{border:1px solid var(--garis);padding:10px;background:#fff;position:relative}
+  #absensi-app .bv2 .bv-bingkai img{width:100%;max-height:420px;object-fit:cover;display:block}
+  #absensi-app .bv2 .bv-bingkai.sudut::after{content:"";position:absolute;left:-10px;bottom:-10px;width:70px;height:70px;border-left:3px solid var(--emas);border-bottom:3px solid var(--emas);pointer-events:none}
+  #absensi-app .bv2 .bv-tentang h3{font-weight:800;font-size:clamp(24px,3.8vw,34px);line-height:1.2;margin:0 0 16px}
+  #absensi-app .bv2 .bv-tentang p{color:var(--redup);margin:0;max-width:62ch;white-space:pre-line}
+  @media (max-width:800px){ #absensi-app .bv2 .bv-tentang{grid-template-columns:1fr;gap:30px} }
+
+  /* Video */
+  #absensi-app .bv2 .bv-video{border:1px solid var(--garis);padding:10px;background:#fff;max-width:900px}
+  #absensi-app .bv2 .bv-gelap .bv-video{border-color:rgba(255,255,255,.18);background:rgba(255,255,255,.04)}
+  #absensi-app .bv2 .bv-video .layar{position:relative;width:100%;padding-top:56.25%;background:var(--navy-tua);overflow:hidden}
+  #absensi-app .bv2 .bv-video .layar iframe,#absensi-app .bv2 .bv-video .layar video{position:absolute;inset:0;width:100%;height:100%;border:0;display:block;object-fit:cover}
+
+  /* Berita */
+  #absensi-app .bv2 .bv-artikel-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+  #absensi-app .bv2 .bv-artikel{border:1px solid var(--garis);background:#fff;display:flex;flex-direction:column;min-width:0;cursor:pointer;transition:border-color .2s,box-shadow .2s}
+  #absensi-app .bv2 .bv-artikel:hover{border-color:var(--navy);box-shadow:0 12px 28px rgba(11,44,95,.1)}
+  #absensi-app .bv2 .bv-artikel .foto{width:100%;height:190px;object-fit:cover;display:block;background:linear-gradient(135deg,#d7e1ef,#b6c6de)}
+  #absensi-app .bv2 .bv-artikel .badan{padding:18px 18px 20px;display:flex;flex-direction:column;gap:8px;flex:1}
+  #absensi-app .bv2 .bv-artikel .kat{font-size:10.5px;font-weight:700;letter-spacing:.24em;text-transform:uppercase;color:var(--navy)}
+  #absensi-app .bv2 .bv-artikel h4{margin:0;font-weight:700;font-size:17px;line-height:1.35}
+  #absensi-app .bv2 .bv-artikel p{margin:0;font-size:13.5px;color:var(--redup)}
+  #absensi-app .bv2 .bv-artikel .tgl{font-size:12px;color:var(--redup);margin-top:auto;padding-top:6px}
+  @media (max-width:900px){ #absensi-app .bv2 .bv-artikel-grid{grid-template-columns:1fr 1fr} }
+  @media (max-width:600px){ #absensi-app .bv2 .bv-artikel-grid{grid-template-columns:1fr} }
+
+  /* Program unggulan (bagian gelap) */
+  #absensi-app .bv2 .bv-program-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.12)}
+  #absensi-app .bv2 .bv-program{background:var(--navy-tua);padding:26px 24px;display:flex;gap:18px;align-items:flex-start;min-width:0}
+  #absensi-app .bv2 .bv-ikon{width:56px;height:56px;flex:none;border:1px solid rgba(255,255,255,.22);display:grid;place-items:center;font-size:22px;background:rgba(255,255,255,.04);overflow:hidden}
+  #absensi-app .bv2 .bv-ikon img{width:100%;height:100%;object-fit:cover;display:block}
+  #absensi-app .bv2 .bv-program h4{margin:0 0 6px;font-weight:700;font-size:17px;color:#fff}
+  #absensi-app .bv2 .bv-program p{margin:0;color:#b9c6dc;font-size:14px;white-space:pre-line}
+  @media (max-width:700px){ #absensi-app .bv2 .bv-program-grid{grid-template-columns:1fr} }
+  #absensi-app .bv2 .bv-visimisi{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:34px}
+  #absensi-app .bv2 .bv-visimisi>div{border:1px solid rgba(255,255,255,.16);padding:24px;background:rgba(255,255,255,.03)}
+  #absensi-app .bv2 .bv-visimisi h4{margin:0 0 10px;font-size:11.5px;font-weight:700;letter-spacing:.3em;text-transform:uppercase;color:var(--emas)}
+  #absensi-app .bv2 .bv-visimisi p{margin:0;color:#dfe6f1;white-space:pre-line}
+  @media (max-width:700px){ #absensi-app .bv2 .bv-visimisi{grid-template-columns:1fr} }
+
+  /* Fasilitas */
+  #absensi-app .bv2 .bv-fasilitas-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+  #absensi-app .bv2 .bv-fasilitas{border:1px solid var(--garis);background:#fff;min-width:0}
+  #absensi-app .bv2 .bv-fasilitas .foto{width:100%;height:200px;object-fit:cover;display:block}
+  #absensi-app .bv2 .bv-fasilitas .foto-kosong{height:120px;display:grid;place-items:center;font-size:34px;background:var(--latar-alt)}
+  #absensi-app .bv2 .bv-fasilitas .badan{padding:16px 18px;border-top:3px solid var(--navy)}
+  #absensi-app .bv2 .bv-fasilitas h4{margin:0 0 4px;font-size:16px}
+  #absensi-app .bv2 .bv-fasilitas p{margin:0;font-size:13.5px;color:var(--redup);white-space:pre-line}
+  @media (max-width:900px){ #absensi-app .bv2 .bv-fasilitas-grid{grid-template-columns:1fr 1fr} }
+  @media (max-width:600px){ #absensi-app .bv2 .bv-fasilitas-grid{grid-template-columns:1fr} }
+
+  /* Galeri */
+  #absensi-app .bv2 .bv-galeri-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  #absensi-app .bv2 .bv-galeri{position:relative;overflow:hidden;cursor:pointer;background:var(--latar-alt);aspect-ratio:1/1}
+  #absensi-app .bv2 .bv-galeri img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .45s ease}
+  #absensi-app .bv2 .bv-galeri:hover img{transform:scale(1.06)}
+  #absensi-app .bv2 .bv-galeri .cap{position:absolute;left:0;right:0;bottom:0;padding:18px 10px 9px;background:linear-gradient(transparent,rgba(7,29,64,.85));color:#fff;font-size:11.5px;font-weight:600;line-height:1.35}
+  @media (max-width:600px){ #absensi-app .bv2 .bv-galeri-grid{grid-template-columns:1fr 1fr} }
+
+  /* Pita nama berjalan */
+  #absensi-app .bv2 .bv-pita{background:var(--navy);color:#fff;overflow:hidden;white-space:nowrap}
+  #absensi-app .bv2 .bv-pita-track{display:inline-block;white-space:nowrap;padding:14px 0;font-size:12px;font-weight:700;letter-spacing:.32em;animation:spMarquee 60s linear infinite;max-width:none}
+  #absensi-app .bv2 .bv-pita-track i{font-style:normal;color:var(--emas);margin:0 18px}
+  @media (prefers-reduced-motion:reduce){ #absensi-app .bv2 .bv-pita-track{animation:none} }
+
+  /* PPDB */
+  #absensi-app .bv2 .bv-ppdb{display:grid;grid-template-columns:1.2fr 1fr;gap:40px;align-items:start}
+  #absensi-app .bv2 .bv-ppdb.tanpa-brosur{grid-template-columns:1fr}
+  #absensi-app .bv2 .bv-ppdb-teks{color:#dfe6f1;white-space:pre-line;margin:0 0 24px;max-width:62ch}
+  #absensi-app .bv2 .bv-brosur{border:1px solid rgba(255,255,255,.18);padding:10px;background:rgba(255,255,255,.04);display:block}
+  #absensi-app .bv2 .bv-brosur img{width:100%;max-height:620px;object-fit:contain;display:block;cursor:zoom-in;background:#fff}
+  #absensi-app .bv2 .bv-brosur-ket{font-size:12px;color:#b9c6dc;margin:8px 0 0;text-align:center}
+  @media (max-width:800px){ #absensi-app .bv2 .bv-ppdb{grid-template-columns:1fr} }
+
+  /* Kontak & footer */
+  #absensi-app .bv2 .bv-kontak-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+  #absensi-app .bv2 .bv-kontak{border:1px solid var(--garis);background:#fff;padding:24px;min-width:0}
+  #absensi-app .bv2 .bv-kontak .bv-ikon{border-color:var(--garis);background:var(--latar-alt);color:var(--navy);margin-bottom:14px;width:52px;height:52px}
+  #absensi-app .bv2 .bv-kontak .bv-ikon.wa{background:var(--wa);border-color:var(--wa)}
+  #absensi-app .bv2 .bv-kontak .bv-ikon .ikon-wa-svg{width:26px;height:26px}
+  #absensi-app .bv2 .bv-kontak .judul{margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:.24em;text-transform:uppercase;color:var(--redup)}
+  #absensi-app .bv2 .bv-kontak a,#absensi-app .bv2 .bv-kontak .isi{font-weight:600;color:var(--tinta);text-decoration:none;word-break:break-word;font-size:15px}
+  #absensi-app .bv2 .bv-kontak a:hover{color:var(--navy)}
+  #absensi-app .bv2 .bv-kontak .muted{color:var(--redup);font-weight:500}
+  #absensi-app .bv2 .bv-peta{margin-top:22px;border:1px solid var(--garis);padding:10px;background:#fff}
+  #absensi-app .bv2 .bv-peta iframe{width:100%;height:320px;border:0;display:block}
+  @media (max-width:800px){ #absensi-app .bv2 .bv-kontak-grid{grid-template-columns:1fr} }
+  #absensi-app .bv2 .bv-footer{background:var(--navy-tua);color:#b9c6dc;padding-top:40px;padding-bottom:120px;border-top:3px solid var(--emas);font-size:13px;line-height:1.8}
+  #absensi-app .bv2 .bv-footer .bv-logo{width:50px;height:50px;background:#fff;padding:3px;display:grid;place-items:center}
+  #absensi-app .bv2 .bv-footer .bv-logo img{width:100%;height:100%;object-fit:contain;display:block}
+  #absensi-app .bv2 .bv-footer b{display:block;color:#fff;font-size:13px;letter-spacing:.16em;text-transform:uppercase;margin:12px 0 6px}
+
+  /* Tombol melayang: WA (kanan) & menu ibadah (kiri, di atas tombol Instal Aplikasi) */
+  #absensi-app .bv2 .bv-wa-float{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom,0px));z-index:640;width:60px;height:60px;border-radius:50%;background:var(--wa);display:grid;place-items:center;box-shadow:0 10px 24px rgba(37,211,102,.4);border:0;cursor:pointer;padding:0;margin:0}
+  #absensi-app .bv2 .bv-wa-float:hover{background:#1fb855}
+  #absensi-app .bv2 .bv-wa-float .ikon-wa-svg{width:30px;height:30px}
+  #absensi-app .bv2 .bv-wa-float .titik{position:absolute;top:2px;right:2px;width:14px;height:14px;border-radius:50%;background:#ef4444;border:2px solid #fff}
+  #absensi-app .bv2 .bv-ibadah{position:fixed;left:14px;bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:400;display:flex;flex-direction:column;gap:8px}
+  #absensi-app .bv2 .bv-ibadah a{width:44px;height:44px;border-radius:2px;background:#fff;border:1px solid var(--garis);display:grid;place-items:center;font-size:19px;text-decoration:none;box-shadow:0 6px 16px rgba(11,44,95,.12);position:relative}
+  #absensi-app .bv2 .bv-ibadah a::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--emas);z-index:1}
+  #absensi-app .bv2 .bv-ibadah a img{width:100%;height:100%;object-fit:cover;display:block}
+  #absensi-app .bv2 .bv-ibadah .tip{position:absolute;left:52px;top:50%;transform:translateY(-50%);background:var(--navy-tua);color:#fff;font-size:11px;padding:4px 9px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s;max-width:none}
+  #absensi-app .bv2 .bv-ibadah a:hover .tip{opacity:1}
+
+  /* Jendela "Layanan Informasi" (sambutan pengunjung baru) */
+  #absensi-app .bv2 .bv-info{position:fixed;right:18px;bottom:calc(92px + env(safe-area-inset-bottom,0px));z-index:650;width:380px;max-width:calc(100vw - 32px);max-height:calc(100vh - 120px);overflow-y:auto;background:#fff;border:1px solid var(--garis);box-shadow:0 24px 60px rgba(7,29,64,.22);animation:bvMuncul .28s ease-out}
+  #absensi-app .bv2 .bv-info[hidden]{display:none}
+  @keyframes bvMuncul{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){ #absensi-app .bv2 .bv-info{animation:none} }
+  #absensi-app .bv2 .bv-info .kepala{display:flex;align-items:center;gap:14px;padding:18px 48px 18px 18px;background:var(--latar-alt);border-bottom:1px solid var(--garis);position:relative}
+  #absensi-app .bv2 .bv-info .ikon{width:48px;height:48px;border:1px solid var(--garis);background:#fff;display:grid;place-items:center;flex:none}
+  #absensi-app .bv2 .bv-info .ikon svg{width:24px;height:24px;stroke:var(--navy);fill:none;stroke-width:2}
+  #absensi-app .bv2 .bv-info .kepala b{display:block;font-weight:800;font-size:16px;letter-spacing:.02em;color:var(--tinta)}
+  #absensi-app .bv2 .bv-info .kepala small{display:flex;align-items:center;gap:8px;font-size:10.5px;letter-spacing:.24em;text-transform:uppercase;color:var(--redup)}
+  #absensi-app .bv2 .bv-info .kepala small::before{content:"";width:7px;height:7px;border-radius:50%;background:#22c55e}
+  #absensi-app .bv2 .bv-info .tutup{position:absolute;right:8px;top:8px;width:36px;height:36px;border:0;background:none;font-size:24px;line-height:1;color:var(--redup);cursor:pointer;padding:0;margin:0}
+  #absensi-app .bv2 .bv-info .tutup:hover{background:none;color:var(--tinta)}
+  #absensi-app .bv2 .bv-info .badan{padding:18px}
+  #absensi-app .bv2 .bv-info .gelembung{background:var(--latar-alt);border:1px solid var(--garis);padding:14px 16px;font-size:14.5px;color:var(--redup);position:relative}
+  #absensi-app .bv2 .bv-info .gelembung::before{content:"";position:absolute;left:18px;top:-7px;width:12px;height:12px;background:var(--latar-alt);border-left:1px solid var(--garis);border-top:1px solid var(--garis);transform:rotate(45deg)}
+  #absensi-app .bv2 .bv-info .gelembung b{color:var(--tinta)}
+  #absensi-app .bv2 .bv-info .label-topik{margin:18px 0 10px;font-size:11px;font-weight:700;letter-spacing:.26em;text-transform:uppercase;color:#0f8a83}
+  #absensi-app .bv2 .bv-info .topik{display:flex;flex-wrap:wrap;gap:8px}
+  #absensi-app .bv2 .bv-info .topik a{border:1px solid var(--garis);border-radius:999px;padding:8px 14px;font-size:13px;color:var(--tinta);text-decoration:none;background:#fff}
+  #absensi-app .bv2 .bv-info .topik a:hover{border-color:var(--navy);color:var(--navy)}
+  #absensi-app .bv2 .bv-info .jam{margin-top:16px;display:flex;align-items:center;gap:10px;background:var(--latar-alt);border:1px solid var(--garis);padding:10px 12px;font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--redup)}
+  #absensi-app .bv2 .bv-info .hubungi{margin-top:16px;display:flex;justify-content:center;align-items:center;gap:12px;background:var(--wa);color:#fff;text-decoration:none;font-weight:800;letter-spacing:.2em;font-size:13px;padding:15px;border-radius:4px}
+  #absensi-app .bv2 .bv-info .hubungi .ikon-wa-svg{width:20px;height:20px}
+  #absensi-app .bv2 .bv-info .jangan{display:flex;align-items:center;justify-content:center;gap:8px;margin:12px 0 0;font-size:12.5px;color:var(--redup);cursor:pointer;font-weight:500}
+  #absensi-app .bv2 .bv-info .jangan input{width:16px;height:16px;min-height:0;accent-color:var(--navy);margin:0;padding:0;flex:none}
+
+  #absensi-app .bv2 a:focus-visible,#absensi-app .bv2 button:focus-visible{outline:2px solid var(--emas);outline-offset:2px}
 </style>
 
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyXmWjb9a9Bzw6at-mEVZWd5jl66z08o_66ZZMxIjkwv2FflbnjZoUKAvcw--Kgqc4P/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -665,7 +917,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.10.07-c';
+  var VERSI_APP = '2026.10.11-f';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -677,6 +929,8 @@
   var SESI_KEY = 'wasiatSesiUserV1';
   function simpanSesi(){
     try { localStorage.setItem(SESI_KEY, JSON.stringify(STATE.user)); } catch(e) {}
+    // HP ini pernah dipakai login -> jendela sambutan halaman depan tidak muncul otomatis lagi
+    try { tandaiPernahMasuk(); } catch(e) {}
   }
   function ambilSesiTersimpan(){
     try {
@@ -2255,169 +2509,312 @@
     document.body.appendChild(el);
   }
 
+  // ---- Beranda v2 (navy & emas): pembantu kecil, hanya dipakai halaman depan ----
+  // Font halaman depan dimuat SEKALI dan hanya saat halaman depan dibuka, supaya
+  // dashboard/kasir/absensi tidak ikut menunggu unduhan font. Kalau offline, otomatis
+  // jatuh ke Segoe UI/Roboto seperti biasa.
+  function muatFontBeranda(){
+    try {
+      if (document.getElementById('fontBerandaV2')) return;
+      var l = document.createElement('link');
+      l.id = 'fontBerandaV2'; l.rel = 'stylesheet';
+      l.href = 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap';
+      document.head.appendChild(l);
+    } catch(e){}
+  }
+  // "Pondok Pesantren Wihdatul Ummah Poso" -> {atas:'Pondok Pesantren', inti:'Wihdatul Ummah Poso'}
+  // Hanya untuk tata letak judul; nama asli dari pengaturan tidak diubah.
+  function pecahNamaPesantren(nama){
+    var n = String(nama||'').trim();
+    var m = n.match(/^(pondok\s+pesantren|ponpes|pesantren|pp\.?)\s+(.+)$/i);
+    return m ? {atas:m[1], inti:m[2]} : {atas:'', inti:n};
+  }
+  // Jendela "Layanan Informasi": status di HP ini.
+  //   jangan  = pengunjung mencentang "Jangan tampilkan lagi" (permanen di HP ini)
+  //   ditutup = waktu terakhir ditutup (tidak muncul otomatis lagi selama 7 hari)
+  //   pernahMasuk = HP ini pernah dipakai login (ustadz/wali) -> tidak muncul otomatis
+  var KUNCI_SAMBUTAN_INFO = 'wasiatSambutanInfo';
+  function bacaSambutanInfo(){ try { return JSON.parse(localStorage.getItem(KUNCI_SAMBUTAN_INFO) || '{}') || {}; } catch(e){ return {}; } }
+  function tulisSambutanInfo(v){ try { localStorage.setItem(KUNCI_SAMBUTAN_INFO, JSON.stringify(v)); } catch(e){} }
+  function tandaiPernahMasuk(){ var st = bacaSambutanInfo(); if (!st.pernahMasuk) { st.pernahMasuk = true; tulisSambutanInfo(st); } }
+  function sambutanBolehOtomatis(modePratinjau){
+    var st = bacaSambutanInfo();
+    if (st.jangan) return false;
+    if (st.ditutup && (Date.now() - Number(st.ditutup)) < 7*24*3600*1000) return false;
+    if (modePratinjau) return true; // Admin sedang melihat pratinjau dari Website Builder
+    if (st.pernahMasuk) return false;
+    if (sedangTerpasangSebagaiAplikasi()) return false;
+    try { if (localStorage.getItem(SESI_KEY)) return false; } catch(e){}
+    return true;
+  }
+
   function showBeranda(bukaLoginOtomatis, errMsg){
+    muatFontBeranda();
     var logo = logoSrc();
     var p = STATE.pengaturan;
     var wa = waLinkPesantren();
+    var nm = pecahNamaPesantren(p.NamaPesantren);
     var heroStyle = p.HeroImageURL ? (' style="background-image:url(\''+esc(p.HeroImageURL).replace(/'/g,"\\'")+'\')"') : '';
     var videoHtml = htmlPemutarVideo(p.VideoProfilURL);
+    var videoPpdb = htmlPemutarVideo(p.VideoPPDBURL);
     // Statistik diisi Admin dengan format "Angka|Keterangan" satu per baris.
     var statistik = String(p.StatistikBeranda||'').split('\n').map(function(b){
       var bagian = b.split('|');
       return {angka:(bagian[0]||'').trim(), ket:(bagian[1]||'').trim()};
     }).filter(function(s){ return s.angka && s.ket; });
+    var logoHtml = logo ? '<div class="bv-logo"><img src="'+esc(logo)+'" alt="Logo"></div>' : '';
+    var pitaNama = esc(String(p.NamaPesantren||'').toUpperCase());
+    var pita = Array(12).fill(pitaNama).join('<i>&#9679;</i>');
+    var jamLayanan = String(p.JamLayananInfo||'').trim();
+    var pesanWA = function(topik){
+      return wa + '?text=' + encodeURIComponent('Assalamu\'alaikum, saya ingin bertanya tentang ' + topik + ' di ' + (p.NamaPesantren||'pesantren') + '.');
+    };
 
     render(
-      '<nav class="site-nav">' +
-        '<div class="brand2">'+(logo?'<img src="'+esc(logo)+'">':'')+'<span>'+esc(p.NamaPesantren)+'</span></div>' +
-        '<div class="site-nav-links">' +
-          '<a id="navTentang">Tentang</a><a id="navProgram">Program</a><a id="navPPDB">PPDB</a><a id="navBerita">Berita</a><a id="navKontak">Kontak</a>' +
-          // Tombol berupa tautan (<a>) diberi color:#fff tegas -- aturan ".site-nav-links a"
-          // (abu-abu) lebih kuat daripada .btn-masuk, sehingga tulisannya sempat gelap.
-          '<a class="btn-masuk" href="jam-sholat/" target="_blank" rel="noopener" style="background:#0A2621;color:#fff;text-decoration:none;display:inline-flex;align-items:center">&#128992; Jam Sholat</a>' +
-          '<button class="btn-masuk" id="btnBukaKantin" style="background:#f59e0b">&#128717; Kantin</button>' +
-          '<a class="btn-masuk" href="https://khutbah-wahdahposo.netlify.app/" target="_blank" rel="noopener" style="background:#7c3aed;color:#fff;text-decoration:none;display:inline-flex;align-items:center">&#128332; Jadwal Khutbah</a>' +
-          '<button class="btn-masuk" id="btnBukaLogin">Masuk</button>' +
+      '<div class="bv2">' +
+      '<nav class="bv-nav" id="bvNav"><div class="bv-isi">' +
+        '<div class="bv-brand">' + logoHtml +
+          '<div class="bv-nama"><b>'+esc(nm.inti)+'</b>'+(nm.atas?'<small>'+esc(nm.atas)+'</small>':'')+'</div>' +
         '</div>' +
-      '</nav>' +
-      '<div class="hero'+(p.HeroImageURL?' ada-gambar':'')+'"'+heroStyle+'>' +
-        (p.TaglineHero ? '<div class="hero-tagline hero-samar">'+esc(p.TaglineHero)+'</div>' : '') +
-        '<h1 class="hero-samar">'+esc(p.NamaPesantren)+'</h1>' +
-        '<p class="hero-samar">'+esc(p.DeskripsiSingkat||'')+'</p>' +
-        '<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">' +
-          '<button class="hero-cta hero-samar" id="btnHeroCta">Jelajahi Lebih Lanjut &#8595;</button>' +
-          (p.LinkPPDBEksternal ? '<a class="hero-cta hero-samar" href="'+esc(p.LinkPPDBEksternal)+'" target="_blank" rel="noopener" style="background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.45)">Daftar Santri Baru</a>' : '') +
+        '<button class="bv-menu-btn" id="bvMenuBtn" type="button" aria-label="Buka menu" aria-expanded="false"><span></span><span></span><span></span></button>' +
+        '<div class="bv-links">' +
+          '<a class="bv-tautan" id="navTentang">Tentang</a><a class="bv-tautan" id="navProgram">Program</a><a class="bv-tautan" id="navPPDB">PPDB</a><a class="bv-tautan" id="navBerita">Berita</a><a class="bv-tautan" id="navKontak">Kontak</a>' +
+          '<div class="bv-tombol-baris">' +
+            '<a class="bv-btn garis" href="jam-sholat/" target="_blank" rel="noopener">&#128992; Jam Sholat</a>' +
+            '<button class="bv-btn emas" id="btnBukaKantin" type="button">&#128717; Kantin</button>' +
+            '<a class="bv-btn garis" href="https://khutbah-wahdahposo.netlify.app/" target="_blank" rel="noopener">&#128332; Jadwal Khutbah</a>' +
+            '<button class="bv-btn" id="btnBukaLogin" type="button">Masuk</button>' +
+          '</div>' +
         '</div>' +
-      '</div>' +
+      '</div></nav>' +
 
-      (statistik.length ? ('<div class="stat-band"><div class="stat-grid">' +
-        statistik.map(function(s){ return '<div class="stat-item reveal"><div class="angka">'+esc(s.angka)+'</div><div class="ket">'+esc(s.ket)+'</div></div>'; }).join('') +
+      '<header class="bv-hero'+(p.HeroImageURL?' ada-gambar':'')+'"'+heroStyle+'><div class="bv-isi">' +
+        (p.TaglineHero ? '<div class="bv-tagline">'+esc(p.TaglineHero)+'</div>' : '') +
+        '<h1>'+(nm.atas ? esc(nm.atas)+' <em>'+esc(nm.inti)+'</em>' : '<em>'+esc(nm.inti)+'</em>')+'</h1>' +
+        '<div class="bv-garis-emas"></div>' +
+        (p.DeskripsiSingkat ? '<p>'+esc(p.DeskripsiSingkat)+'</p>' : '') +
+        '<div class="bv-aksi">' +
+          '<button class="bv-cta" id="btnHeroCta" type="button">Jelajahi Lebih Lanjut &#8595;</button>' +
+          (p.LinkPPDBEksternal
+            ? '<a class="bv-cta garis" href="'+esc(p.LinkPPDBEksternal)+'" target="_blank" rel="noopener">Daftar Santri Baru</a>'
+            : '<button class="bv-cta garis" id="btnHeroPpdb" type="button">Daftar Santri Baru</button>') +
+        '</div>' +
+      '</div></header>' +
+
+      (statistik.length ? ('<div class="bv-stat"><div class="bv-isi bv-stat-grid">' +
+        statistik.map(function(s){ return '<div class="bv-stat-item reveal"><div class="angka">'+esc(s.angka)+'</div><div class="ket">'+esc(s.ket)+'</div></div>'; }).join('') +
       '</div></div>') : '') +
 
-      ((p.TentangTeks || p.TentangFotoURL) ? ('<div class="site-section lebar" id="sec-profil"><div class="tentang-wrap">' +
-        (p.TentangFotoURL ? '<div class="reveal"><img class="tentang-foto" src="'+esc(p.TentangFotoURL)+'" alt="Tentang" loading="lazy"></div>' : '') +
-        '<div class="tentang-teks reveal">' +
-          '<span class="sec-eyebrow">Tentang Kami</span>' +
+      ((p.TentangTeks || p.TentangFotoURL) ? ('<section class="bv-sec" id="sec-profil"><div class="bv-isi bv-tentang'+(p.TentangFotoURL?'':' tanpa-foto')+'">' +
+        (p.TentangFotoURL ? '<div class="bv-bingkai sudut reveal"><img src="'+esc(p.TentangFotoURL)+'" alt="Tentang" loading="lazy"></div>' : '') +
+        '<div class="reveal">' +
+          '<span class="bv-label">Tentang Kami</span>' +
           '<h3>'+esc(p.TentangJudul || ('Mengenal ' + p.NamaPesantren))+'</h3>' +
           '<p>'+esc(p.TentangTeks||'')+'</p>' +
         '</div>' +
-      '</div></div>') : '') +
+      '</div></section>') : '') +
 
-      (videoHtml ? ('<div class="site-section lebar" id="sec-video">' +
-        '<div class="sec-head reveal"><span class="sec-eyebrow">Video Profil</span><h2>'+esc(p.JudulVideo || 'Mengenal Lebih Dekat')+'</h2></div>' +
-        '<div class="video-bingkai reveal">'+videoHtml+'</div>' +
-      '</div>') : '') +
+      (videoHtml ? ('<section class="bv-sec alt" id="sec-video"><div class="bv-isi">' +
+        '<div class="bv-head reveal"><span class="bv-label">Video Profil</span><h2>'+esc(p.JudulVideo || 'Mengenal Lebih Dekat')+'</h2></div>' +
+        '<div class="bv-video reveal"><div class="layar">'+videoHtml+'</div></div>' +
+      '</div></section>') : '') +
 
-      '<div class="site-section lebar" id="sec-berita">' +
-        '<div class="sec-head reveal"><span class="sec-eyebrow">Informasi</span><h2>Berita &amp; Artikel Terbaru</h2><p>Kegiatan, pengumuman, dan kabar terbaru dari pesantren.</p></div>' +
-        '<div id="berandaArtikelWrap" class="artikel-grid"><p class="muted" style="text-align:center;grid-column:1/-1">Memuat...</p></div>' +
-      '</div>' +
+      '<section class="bv-sec" id="sec-berita"><div class="bv-isi">' +
+        '<div class="bv-head reveal"><span class="bv-label">Informasi</span><h2>Berita &amp; Artikel Terbaru</h2><p>Kegiatan, pengumuman, dan kabar terbaru dari pesantren.</p></div>' +
+        '<div id="berandaArtikelWrap" class="bv-artikel-grid"><p class="bv-kosong">Memuat...</p></div>' +
+      '</div></section>' +
 
-      '<div class="site-section lebar" id="sec-tentang">' +
-        '<div class="sec-head reveal"><span class="sec-eyebrow">Keunggulan</span><h2>Program Unggulan</h2></div>' +
-        '<div class="fitur-grid" id="berandaProgramWrap"><p class="muted" style="text-align:center;grid-column:1/-1">Memuat...</p></div>' +
-        '<div class="visimisi-wrap reveal" style="margin-top:28px">' +
-          '<div class="visimisi-card"><h4>Visi</h4><p>'+esc(p.Visi||'-')+'</p></div>' +
-          '<div class="visimisi-card"><h4>Misi</h4><p>'+esc(p.Misi||'-')+'</p></div>' +
+      '<section class="bv-sec bv-gelap" id="sec-tentang"><div class="bv-isi">' +
+        '<div class="bv-head reveal"><span class="bv-label">Keunggulan</span><h2>Program Unggulan</h2></div>' +
+        '<div class="bv-program-grid" id="berandaProgramWrap"><p class="bv-kosong" style="padding:20px;background:var(--navy-tua)">Memuat...</p></div>' +
+        '<div class="bv-visimisi reveal">' +
+          '<div><h4>Visi</h4><p>'+esc(p.Visi||'-')+'</p></div>' +
+          '<div><h4>Misi</h4><p>'+esc(p.Misi||'-')+'</p></div>' +
         '</div>' +
-      '</div>' +
+      '</div></section>' +
 
-      '<div class="site-section lebar">' +
-        '<div class="sec-head reveal"><span class="sec-eyebrow">Sarana</span><h2>Fasilitas</h2></div>' +
-        '<div class="fitur-grid fasilitas" id="berandaFasilitasWrap"><p class="muted" style="text-align:center;grid-column:1/-1">Memuat...</p></div>' +
-      '</div>' +
+      '<section class="bv-sec alt"><div class="bv-isi">' +
+        '<div class="bv-head reveal"><span class="bv-label">Sarana</span><h2>Fasilitas</h2></div>' +
+        '<div class="bv-fasilitas-grid" id="berandaFasilitasWrap"><p class="bv-kosong">Memuat...</p></div>' +
+      '</div></section>' +
 
-      '<div class="site-section lebar" id="sec-galeri" style="display:none">' +
-        '<div class="sec-head reveal"><span class="sec-eyebrow">Dokumentasi</span><h2>Galeri Kegiatan</h2><p>Potret keseharian santri di lingkungan pesantren.</p></div>' +
-        '<div class="galeri-grid" id="berandaGaleriWrap"></div>' +
-      '</div>' +
+      '<section class="bv-sec" id="sec-galeri" style="display:none"><div class="bv-isi">' +
+        '<div class="bv-head reveal"><span class="bv-label">Dokumentasi</span><h2>Galeri Kegiatan</h2><p>Potret keseharian santri di lingkungan pesantren.</p></div>' +
+        '<div class="bv-galeri-grid" id="berandaGaleriWrap"></div>' +
+      '</div></section>' +
 
-      '<div class="marquee-band"><div class="marquee-track">' + Array(10).fill(esc(p.NamaPesantren).toUpperCase()).join(' &bull; ') + ' &bull; ' + Array(10).fill(esc(p.NamaPesantren).toUpperCase()).join(' &bull; ') + '</div></div>' +
+      '<div class="bv-pita"><div class="bv-pita-track">' + pita + '<i>&#9679;</i>' + pita + '<i>&#9679;</i></div></div>' +
 
-      '<div class="site-section lebar" id="sec-ppdb">' +
-        '<div class="sec-head reveal"><span class="sec-eyebrow">Pendaftaran</span><h2>Penerimaan Santri Baru (PPDB)</h2></div>' +
-        '<p class="reveal" style="text-align:center;color:#475569;line-height:1.8;white-space:pre-line;max-width:640px;margin:0 auto">'+esc(p.InfoPPDB||'-')+'</p>' +
-        // Brosur PPDB (opsional). Bisa diklik untuk dibuka ukuran penuh di tab baru --
-        // penting karena brosur biasanya berisi teks kecil yang perlu diperbesar.
-        (p.BrosurPPDBURL
-          ? '<div class="reveal" style="text-align:center;margin-top:22px">' +
-            '<a href="'+esc(p.BrosurPPDBURL)+'" target="_blank" rel="noopener" title="Klik untuk melihat ukuran penuh">' +
-            '<img src="'+esc(p.BrosurPPDBURL)+'" alt="Brosur PPDB" loading="lazy" style="max-width:100%;width:auto;max-height:620px;border-radius:12px;box-shadow:0 8px 28px rgba(15,23,42,.14);cursor:zoom-in">' +
-            '</a><p class="muted" style="font-size:12.5px;margin-top:8px">Ketuk brosur untuk melihat ukuran penuh</p></div>'
-          : '') +
-        // Video PPDB (opsional) -- memakai pemutar yang sama dengan Video Profil,
-        // jadi otomatis mendukung YouTube, Google Drive, dan file .mp4 langsung.
-        (htmlPemutarVideo(p.VideoPPDBURL)
-          ? '<div class="reveal" style="max-width:860px;margin:24px auto 0"><div class="video-bingkai">'+htmlPemutarVideo(p.VideoPPDBURL)+'</div></div>'
-          : '') +
-        (p.LinkPPDBEksternal ? '<div class="reveal" style="text-align:center;margin-top:18px"><a href="'+esc(p.LinkPPDBEksternal)+'" target="_blank" rel="noopener" class="btn-masuk" style="text-decoration:none;display:inline-block;background:var(--tema);color:#fff;padding:12px 28px;border-radius:24px;font-weight:700">Daftar Sekarang</a></div>' : '') +
-      '</div>' +
-
-      '<div class="site-section lebar" id="sec-kontak">' +
-        '<div class="sec-head reveal"><span class="sec-eyebrow">Kontak</span><h2>Hubungi Kami</h2></div>' +
-        '<div class="kontak-grid reveal">' +
-          '<div class="kontak-card"><div class="fitur-icon wa-hijau">'+ikonWA()+'</div><p>WhatsApp</p>' + (wa? '<a href="'+esc(wa)+'" target="_blank" rel="noopener">'+esc(p.NoTeleponPesantren)+'</a>' : '<span class="muted">Belum diatur</span>') + '</div>' +
-          '<div class="kontak-card"><div class="fitur-icon">&#128231;</div><p>Email</p>' + (p.EmailPesantren? '<a href="mailto:'+esc(p.EmailPesantren)+'">'+esc(p.EmailPesantren)+'</a>' : '<span class="muted">Belum diatur</span>') + '</div>' +
-          '<div class="kontak-card"><div class="fitur-icon">&#128205;</div><p>Alamat</p><span style="font-size:12.5px;color:#475569">'+esc(p.AlamatPesantren||'Belum diatur')+'</span></div>' +
+      '<section class="bv-sec bv-gelap" id="sec-ppdb"><div class="bv-isi">' +
+        '<div class="bv-ppdb'+(p.BrosurPPDBURL?'':' tanpa-brosur')+'">' +
+          '<div>' +
+            '<div class="bv-head reveal"><span class="bv-label">Pendaftaran</span><h2>Penerimaan Santri Baru (PPDB)</h2></div>' +
+            '<p class="bv-ppdb-teks reveal">'+esc(p.InfoPPDB||'-')+'</p>' +
+            (p.LinkPPDBEksternal ? '<div class="reveal"><a class="bv-cta emas" href="'+esc(p.LinkPPDBEksternal)+'" target="_blank" rel="noopener">Daftar Sekarang</a></div>' : '') +
+          '</div>' +
+          // Brosur PPDB (opsional) -- bisa diketuk untuk dibuka ukuran penuh di tab baru.
+          (p.BrosurPPDBURL
+            ? '<div class="reveal"><a class="bv-brosur" href="'+esc(p.BrosurPPDBURL)+'" target="_blank" rel="noopener" title="Klik untuk melihat ukuran penuh">' +
+              '<img src="'+esc(p.BrosurPPDBURL)+'" alt="Brosur PPDB" loading="lazy"></a>' +
+              '<p class="bv-brosur-ket">Ketuk brosur untuk melihat ukuran penuh</p></div>'
+            : '') +
         '</div>' +
-        (p.LinkPetaLokasi ? '<div class="reveal" style="margin-top:18px;border-radius:16px;overflow:hidden;box-shadow:0 10px 28px rgba(15,23,42,.14)"><iframe src="'+esc(p.LinkPetaLokasi)+'" style="width:100%;height:300px;border:0;display:block" loading="lazy" title="Peta Lokasi"></iframe></div>' : '') +
+        (videoPpdb ? '<div class="bv-video reveal" style="margin:34px auto 0"><div class="layar">'+videoPpdb+'</div></div>' : '') +
+      '</div></section>' +
+
+      '<section class="bv-sec" id="sec-kontak"><div class="bv-isi">' +
+        '<div class="bv-head reveal"><span class="bv-label">Kontak</span><h2>Hubungi Kami</h2></div>' +
+        '<div class="bv-kontak-grid reveal">' +
+          '<div class="bv-kontak"><div class="bv-ikon wa">'+ikonWA()+'</div><p class="judul">WhatsApp</p>' + (wa? '<a href="'+esc(wa)+'" target="_blank" rel="noopener">'+esc(p.NoTeleponPesantren)+'</a>' : '<span class="isi muted">Belum diatur</span>') + '</div>' +
+          '<div class="bv-kontak"><div class="bv-ikon">&#9993;</div><p class="judul">Email</p>' + (p.EmailPesantren? '<a href="mailto:'+esc(p.EmailPesantren)+'">'+esc(p.EmailPesantren)+'</a>' : '<span class="isi muted">Belum diatur</span>') + '</div>' +
+          '<div class="bv-kontak"><div class="bv-ikon">&#128205;</div><p class="judul">Alamat</p><span class="isi">'+esc(p.AlamatPesantren||'Belum diatur')+'</span></div>' +
+        '</div>' +
+        (p.LinkPetaLokasi ? '<div class="bv-peta reveal"><iframe src="'+esc(p.LinkPetaLokasi)+'" loading="lazy" title="Peta Lokasi"></iframe></div>' : '') +
+      '</div></section>' +
+
+      '<footer class="bv-footer"><div class="bv-isi">' +
+        logoHtml +
+        '<b>'+esc(p.NamaPesantren)+'</b>' +
+        (p.AlamatPesantren ? esc(p.AlamatPesantren)+'<br>' : '') +
+        (p.NoTeleponPesantren?('Telp: '+esc(p.NoTeleponPesantren)+' &nbsp; '):'') + (p.EmailPesantren?('Email: '+esc(p.EmailPesantren)):'') +
+      '</div></footer>' +
+
+      '<div class="bv-ibadah">' +
+        '<a href="'+esc('https://salat.markazsunnah.com/')+'" target="_blank" rel="noopener" aria-label="Jadwal Sholat"><span class="tip">Jadwal Sholat</span>'+(p.IkonJadwalSholat?('<img src="'+esc(p.IkonJadwalSholat)+'" alt="">'):'&#128332;')+'</a>' +
+        '<a href="'+esc('https://quran.ksu.edu.sa/index.php?ui=1&l=en#aya=1_1&m=hafs&qaree=husary&trans=id_indonesian')+'" target="_blank" rel="noopener" aria-label="Al-Quran"><span class="tip">Al-Quran</span>'+(p.IkonAlQuran?('<img src="'+esc(p.IkonAlQuran)+'" alt="">'):'&#128214;')+'</a>' +
+        '<a href="'+esc('https://salat.markazsunnah.com/dzikir')+'" target="_blank" rel="noopener" aria-label="Dzikir"><span class="tip">Dzikir</span>'+(p.IkonDzikir?('<img src="'+esc(p.IkonDzikir)+'" alt="">'):'&#128255;')+'</a>' +
       '</div>' +
 
-      '<div class="site-footer">' +
-        (logo?'<img src="'+esc(logo)+'" style="height:46px;width:46px;object-fit:contain;border-radius:10px;background:#fff;padding:4px;margin-bottom:10px">':'') +
-        '<b style="display:block;color:#e2e8f0;font-size:14px">'+esc(p.NamaPesantren)+'</b>' + (p.AlamatPesantren?('<br>'+esc(p.AlamatPesantren)):'') + '<br>' +
-        (p.NoTeleponPesantren?('Telp: '+esc(p.NoTeleponPesantren)+'  '):'') + (p.EmailPesantren?('Email: '+esc(p.EmailPesantren)):'') +
-      '</div>' +
-      (wa? '<a class="wa-float" href="'+esc(wa)+'" target="_blank" rel="noopener" title="Chat WhatsApp">'+ikonWA()+'</a>' : '') +
-      '<div class="menu-ibadah-float">' +
-        '<a class="menu-ibadah-btn" style="background:#0d9488" href="'+esc('https://salat.markazsunnah.com/')+'" target="_blank" rel="noopener"><span class="tip">Jadwal Sholat</span>'+(p.IkonJadwalSholat?('<img src="'+esc(p.IkonJadwalSholat)+'">'):'&#128332;')+'</a>' +
-        '<a class="menu-ibadah-btn" style="background:#7c3aed" href="'+esc('https://quran.ksu.edu.sa/index.php?ui=1&l=en#aya=1_1&m=hafs&qaree=husary&trans=id_indonesian')+'" target="_blank" rel="noopener"><span class="tip">Al-Quran</span>'+(p.IkonAlQuran?('<img src="'+esc(p.IkonAlQuran)+'">'):'&#128214;')+'</a>' +
-        '<a class="menu-ibadah-btn" style="background:#d97706" href="'+esc('https://salat.markazsunnah.com/dzikir')+'" target="_blank" rel="noopener"><span class="tip">Dzikir</span>'+(p.IkonDzikir?('<img src="'+esc(p.IkonDzikir)+'">'):'&#128143;')+'</a>' +
-      '</div>' +
+      // Tombol WA melayang: membuka jendela "Layanan Informasi"; dari situ pengunjung
+      // memilih topik atau menekan HUBUNGI ADMIN (WhatsApp pesantren, sama seperti dulu).
+      (wa ? (
+        '<button class="bv-wa-float" id="bvWaFloat" type="button" aria-label="Layanan informasi">'+ikonWA()+'<span class="titik" id="bvWaTitik" hidden></span></button>' +
+        '<div class="bv-info" id="bvInfoPop" role="dialog" aria-labelledby="bvInfoJudul" hidden>' +
+          '<div class="kepala">' +
+            '<div class="ikon"><svg viewBox="0 0 24 24"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="2.5" y="13" width="4" height="6" rx="1"/><rect x="17.5" y="13" width="4" height="6" rx="1"/><path d="M19.5 19a4 4 0 0 1-4 3h-2"/></svg></div>' +
+            '<div><b id="bvInfoJudul">'+esc(nm.inti)+'</b><small>Layanan Informasi</small></div>' +
+            '<button class="tutup" id="bvTutupPop" type="button" aria-label="Tutup">&times;</button>' +
+          '</div>' +
+          '<div class="badan">' +
+            '<div class="gelembung">Assalamu\'alaikum.<br>Selamat datang di layanan informasi <b>'+esc(p.NamaPesantren)+'</b>. Ada yang bisa kami bantu?</div>' +
+            '<div class="label-topik">Topik Populer:</div>' +
+            '<div class="topik">' +
+              '<a href="'+esc(pesanWA('Info Pendaftaran'))+'" target="_blank" rel="noopener">Info Pendaftaran</a>' +
+              '<a href="'+esc(pesanWA('Program Unggulan'))+'" target="_blank" rel="noopener">Program Unggulan</a>' +
+              '<a href="'+esc(pesanWA('Lokasi & Kunjungan'))+'" target="_blank" rel="noopener">Lokasi &amp; Kunjungan</a>' +
+            '</div>' +
+            (jamLayanan ? '<div class="jam">&#128339; '+esc(jamLayanan)+'</div>' : '') +
+            '<a class="hubungi" id="bvHubungiAdmin" href="'+esc(wa)+'" target="_blank" rel="noopener">'+ikonWA()+'HUBUNGI ADMIN</a>' +
+            '<label class="jangan"><input type="checkbox" id="bvJanganLagi"> Jangan tampilkan lagi</label>' +
+          '</div>' +
+        '</div>'
+      ) : '') +
+
       '<div class="login-drawer-bg" id="loginDrawerBg"></div>' +
-      '<div class="login-drawer" id="loginDrawer"></div>'
+      '<div class="login-drawer" id="loginDrawer"></div>' +
+      '</div>'
     );
-    document.getElementById('btnBukaLogin').onclick = function(){ bukaLoginDrawer(); };
-    document.getElementById('btnBukaKantin').onclick = function(){ bukaLoginDrawer(null, 'kantin'); };
+
+    // --- Menu garis tiga (HP) ---
+    var nav = document.getElementById('bvNav'), menuBtn = document.getElementById('bvMenuBtn');
+    var tutupMenu = function(){ nav.classList.remove('buka'); menuBtn.setAttribute('aria-expanded','false'); };
+    menuBtn.onclick = function(){ var b = nav.classList.toggle('buka'); menuBtn.setAttribute('aria-expanded', b ? 'true' : 'false'); };
+    nav.querySelectorAll('.bv-links a, .bv-links button').forEach(function(el){ el.addEventListener('click', tutupMenu); });
+
+    var gulirKe = function(id, cadangan){
+      var el = document.getElementById(id) || (cadangan && document.getElementById(cadangan));
+      if (el) el.scrollIntoView({behavior:'smooth'});
+    };
+    document.getElementById('btnBukaLogin').onclick = function(){ tutupInfoPop(false); bukaLoginDrawer(); };
+    document.getElementById('btnBukaKantin').onclick = function(){ tutupInfoPop(false); bukaLoginDrawer(null, 'kantin'); };
     document.getElementById('loginDrawerBg').onclick = function(){ tutupLoginDrawer(); };
     // "Tentang" diarahkan ke bagian profil kalau Admin sudah mengisinya; kalau belum,
     // tetap ke Program Unggulan persis seperti perilaku sebelumnya.
-    document.getElementById('navTentang').onclick = function(){ (document.getElementById('sec-profil') || document.getElementById('sec-tentang')).scrollIntoView({behavior:'smooth'}); };
-    document.getElementById('navProgram').onclick = function(){ document.getElementById('sec-tentang').scrollIntoView({behavior:'smooth'}); };
-    document.getElementById('navPPDB').onclick = function(){ document.getElementById('sec-ppdb').scrollIntoView({behavior:'smooth'}); };
-    document.getElementById('navBerita').onclick = function(){ document.getElementById('sec-berita').scrollIntoView({behavior:'smooth'}); };
-    document.getElementById('navKontak').onclick = function(){ document.getElementById('sec-kontak').scrollIntoView({behavior:'smooth'}); };
-    document.getElementById('btnHeroCta').onclick = function(){ document.getElementById('sec-berita').scrollIntoView({behavior:'smooth'}); };
+    document.getElementById('navTentang').onclick = function(){ gulirKe('sec-profil', 'sec-tentang'); };
+    document.getElementById('navProgram').onclick = function(){ gulirKe('sec-tentang'); };
+    document.getElementById('navPPDB').onclick = function(){ gulirKe('sec-ppdb'); };
+    document.getElementById('navBerita').onclick = function(){ gulirKe('sec-berita'); };
+    document.getElementById('navKontak').onclick = function(){ gulirKe('sec-kontak'); };
+    document.getElementById('btnHeroCta').onclick = function(){ gulirKe('sec-berita'); };
+    var btnHeroPpdb = document.getElementById('btnHeroPpdb');
+    if (btnHeroPpdb) btnHeroPpdb.onclick = function(){ gulirKe('sec-ppdb'); };
+
+    // --- Jendela "Layanan Informasi" ---
+    var pop = document.getElementById('bvInfoPop');
+    function tutupInfoPop(simpan){
+      if (!pop || pop.hidden) return;
+      pop.hidden = true;
+      if (simpan === false) return;
+      var st = bacaSambutanInfo();
+      var cek = document.getElementById('bvJanganLagi');
+      if (cek && cek.checked) st.jangan = true; else st.ditutup = Date.now();
+      tulisSambutanInfo(st);
+    }
+    if (pop) {
+      var titik = document.getElementById('bvWaTitik');
+      var bukaInfoPop = function(){ pop.hidden = false; if (titik) titik.hidden = true; };
+      document.getElementById('bvWaFloat').onclick = function(){ if (pop.hidden) bukaInfoPop(); else tutupInfoPop(); };
+      document.getElementById('bvTutupPop').onclick = function(){ tutupInfoPop(); };
+      // Memilih topik / Hubungi Admin dianggap sudah dilayani: jendela ditutup.
+      pop.querySelectorAll('.topik a, #bvHubungiAdmin').forEach(function(a){
+        a.addEventListener('click', function(){ setTimeout(function(){ tutupInfoPop(); }, 50); });
+      });
+      // Muncul sendiri HANYA untuk pengunjung baru (belum pernah login di HP ini, bukan
+      // dari aplikasi terpasang, belum memilih "Jangan tampilkan lagi", dan tidak ditutup
+      // dalam 7 hari terakhir). Tidak muncul kalau halaman dibuka untuk langsung login.
+      var modePratinjau = /[?&]preview=beranda(&|$)/.test(location.search);
+      if (!bukaLoginOtomatis && sambutanBolehOtomatis(modePratinjau)) {
+        if (titik) titik.hidden = false;
+        setTimeout(function(){
+          var drawer = document.getElementById('loginDrawer');
+          if (!document.body.contains(pop) || (drawer && drawer.classList.contains('show'))) return;
+          if (pop.hidden) bukaInfoPop();
+        }, 2000);
+      }
+    }
     aktifkanAnimasiScroll();
 
     api('getArtikelList', {hanyaPublished:true}).then(function(res){
       var wrap = document.getElementById('berandaArtikelWrap');
       if (!wrap) return;
-      if(!res.ok || !res.data.length){ wrap.innerHTML = '<p class="muted" style="text-align:center;grid-column:1/-1">Belum ada berita.</p>'; return; }
+      if(!res.ok || !res.data.length){ wrap.innerHTML = '<p class="bv-kosong">Belum ada berita.</p>'; return; }
       wrap.innerHTML = res.data.map(function(a,i){
-        var gambarHtml = a.gambar ? '<img src="'+esc(a.gambar)+'" loading="lazy">' : '<div style="height:150px;background:#e2e8f0"></div>';
+        var gambarHtml = a.gambar ? '<img class="foto" src="'+esc(a.gambar)+'" alt="" loading="lazy">' : '<div class="foto"></div>';
         var excerpt = (a.konten||'').replace(/\s+/g,' ').trim();
-        if (excerpt.length > 80) excerpt = excerpt.substring(0,80) + '...';
-        return '<div class="artikel-card" data-i="'+i+'">'+gambarHtml+'<div class="artikel-card-body"><span class="artikel-card-kat">'+esc(a.kategori)+'</span><h4>'+esc(a.judul)+'</h4><p>'+esc(excerpt)+'</p></div></div>';
+        if (excerpt.length > 90) excerpt = excerpt.substring(0,90) + '...';
+        return '<div class="bv-artikel reveal" data-i="'+i+'">'+gambarHtml+'<div class="badan">' +
+          (a.kategori ? '<span class="kat">'+esc(a.kategori)+'</span>' : '') +
+          '<h4>'+esc(a.judul)+'</h4>' + (excerpt ? '<p>'+esc(excerpt)+'</p>' : '') +
+          (a.tanggalPublish ? '<span class="tgl">'+esc(a.tanggalPublish)+'</span>' : '') +
+        '</div></div>';
       }).join('');
-      wrap.querySelectorAll('.artikel-card').forEach(function(el){
+      wrap.querySelectorAll('.bv-artikel').forEach(function(el){
         el.onclick = function(){ bukaDetailArtikel(res.data[Number(el.dataset.i)]); };
       });
+      aktifkanAnimasiScroll();
     });
 
     api('getFiturBerandaList', {}).then(function(res){
       var wrapProgram = document.getElementById('berandaProgramWrap');
       var wrapFasilitas = document.getElementById('berandaFasilitasWrap');
+      var kosongGelap = function(t){ return '<p class="bv-kosong" style="padding:20px;background:var(--navy-tua)">'+t+'</p>'; };
       if (!res.ok || !res.data.length) {
-        if (wrapProgram) wrapProgram.innerHTML = '<p class="muted" style="text-align:center;grid-column:1/-1">Belum diatur.</p>';
-        if (wrapFasilitas) wrapFasilitas.innerHTML = '<p class="muted" style="text-align:center;grid-column:1/-1">Belum diatur.</p>';
+        if (wrapProgram) wrapProgram.innerHTML = kosongGelap('Belum diatur.');
+        if (wrapFasilitas) wrapFasilitas.innerHTML = '<p class="bv-kosong">Belum diatur.</p>';
         return;
       }
       var program = res.data.filter(function(f){ return f.kategori === 'Program'; });
       var fasilitas = res.data.filter(function(f){ return f.kategori === 'Fasilitas'; });
       var galeri = res.data.filter(function(f){ return f.kategori === 'Galeri' && f.gambar; });
-      if (wrapProgram) wrapProgram.innerHTML = program.length ? program.map(kartuFitur).join('') : '<p class="muted" style="text-align:center;grid-column:1/-1">Belum ada.</p>';
-      if (wrapFasilitas) wrapFasilitas.innerHTML = fasilitas.length ? fasilitas.map(kartuFitur).join('') : '<p class="muted" style="text-align:center;grid-column:1/-1">Belum ada.</p>';
+      if (wrapProgram) wrapProgram.innerHTML = program.length ? program.map(function(f){
+        return '<div class="bv-program reveal"><div class="bv-ikon">'+(f.gambar ? '<img src="'+esc(f.gambar)+'" alt="" loading="lazy">' : '&#128214;')+'</div>' +
+          '<div><h4>'+esc(f.judul)+'</h4>'+(f.deskripsi ? '<p>'+esc(f.deskripsi)+'</p>' : '')+'</div></div>';
+      }).join('') : kosongGelap('Belum ada.');
+      if (wrapFasilitas) wrapFasilitas.innerHTML = fasilitas.length ? fasilitas.map(function(f){
+        return '<div class="bv-fasilitas reveal">' +
+          (f.gambar ? '<img class="foto" src="'+esc(f.gambar)+'" alt="" loading="lazy">' : '<div class="foto-kosong">&#127968;</div>') +
+          '<div class="badan"><h4>'+esc(f.judul)+'</h4>'+(f.deskripsi ? '<p>'+esc(f.deskripsi)+'</p>' : '')+'</div></div>';
+      }).join('') : '<p class="bv-kosong">Belum ada.</p>';
 
       // Galeri: seluruh bagian disembunyikan kalau Admin belum mengisi foto apa pun,
       // supaya halaman depan tidak menampilkan kotak kosong.
@@ -2427,10 +2824,10 @@
         if (galeri.length) {
           secGaleri.style.display = '';
           wrapGaleri.innerHTML = galeri.map(function(g, i){
-            return '<div class="galeri-item reveal" data-i="'+i+'"><img src="'+esc(g.gambar)+'" alt="'+esc(g.judul)+'" loading="lazy">' +
+            return '<div class="bv-galeri reveal" data-i="'+i+'"><img src="'+esc(g.gambar)+'" alt="'+esc(g.judul)+'" loading="lazy">' +
               (g.judul ? '<div class="cap">'+esc(g.judul)+'</div>' : '') + '</div>';
           }).join('');
-          wrapGaleri.querySelectorAll('.galeri-item').forEach(function(el){
+          wrapGaleri.querySelectorAll('.bv-galeri').forEach(function(el){
             el.onclick = function(){ var g = galeri[Number(el.dataset.i)]; bukaLightboxGaleri(g.gambar, g.judul); };
           });
         } else {
@@ -2465,7 +2862,7 @@
     var subjudul = modeKhusus === 'kantin' ? 'Khusus Pemilik Barang -- masukkan No WA & PIN Anda' : esc(STATE.pengaturan.NamaPesantren);
     drawer.innerHTML = '<button class="login-drawer-close" id="tutupLoginDrawer">&times;</button>' +
       (logo?'<img src="'+esc(logo)+'" style="height:54px;width:54px;object-fit:contain;margin-bottom:10px">':'') +
-      '<h3 style="color:#0f766e">'+esc(judul)+'</h3><p class="muted" style="margin-top:-8px">'+subjudul+'</p>' +
+      '<h3 style="color:var(--tema-dark,#0f766e)">'+esc(judul)+'</h3><p class="muted" style="margin-top:-8px">'+subjudul+'</p>' +
       (errMsg? errBox(errMsg) : '') +
       '<label>Nama / No WA</label><input id="loginId" placeholder="Nama atau No WA">' +
       '<label>PIN</label><input id="loginPin" type="password" placeholder="PIN">' +
@@ -2537,6 +2934,7 @@
       {key:'inputnilai',      label:'Input Nilai',         icon:'&#9999;&#65039;'},
       {key:'riwayatnilai',    label:'Riwayat Nilai',       icon:'&#128202;'},
       {key:'rekapnilai',      label:'Rekap Nilai Rapor',   icon:'&#128196;'},
+      {key:'rekapsantriguru', label:'Rekap Per Santri',    icon:'&#128209;'},
       {key:'raporkelassaya',  label:'Rapor Santri',        icon:'&#128203;'},
       {key:'pelanggaran',     label:'Catat Pelanggaran',   icon:'&#9888;&#65039;'},
       {key:'modulajar',       label:'Modul Ajar & RPP',    icon:'&#128218;'},
@@ -2626,7 +3024,7 @@
       // Guru
       jadwal:guruJadwal, jammengajar:guruJamMengajar, izinsaya:guruIzinSaya, riwayatabsen:guruRiwayat, rekapabsen:guruRekapAbsensi,
       hafalan:guruIsiHafalan, riwayathafalan:guruRiwayatHafalan, progresshafalan:function(){ renderRekapProgressHafalan({pengampu:STATE.user.nama}); },
-      inputnilai:guruInputNilai, riwayatnilai:guruRiwayatNilai, rekapnilai:guruRekapNilaiRapor,
+      inputnilai:guruInputNilai, riwayatnilai:guruRiwayatNilai, rekapnilai:guruRekapNilaiRapor, rekapsantriguru:guruRekapPerSantri,
       raporkelassaya:guruRaporKelas,
       pelanggaran:guruCatatPelanggaran, santrisaya:guruSantriSaya, profilsaya:guruProfilSaya,
       modulajar:guruModulAjar, riwayatjurnal:guruRiwayatJurnal, sop:guruSOP,
@@ -2677,6 +3075,8 @@
       kabag_asrama_putri: function(){ kabagKondisiAsrama('Putri'); },
       kabag_rekap_putra:  function(){ pembinaRekapHarian('Putra'); },
       kabag_rekap_putri:  function(){ pembinaRekapHarian('Putri'); },
+      kabag_tugas_putra:  function(){ adminRekapTugasPembina('Putra'); },
+      kabag_tugas_putri:  function(){ adminRekapTugasPembina('Putri'); },
       // Admin/Mudir (kalau multi-role)
       adminpenuh:function(){ dashboardAdmin(); },
       raporkelas:adminRaporKelas, kelompokpapel:adminKelompokMapel,
@@ -2715,6 +3115,7 @@
     MENU_PER_ROLE['Kabag'+g] = [
       {key:'kabag_asrama_'+g.toLowerCase(), label:'Kondisi Asrama '+g, icon:'&#127969;'},
       {key:'kabag_rekap_'+g.toLowerCase(),  label:'Rekap Absensi Harian', icon:'&#128202;'},
+      {key:'kabag_tugas_'+g.toLowerCase(),  label:'Rekap Tugas Pembina '+g, icon:'&#9989;'},
       {judul:'Menu Guru'}
     ].concat(MENU_PER_ROLE['Guru'] || []);
   });
@@ -4756,6 +5157,7 @@
       {key:'inputnilai', label:'Input Nilai', icon:'&#9999;&#65039;'},
       {key:'riwayatnilai', label:'Riwayat Nilai', icon:'&#128202;'},
       {key:'rekapnilai', label:'Rekap Nilai Rapor', icon:'&#128196;'},
+      {key:'rekapsantriguru', label:'Rekap Per Santri', icon:'&#128209;'},
       {key:'pelanggaran', label:'Catat Pelanggaran', icon:'&#9888;&#65039;'},
       {key:'modulajar', label:'Modul Ajar & RPP', icon:'&#128218;'},
       {key:'riwayatjurnal', label:'Riwayat Jurnal', icon:'&#128221;'},
@@ -4766,7 +5168,7 @@
     var map = {
       jadwal:guruJadwal, jammengajar:guruJamMengajar, izinsaya:guruIzinSaya, riwayatabsen:guruRiwayat, rekapabsen:guruRekapAbsensi,
       hafalan:guruIsiHafalan, riwayathafalan:guruRiwayatHafalan, progresshafalan:function(){ renderRekapProgressHafalan({pengampu:STATE.user.nama}); },
-      inputnilai:guruInputNilai, riwayatnilai:guruRiwayatNilai, rekapnilai:guruRekapNilaiRapor,
+      inputnilai:guruInputNilai, riwayatnilai:guruRiwayatNilai, rekapnilai:guruRekapNilaiRapor, rekapsantriguru:guruRekapPerSantri,
       pelanggaran:guruCatatPelanggaran, santrisaya:guruSantriSaya, profilsaya:guruProfilSaya,
       modulajar:guruModulAjar, riwayatjurnal:guruRiwayatJurnal, sop:guruSOP
     };
@@ -6228,16 +6630,32 @@
       api('getHalaqohGuru', {pengampu: STATE.user.nama, waktu: waktu}).then(function(res){
         if(!res.ok){ document.getElementById('pilihHalaqohWrap').innerHTML = errBox(res.error); return; }
         if(!res.data.length){ document.getElementById('pilihHalaqohWrap').innerHTML = warnBox('Anda tidak memiliki halaqoh pada waktu "'+waktu+'". Hubungi Admin untuk diatur di menu Kelola Halaqoh.'); document.getElementById('formHafalanWrap').innerHTML=''; return; }
+        // Keterangan peran (utama/pengganti) & status sesi hari ini
+        var infoHalaqoh = function(h){
+          var t = '';
+          if (h.pengganti) t += warnBox('Anda mengisi halaqoh ini sebagai PENGGANTI dari '+esc(h.guruAsli)+' (khusus hari ini).');
+          else if (h.peranSaya === 'pengganti') t += warnBox('Anda tercatat sebagai GURU PENGGANTI halaqoh '+esc(h.namaHalaqoh)+' (pengampu utama: '+esc(h.pengampuUtama)+'). Siapa yang lebih dulu mengisi, dialah yang tercatat mengajar sesi ini.');
+          if (h.sudahDiisiOleh && !h.diisiSendiri && tanggalDipilih === todayStr()) t += errBox('Sesi '+esc(waktu)+' hari ini SUDAH DIISI oleh '+esc(h.sudahDiisiOleh)+'. Anda tidak bisa mengisi lagi pada sesi ini.');
+          return t;
+        };
         if(res.data.length === 1){
           var satuSatunya = res.data[0];
-          document.getElementById('pilihHalaqohWrap').innerHTML = satuSatunya.pengganti ? warnBox('Anda mengisi halaqoh ini sebagai PENGGANTI dari '+satuSatunya.guruAsli+' (khusus hari ini).') : '';
+          document.getElementById('pilihHalaqohWrap').innerHTML = infoHalaqoh(satuSatunya);
           muatFormHafalan(satuSatunya.namaHalaqoh, waktu, tanggalDipilih);
           return;
         }
-        var html = '<label>Pilih Halaqoh</label><select id="pilihHalaqoh">' + res.data.map(function(h){return '<option value="'+esc(h.namaHalaqoh)+'">'+esc(h.namaHalaqoh)+(h.pengganti?(' (Menggantikan: '+esc(h.guruAsli)+')'):'')+'</option>';}).join('') + '</select>' +
+        var html = '<label>Pilih Halaqoh</label><select id="pilihHalaqoh">' + res.data.map(function(h){return '<option value="'+esc(h.namaHalaqoh)+'">'+esc(h.namaHalaqoh)+(h.pengganti?(' (Menggantikan: '+esc(h.guruAsli)+')'):(h.peranSaya==='pengganti'?' (sebagai pengganti)':''))+(h.sudahDiisiOleh && !h.diisiSendiri ? ' — sudah diisi '+esc(h.sudahDiisiOleh) : '')+'</option>';}).join('') + '</select>' +
           '<button id="btnLanjutHalaqoh" class="small">Lanjut</button>';
         document.getElementById('pilihHalaqohWrap').innerHTML = html;
-        document.getElementById('btnLanjutHalaqoh').onclick = function(){ muatFormHafalan(document.getElementById('pilihHalaqoh').value, waktu, tanggalDipilih); };
+        document.getElementById('btnLanjutHalaqoh').onclick = function(){
+          var dipilih = document.getElementById('pilihHalaqoh').value;
+          var h = res.data.find(function(x){ return x.namaHalaqoh === dipilih; });
+          var info = h ? infoHalaqoh(h) : '';
+          var wrapInfo = document.getElementById('infoHalaqohDipilih');
+          if (!wrapInfo) { wrapInfo = document.createElement('div'); wrapInfo.id = 'infoHalaqohDipilih'; document.getElementById('pilihHalaqohWrap').appendChild(wrapInfo); }
+          wrapInfo.innerHTML = info;
+          muatFormHafalan(dipilih, waktu, tanggalDipilih);
+        };
       });
     };
   }
@@ -7182,7 +7600,7 @@
     var c = getContentEl();
     c.innerHTML = '<p>Memuat...</p>';
     Promise.all([api('getHalaqohList', {}), api('getSemuaSantri', {})]).then(function(hasil){
-      var daftarHalaqoh = hasil[0].ok ? hasil[0].data.filter(function(h){return h.pengampuList && h.pengampuList.indexOf(STATE.user.nama)!==-1;}).map(function(h){return h.namaHalaqoh;}) : [];
+      var daftarHalaqoh = hasil[0].ok ? hasil[0].data.filter(function(h){return h.pengampuList && h.pengampuList.some(function(x){ return normNamaFE(x) === normNamaFE(STATE.user.nama); });}).map(function(h){return h.namaHalaqoh;}) : [];
       var daftarSantri = hasil[1].ok ? hasil[1].data : [];
       c.innerHTML = '<div class="card"><div class="grid2">' +
         '<div>' + fieldAutocomplete('filHalaqoh','Filter Halaqoh', daftarHalaqoh, '', 'kosongkan utk semua') + '</div>' +
@@ -7318,6 +7736,175 @@
         raporSemuaSantriKelas(kelas);
       };
     });
+  }
+
+
+  // ================= REKAP PER SANTRI (absensi + nilai, per mapel) =================
+  // Guru memilih mapel-kelas (atau semua) dan santri (atau semua). Bisa diunduh Excel
+  // dan dicetak / disimpan sebagai PDF.
+  function guruRekapPerSantri(){
+    var c = getContentEl();
+    var daftarSantri = [], mapelList = [], lastRes = null, lastLabel = {};
+    c.innerHTML = '<div class="card"><h3>&#128209; Rekap Per Santri</h3>' +
+      '<p class="muted" style="font-size:12.5px;margin-top:-4px">Kehadiran &amp; nilai santri di mata pelajaran yang Anda ampu. Absensi mengikuti rentang tanggal; nilai diambil dari seluruh semester aktif.</p>' +
+      '<div class="grid2">' +
+        '<div><label>Mata Pelajaran</label><select id="rpsMapel"><option value="">-- Semua mapel saya --</option></select></div>' +
+        '<div><label>Santri</label><select id="rpsSantri"><option value="">-- Semua santri --</option></select></div>' +
+      '</div>' +
+      '<div class="grid2">' +
+        '<div><label>Absensi dari tanggal (opsional)</label><input type="date" id="rpsDari"></div>' +
+        '<div><label>Sampai tanggal</label><input type="date" id="rpsSampai" value="'+todayStr()+'"></div>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">' +
+        '<button id="rpsTampil">Tampilkan</button>' +
+        '<button class="secondary" id="rpsExcel">&#128196; Unduh Excel</button>' +
+        '<button class="secondary" id="rpsPdf">&#128424; Cetak / PDF</button>' +
+      '</div></div><div id="rpsHasil"><p class="muted">Memuat...</p></div>';
+
+    function nilaiAtauStrip(v){ return (v === null || v === undefined || v === '') ? '-' : v; }
+    function filterDipilih(){
+      var mk = document.getElementById('rpsMapel').value;
+      var mp = mk ? mapelList[Number(mk)] : null;
+      return {mapel: mp ? mp.mapel : '', kelas: mp ? mp.kelas : '', nisn: document.getElementById('rpsSantri').value,
+        dari: document.getElementById('rpsDari').value, sampai: document.getElementById('rpsSampai').value};
+    }
+    function isiDropdownSantri(santri, terpilih){
+      var sel = document.getElementById('rpsSantri'); if (!sel) return;
+      sel.innerHTML = '<option value="">-- Semua santri --</option>' + santri.map(function(x){
+        return '<option value="'+esc(x.nisn)+'"'+(x.nisn===terpilih?' selected':'')+'>'+esc(x.nama)+(x.kelas?' ('+esc(x.kelas)+')':'')+'</option>';
+      }).join('');
+    }
+
+    function muat(){
+      var f = filterDipilih();
+      var el = document.getElementById('rpsHasil');
+      el.innerHTML = '<p class="muted">Memuat rekap...</p>';
+      api('getRekapSantriGuru', {pengampu: STATE.user.nama, mapel: f.mapel, kelas: f.kelas, nisn: f.nisn, tglMulai: f.dari, tglAkhir: f.sampai}).then(function(res){
+        if (!document.getElementById('rpsHasil')) return;
+        if (!res.ok) { el.innerHTML = errBox(res.error); return; }
+        if (!mapelList.length && res.mapelList) {
+          mapelList = res.mapelList;
+          document.getElementById('rpsMapel').innerHTML = '<option value="">-- Semua mapel saya --</option>' +
+            mapelList.map(function(m,i){ return '<option value="'+i+'">'+esc(m.mapel)+' - '+esc(m.kelas)+'</option>'; }).join('');
+        }
+        if (!f.nisn) { daftarSantri = res.santri.map(function(x){ return {nisn:x.nisn, nama:x.nama, kelas:x.kelas}; }); isiDropdownSantri(daftarSantri, ''); }
+        lastRes = res; lastLabel = f;
+        if (!res.santri.length) { el.innerHTML = '<div class="card"><p class="muted">Belum ada data untuk pilihan ini.</p></div>'; return; }
+        el.innerHTML = f.nisn ? htmlSatuSantri(res.santri[0]) : htmlSemuaSantri(res.santri);
+        el.querySelectorAll('.rpsBuka').forEach(function(a){
+          a.onclick = function(){ document.getElementById('rpsSantri').value = a.dataset.nisn; muat(); };
+        });
+      }).catch(function(){ el.innerHTML = errBox('Gagal memuat. Periksa koneksi lalu coba lagi.'); });
+    }
+
+    function barisRingkas(){
+      var baris = [];
+      (lastRes ? lastRes.santri : []).forEach(function(s){
+        s.perMapel.forEach(function(m){
+          baris.push({nisn:s.nisn, nama:s.nama, kelas:m.kelas || s.kelas, mapel:m.mapel, h:m.hadir, s:m.sakit, i:m.izin, a:m.alpa, total:m.total,
+            persen:m.persen, tugas:m.rataTugas, jmlTugas:m.tugas.length, uts:m.uts, uas:m.uas, ket:m.rataKeterampilan, npr:m.npr});
+        });
+      });
+      return baris;
+    }
+
+    function htmlSemuaSantri(){
+      var baris = barisRingkas();
+      return '<div class="card" style="overflow-x:auto"><p style="margin:0 0 6px;font-size:12.5px">'+baris.length+' baris &middot; klik nama santri untuk rinciannya</p>' +
+        '<table style="font-size:12.5px"><tr><th>No</th><th>Nama Santri</th><th>Kelas</th><th>Mapel</th><th style="color:#16a34a">H</th><th style="color:#d97706">S</th><th style="color:#2563eb">I</th><th style="color:#dc2626">A</th><th>% Hadir</th><th>Rata Tugas</th><th>UTS</th><th>UAS</th><th>Ket.</th><th>NPR*</th></tr>' +
+        baris.map(function(b,i){
+          var warna = b.persen===null ? '#64748b' : b.persen>=80 ? '#16a34a' : b.persen>=60 ? '#d97706' : '#dc2626';
+          return '<tr><td>'+(i+1)+'</td><td><a href="#" class="rpsBuka" data-nisn="'+esc(b.nisn)+'" onclick="return false"><b>'+esc(b.nama)+'</b></a></td><td>'+esc(b.kelas)+'</td><td>'+esc(b.mapel)+'</td>' +
+            '<td>'+b.h+'</td><td>'+b.s+'</td><td>'+b.i+'</td><td style="color:#dc2626;font-weight:'+(b.a?'700':'400')+'">'+b.a+'</td>' +
+            '<td><b style="color:'+warna+'">'+(b.persen===null?'-':b.persen+'%')+'</b></td><td>'+nilaiAtauStrip(b.tugas)+'</td><td>'+nilaiAtauStrip(b.uts)+'</td><td>'+nilaiAtauStrip(b.uas)+'</td><td>'+nilaiAtauStrip(b.ket)+'</td><td><b>'+b.npr+'</b></td></tr>';
+        }).join('') + '</table>' +
+        '<p class="muted" style="font-size:11.5px;margin:6px 0 0">* NPR = perkiraan Nilai Pengetahuan Rapor: Rata Tugas&times;35% + UTS&times;25% + UAS&times;30% + Kehadiran&times;10%.</p></div>';
+    }
+
+    function htmlSatuSantri(s){
+      var html = '<div class="card"><h3 style="margin:0">'+esc(s.nama)+'</h3><p class="muted" style="margin:2px 0 0">NISN '+esc(s.nisn)+(s.kelas?' &middot; Kelas '+esc(s.kelas):'')+'</p></div>';
+      if (!s.perMapel.length) return html + '<div class="card"><p class="muted">Belum ada data.</p></div>';
+      s.perMapel.forEach(function(m){
+        html += '<div class="card"><h4 style="margin:0 0 8px">'+esc(m.mapel)+' &middot; '+esc(m.kelas)+'</h4>' +
+          '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:13px;margin-bottom:8px">' +
+            '<span>Hadir <b style="color:#16a34a">'+m.hadir+'</b></span><span>Sakit <b style="color:#d97706">'+m.sakit+'</b></span><span>Izin <b style="color:#2563eb">'+m.izin+'</b></span><span>Alpa <b style="color:#dc2626">'+m.alpa+'</b></span>' +
+            '<span>Kehadiran <b>'+(m.persen===null?'-':m.persen+'%')+'</b></span>' +
+            '<span>Rata Tugas <b>'+nilaiAtauStrip(m.rataTugas)+'</b></span><span>UTS <b>'+nilaiAtauStrip(m.uts)+'</b></span><span>UAS <b>'+nilaiAtauStrip(m.uas)+'</b></span>' +
+            '<span>Keterampilan <b>'+nilaiAtauStrip(m.rataKeterampilan)+'</b></span><span>NPR* <b>'+m.npr+'</b></span>' +
+          '</div>' +
+          '<div class="grid2"><div style="overflow-x:auto"><b style="font-size:12.5px">Absensi</b>' +
+            (m.detailAbsen.length ? '<table style="font-size:12px"><tr><th>Tanggal</th><th>Jam</th><th>Status</th><th>Ket.</th></tr>' +
+              m.detailAbsen.map(function(d){ return '<tr><td>'+esc(d.tanggal)+'</td><td>'+esc(d.jamKe)+'</td><td><span class="badge '+esc(d.status)+'">'+esc(d.status)+'</span></td><td>'+esc(d.keterangan||'')+'</td></tr>'; }).join('') + '</table>'
+              : '<p class="muted" style="font-size:12px">Belum ada absensi pada rentang ini.</p>') +
+          '</div><div style="overflow-x:auto"><b style="font-size:12.5px">Nilai</b>' +
+            (m.detailNilai.length ? '<table style="font-size:12px"><tr><th>Tanggal</th><th>Jenis</th><th>Nilai</th></tr>' +
+              m.detailNilai.map(function(d){ return '<tr><td>'+esc(d.tanggal)+'</td><td>'+esc(d.jenis)+'</td><td><b>'+esc(d.nilai)+'</b></td></tr>'; }).join('') + '</table>'
+              : '<p class="muted" style="font-size:12px">Belum ada nilai.</p>') +
+          '</div></div></div>';
+      });
+      return html + '<p class="muted" style="font-size:11.5px">* NPR = perkiraan Nilai Pengetahuan Rapor: Rata Tugas&times;35% + UTS&times;25% + UAS&times;30% + Kehadiran&times;10%.</p>';
+    }
+
+    function judulFile(){
+      var bag = ['Rekap'];
+      if (lastLabel.nisn && lastRes && lastRes.santri[0]) bag.push(lastRes.santri[0].nama);
+      if (lastLabel.mapel) bag.push(lastLabel.mapel + ' ' + lastLabel.kelas);
+      return bag.join(' - ').replace(/[\\\/:*?"<>|]/g, '');
+    }
+    function teksPeriode(){
+      return (lastLabel.dari ? lastLabel.dari : 'awal semester') + ' s/d ' + (lastLabel.sampai || todayStr());
+    }
+
+    document.getElementById('rpsExcel').onclick = function(){
+      if (!lastRes || !lastRes.santri.length) { alert('Tampilkan rekapnya dulu.'); return; }
+      if (typeof XLSX === 'undefined') { alert('Modul Excel belum termuat. Periksa koneksi lalu muat ulang halaman.'); return; }
+      var wb = XLSX.utils.book_new();
+      var kepala = [['REKAP ABSENSI & NILAI SANTRI'], ['Guru: ' + STATE.user.nama], ['Periode absensi: ' + teksPeriode() + ' (nilai: seluruh semester)'], []];
+      var ringkas = kepala.concat([['No','NISN','Nama Santri','Kelas','Mata Pelajaran','Hadir','Sakit','Izin','Alpa','Total Pertemuan','% Hadir','Rata Tugas','Jumlah Tugas','UTS','UAS','Rata Keterampilan','NPR (perkiraan)']])
+        .concat(barisRingkas().map(function(b,i){
+          var v = function(x){ return (x === null || x === undefined) ? '' : x; };
+          return [i+1, b.nisn, b.nama, b.kelas, b.mapel, b.h, b.s, b.i, b.a, b.total, v(b.persen), v(b.tugas), b.jmlTugas, v(b.uts), v(b.uas), v(b.ket), b.npr];
+        }));
+      var ws = XLSX.utils.aoa_to_sheet(ringkas);
+      ws['!cols'] = [{wch:4},{wch:14},{wch:26},{wch:8},{wch:20},{wch:6},{wch:6},{wch:6},{wch:6},{wch:9},{wch:8},{wch:9},{wch:8},{wch:6},{wch:6},{wch:10},{wch:9}];
+      XLSX.utils.book_append_sheet(wb, ws, 'Rekap');
+      if (lastLabel.nisn && lastRes.santri[0]) {
+        var s = lastRes.santri[0];
+        var abs = [['Mata Pelajaran','Kelas','Tanggal','Jam Ke','Status','Keterangan']];
+        var nil = [['Mata Pelajaran','Kelas','Tanggal','Jenis','Nilai']];
+        s.perMapel.forEach(function(m){
+          (m.detailAbsen||[]).forEach(function(d){ abs.push([m.mapel, m.kelas, d.tanggal, d.jamKe, d.status, d.keterangan||'']); });
+          (m.detailNilai||[]).forEach(function(d){ nil.push([m.mapel, m.kelas, d.tanggal, d.jenis, d.nilai]); });
+        });
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(abs), 'Rincian Absensi');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(nil), 'Rincian Nilai');
+      }
+      XLSX.writeFile(wb, judulFile() + '.xlsx');
+    };
+
+    document.getElementById('rpsPdf').onclick = function(){
+      if (!lastRes || !lastRes.santri.length) { alert('Tampilkan rekapnya dulu.'); return; }
+      var namaSekolah = (STATE.pengaturan && STATE.pengaturan.NamaPesantren) || 'Pondok Pesantren';
+      var isi = lastLabel.nisn ? htmlSatuSantri(lastRes.santri[0]) : htmlSemuaSantri();
+      var win = window.open('', '_blank');
+      if (!win) { alert('Jendela cetak diblokir browser. Izinkan pop-up untuk aplikasi ini lalu coba lagi.'); return; }
+      win.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+esc(judulFile())+'</title>' +
+        '<style>body{font-family:Arial,sans-serif;margin:14px;font-size:11px;color:#111}h2{text-align:center;margin:0 0 2px;font-size:15px}' +
+        '.sub{text-align:center;margin:0 0 10px}table{border-collapse:collapse;width:100%;margin:4px 0 8px}td,th{border:1px solid #888;padding:3px 5px;text-align:left}' +
+        'th{background:#eee}.card{border:1px solid #ccc;border-radius:6px;padding:8px;margin-bottom:8px;page-break-inside:avoid}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}' +
+        'a{color:#111;text-decoration:none}.muted{color:#555}.badge{font-weight:600}' +
+        '.catatan{margin-top:6px;color:#555}@media print{@page{size:A4 '+(lastLabel.nisn?'portrait':'landscape')+';margin:10mm}.noprint{display:none}}</style></head><body>' +
+        '<div class="noprint" style="background:#fef9c3;border:1px solid #fde68a;padding:8px;margin-bottom:10px;border-radius:6px">Untuk menyimpan sebagai PDF: pilih <b>Simpan sebagai PDF</b> / <b>Save as PDF</b> pada tujuan printer. <button onclick="window.print()">Cetak / Simpan PDF</button></div>' +
+        '<h2>REKAP ABSENSI &amp; NILAI SANTRI</h2><p class="sub">'+esc(namaSekolah)+'<br>Guru: <b>'+esc(STATE.user.nama)+'</b>' +
+        (lastLabel.mapel ? ' &middot; Mapel: '+esc(lastLabel.mapel)+' '+esc(lastLabel.kelas) : '') + ' &middot; Absensi: '+esc(teksPeriode())+' (nilai: seluruh semester)</p>' +
+        isi + '<script>setTimeout(function(){window.print();},500);<\/script></body></html>');
+      win.document.close();
+    };
+
+    document.getElementById('rpsTampil').onclick = muat;
+    document.getElementById('rpsMapel').onchange = function(){ document.getElementById('rpsSantri').value = ''; muat(); };
+    document.getElementById('rpsSantri').onchange = muat;
+    muat();
   }
 
   function guruRekapNilaiRapor(){
@@ -9704,10 +10291,35 @@
     buka(activeKey);
   }
 
+  // ---- Daftar santri untuk kasir: dimuat di latar & disimpan sementara ----
+  var _santriKasir = null, _santriKasirJanji = null, _santriKasirWaktu = 0;
+  function segarkanSantriKasir(){
+    _santriKasirJanji = api('getSantriUntukTransaksiKantin', {}).then(function(res){
+      if (res && res.ok) {
+        if (_santriKasir) { _santriKasir.length = 0; Array.prototype.push.apply(_santriKasir, res.data); } // perbarui di tempat
+        else _santriKasir = res.data;
+        _santriKasirWaktu = Date.now();
+      }
+      _santriKasirJanji = null;
+      return res;
+    }, function(err){ _santriKasirJanji = null; throw err; });
+    return _santriKasirJanji;
+  }
+  function ambilSantriKasir(){
+    // Data < 10 menit: pakai langsung (sambil diperbarui di latar bila > 1 menit)
+    if (_santriKasir && Date.now() - _santriKasirWaktu < 10*60*1000) {
+      if (Date.now() - _santriKasirWaktu > 60*1000 && !_santriKasirJanji) segarkanSantriKasir().catch(function(){});
+      return Promise.resolve({ok:true, data:_santriKasir});
+    }
+    return _santriKasirJanji || segarkanSantriKasir();
+  }
+
   function pemilikKasir(){
     var c = getContentEl();
     c.innerHTML = '<p>Memuat menu...</p>';
     kantinCart = [];
+    // Mulai muat daftar santri di latar, berbarengan dengan daftar barang
+    if (!_santriKasirJanji && (!_santriKasir || Date.now() - _santriKasirWaktu > 60*1000)) segarkanSantriKasir().catch(function(){});
     api('getBarangSaya', {pemilik: STATE.user.nama}).then(function(res){
       if(!res.ok){ c.innerHTML = errBox(res.error); return; }
       var tombolCekSantri = '<div class="card"><button class="secondary" id="btnCekAkunSantri">&#128100; Cek Akun Santri</button>' +
@@ -9792,45 +10404,98 @@
       document.getElementById('btnBayarKantin').onclick = function(){
         if (!kantinCart.length) return;
         var totalBelanja = kantinCart.reduce(function(s,it){return s+(it.harga*it.jumlah);},0);
-        api('getSantriUntukTransaksiKantin', {}).then(function(resSantri){
+        // Daftar santri sudah dimuat di latar sejak halaman kasir dibuka, jadi jendela
+        // pembayaran langsung terbuka tanpa menunggu server. Saldo tetap diperiksa ulang
+        // oleh server saat pembayaran diproses.
+        ambilSantriKasir().then(function(resSantri){
           if(!resSantri.ok){ alert(resSantri.error); return; }
           var daftarSantri = resSantri.data;
+          // Cara bayar yang diizinkan Admin/Mudir (default: NISN/QR + PIN seperti semula)
+          var LABEL_METODE = {nisn_pin:'NISN / QR + PIN', nama_pin:'Pilih Nama + PIN', cepat:'Pilih Nama (tanpa PIN)'};
+          var izin = String(STATE.pengaturan.KasirModeIzin || '').split(',').map(function(x){ return x.trim(); })
+            .filter(function(x){ return LABEL_METODE[x]; });
+          if (!izin.length) izin = ['nisn_pin'];
+          var metode = '';
+          try { metode = localStorage.getItem('wasiatMetodeKasir') || ''; } catch(e){}
+          if (izin.indexOf(metode) === -1) metode = izin.indexOf(STATE.pengaturan.KasirModeDefault) !== -1 ? STATE.pengaturan.KasirModeDefault : izin[0];
+
           var fieldsHtml =
             '<div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:9px 12px;font-size:13.5px;margin-bottom:10px">Total belanja: <b style="font-size:15px;color:#0f766e">Rp'+totalBelanja.toLocaleString('id-ID')+'</b></div>' +
-            // Hanya NISN atau scan QR -- sengaja tidak ada daftar nama.
-            // Santri wajib tahu NISN-nya sendiri atau punya kartu QR.
-            fieldNisnSantri('ktSantri', {label:'NISN Santri (atau scan kartu QR)'}) +
-            '<div id="warnSaldoKasir" style="display:none;background:#fee2e2;color:#991b1b;border-radius:8px;padding:8px;font-size:13px;margin-bottom:8px"></div>'+
-            '<label>PIN Transaksi Santri</label><input type="password" id="ktPin" inputmode="numeric" placeholder="PIN Transaksi milik santri">';
-          var pilihKt = null;
-          var modal = openModal('Konfirmasi Pembayaran', fieldsHtml, function(m){
-            var found = pilihKt.nilai();
-            if (!found) { alert('Masukkan NISN santri yang valid, atau scan kartu QR-nya.'); return false; }
+            (izin.length > 1 ? '<div id="ktMetode" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">' +
+              izin.map(function(m){ return '<button type="button" class="small ktMetodeBtn" data-m="'+m+'">'+LABEL_METODE[m]+'</button>'; }).join('') + '</div>' : '') +
+            '<div id="ktIsi"></div>';
+          var pilihKt = null, pilihWakil = null;
+          var modal = openModal('Pembayaran', fieldsHtml, function(m){
+            var found = pilihKt ? pilihKt.nilai() : null;
+            if (!found) { alert(metode === 'nisn_pin' ? 'Masukkan NISN santri yang valid, atau scan kartu QR-nya.' : 'Pilih santri dulu.'); return false; }
             if (found.saldo < totalBelanja) { alert('Saldo tidak cukup!\nSaldo: Rp'+found.saldo.toLocaleString('id-ID')+'\nBelanja: Rp'+totalBelanja.toLocaleString('id-ID')); return false; }
-            var pin = m.querySelector('#ktPin').value.trim();
-            if (!pin) { alert('PIN Transaksi wajib diisi.'); return false; }
-            return api('prosesTransaksiKantin', {nisn: found.nisn, pinTransaksi: pin, pemilik: STATE.user.nama, noWaPemilik: STATE.user.noWa, items: kantinCart}).then(function(res){
+            var payload = {nisn: found.nisn, pemilik: STATE.user.nama, noWaPemilik: STATE.user.noWa, items: kantinCart, notifTerpisah: true, metode: metode};
+            if (metode === 'cepat') {
+              var wakil = pilihWakil ? pilihWakil.nilai() : null;
+              if (wakil && wakil.nisn === found.nisn) { alert('Teman yang mewakili tidak boleh santri yang sama.'); return false; }
+              if (wakil) payload.wakilNisn = wakil.nisn;
+            } else {
+              var pin = (m.querySelector('#ktPin') || {}).value; pin = String(pin||'').trim();
+              if (!pin) { alert('PIN Transaksi wajib diisi.'); return false; }
+              payload.pinTransaksi = pin;
+            }
+            return api('prosesTransaksiKantin', payload).then(function(res){
               if(!res.ok){ alert(res.error); throw new Error(res.error); }
-              var konfirm = confirm('✅ Berhasil!\nSantri: '+res.namaSantri+'\nTotal: Rp'+res.total.toLocaleString('id-ID')+'\nSisa saldo: Rp'+res.saldoSekarang.toLocaleString('id-ID')+'\n\nCetak struk?');
-              if (konfirm) cetakStrukKasir({namaSantri:res.namaSantri,namaPemilik:STATE.user.nama,items:kantinCart,total:res.total,saldoSekarang:res.saldoSekarang,tanggal:todayStr()});
-              pemilikKasir();
+              try { localStorage.setItem('wasiatMetodeKasir', metode); } catch(e){}
+              // Notifikasi ke wali dikirim terpisah di latar -- kasir tidak menunggunya
+              if (res.tokenNotif) { try { api('kirimNotifBelanja', {token: res.tokenNotif}).catch(function(){}); } catch(e){} }
+              // Saldo santri di daftar langsung diperbarui (untuk transaksi berikutnya)
+              found.saldo = res.saldoSekarang;
+              var itemStruk = kantinCart.slice();
+              var konfirm = confirm('✅ Berhasil!\nSantri: '+res.namaSantri+(res.namaWakil?'\nDiwakili: '+res.namaWakil:'')+'\nTotal: Rp'+res.total.toLocaleString('id-ID')+'\nSisa saldo: Rp'+res.saldoSekarang.toLocaleString('id-ID')+'\n\nCetak struk?');
+              if (konfirm) cetakStrukKasir({namaSantri:res.namaSantri,namaPemilik:STATE.user.nama,items:itemStruk,total:res.total,saldoSekarang:res.saldoSekarang,tanggal:todayStr()});
+              // Siap transaksi berikutnya tanpa memuat ulang halaman & foto barang
+              kantinCart = []; renderCart();
+              segarkanSantriKasir();
             });
           });
-          // Peringatan saldo kurang ditampilkan begitu santri dipilih, supaya kasir
-          // tahu sebelum meminta santri memasukkan PIN.
-          pilihKt = ikatNisnSantri(modal, 'ktSantri', daftarSantri, {
-            tampilSaldo: true,
-            onPilih: function(s){
-              var we = modal.querySelector('#warnSaldoKasir');
-              if (s.saldo < totalBelanja) {
-                we.style.display = 'block';
-                we.innerHTML = '&#9888;&#65039; Saldo kurang Rp' + (totalBelanja - s.saldo).toLocaleString('id-ID') + '. Transaksi tidak bisa diproses.';
-              } else {
-                we.style.display = 'none';
-                modal.querySelector('#ktPin').focus();
-              }
+          var btnBayar = modal.querySelector('#modalSimpan'); if (btnBayar) btnBayar.textContent = 'Bayar';
+
+          // Peringatan saldo kurang ditampilkan begitu santri dipilih
+          function cekSaldo(s){
+            var we = modal.querySelector('#warnSaldoKasir'); if (!we) return;
+            if (s.saldo < totalBelanja) {
+              we.style.display = 'block';
+              we.innerHTML = '&#9888;&#65039; Saldo kurang Rp' + (totalBelanja - s.saldo).toLocaleString('id-ID') + '. Transaksi tidak bisa diproses.';
+            } else {
+              we.style.display = 'none';
+              var pinEl = modal.querySelector('#ktPin'); if (pinEl) pinEl.focus();
             }
+          }
+          var kotakWarn = '<div id="warnSaldoKasir" style="display:none;background:#fee2e2;color:#991b1b;border-radius:8px;padding:8px;font-size:13px;margin-bottom:8px"></div>';
+          var kotakPin = '<label>PIN Transaksi Santri</label><input type="password" id="ktPin" inputmode="numeric" placeholder="PIN Transaksi milik santri">';
+          function gambarMetode(){
+            var isi = modal.querySelector('#ktIsi');
+            modal.querySelectorAll('.ktMetodeBtn').forEach(function(b){ b.className = 'small ktMetodeBtn' + (b.dataset.m === metode ? '' : ' secondary'); });
+            pilihWakil = null;
+            if (metode === 'nisn_pin') {
+              isi.innerHTML = fieldNisnSantri('ktSantri', {label:'NISN Santri (atau scan kartu QR)'}) + kotakWarn + kotakPin;
+              pilihKt = ikatNisnSantri(modal, 'ktSantri', daftarSantri, {tampilSaldo: true, onPilih: cekSaldo});
+            } else if (metode === 'nama_pin') {
+              isi.innerHTML = fieldPilihSantri('ktSantri', 'Pilih Santri', daftarSantri) + kotakWarn + kotakPin;
+              pilihKt = ikatPilihSantri(modal, 'ktSantri', daftarSantri, {tampilSaldo: true, onPilih: cekSaldo});
+            } else {
+              isi.innerHTML = fieldPilihSantri('ktSantri', 'Pilih Santri (pemilik saldo)', daftarSantri) + kotakWarn +
+                '<details id="ktWakilBox" style="margin:4px 0 6px;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px">' +
+                  '<summary style="cursor:pointer;font-size:13.5px;font-weight:600">&#128101; Dibelikan / diwakili teman? (opsional)</summary>' +
+                  '<p class="muted" style="font-size:12px;margin:6px 0">Pilih nama teman yang datang membelikan. Tercatat di transaksi dan dikabarkan ke wali santri pemilik saldo.</p>' +
+                  fieldPilihSantri('ktWakil', 'Teman yang mewakili', daftarSantri) + '</details>' +
+                '<p style="font-size:12px;color:#92400e;background:#fef9c3;border:1px solid #fde68a;border-radius:6px;padding:6px 8px;margin:6px 0 0">Tanpa PIN: pastikan nama santri benar. Setiap transaksi tercatat dengan cara bayar ini dan dikabarkan ke walinya.</p>';
+              pilihKt = ikatPilihSantri(modal, 'ktSantri', daftarSantri, {tampilSaldo: true, onPilih: cekSaldo});
+              pilihWakil = ikatPilihSantri(modal, 'ktWakil', daftarSantri, {});
+            }
+            var cari = modal.querySelector('#ktSantri_cari') || modal.querySelector('#ktSantri_nisn');
+            if (cari) { try { cari.focus(); } catch(e){} }
+          }
+          modal.querySelectorAll('.ktMetodeBtn').forEach(function(b){
+            b.onclick = function(){ metode = b.dataset.m; gambarMetode(); };
           });
+          gambarMetode();
         });
       };
       renderCart();
@@ -12113,6 +12778,7 @@
       {key:'rombel', label:'Kelola Rombel', icon:'&#127979;'},
       {key:'halaqoh', label:'Kelola Halaqoh', icon:'&#128374;'},
       {key:'santri', label:'Data Santri', icon:'&#128100;'},
+      {key:'mutasi', label:'Mutasi & Alumni', icon:'&#127891;'},
       {key:'data', label:'Data Master Lain', icon:'&#128193;'},
       {key:'pengganti', label:'Guru Pengganti', icon:'&#128101;'},
       {key:'rekapguru', label:'Rekap Guru', icon:'&#128104;&#8205;&#127979;'},
@@ -12129,6 +12795,7 @@
       {key:'barangkantin', label:'Kelola Barang Kantin', icon:'&#127850;'},
       {key:'persetujuansaldo', label:'Persetujuan Saldo Kantin', icon:'&#9989;'},
       {key:'tarikpemilik', label:'Tarik Saldo Pemilik', icon:'&#127974;'},
+      {key:'pengaturankasir', label:'Cara Bayar Kasir', icon:'&#128179;'},
       {key:'spp', label:'SPP Santri', icon:'&#128179;'},
       {key:'modulajar', label:'Modul Ajar & RPP', icon:'&#128218;'},
       {key:'rekapjurnal', label:'Rekap Jurnal Guru', icon:'&#128221;'},
@@ -12150,7 +12817,7 @@
       {key:'absensusulan', label:'Izin Absen Susulan Guru', icon:'&#128197;'},
       {key:'diagnostikdata', label:'Diagnostik Ukuran Data', icon:'&#128202;'}
     ];
-    var map = {ringkasan:adminRingkasan, tahun:adminTahunAjaran, rombel:adminRombel, halaqoh:adminHalaqoh, santri:adminDataSantri,
+    var map = {ringkasan:adminRingkasan, tahun:adminTahunAjaran, rombel:adminRombel, halaqoh:adminHalaqoh, santri:adminDataSantri, mutasi:adminMutasiSantri, pengaturankasir:adminPengaturanKasir,
       data:adminDataMaster, pengganti:adminPenggantian, rekapguru:adminRekapGuru, rekapsantri:adminRekapSantri, rapor:adminRaporSantri,
       catatpelanggaran:function(){ renderFormCatatPelanggaran('da-content'); }, pelanggaran:adminKelolaPelanggaran,
       slide:adminSlide, websitebuilder:adminWebsiteBuilder, notifpush:adminNotifikasiPush,
@@ -12586,7 +13253,7 @@
         if (jenis === 'Mapel') {
           api('getMasterData', {sheet:'MataPelajaran'}).then(function(res){
             if(!res.ok){ wrap.innerHTML = errBox(res.error); return; }
-            var daftar = res.data.data.filter(function(m){ return m.Pengampu === guruAsli; });
+            var daftar = res.data.data.filter(function(m){ return normNamaFE(m.Pengampu) === normNamaFE(guruAsli); });
             if(!daftar.length){ wrap.innerHTML = warnBox('Guru ini tidak punya jadwal mata pelajaran.'); return; }
             window.__pgDaftarSesi = daftar;
             wrap.innerHTML = '<label>Pilih Sesi yang Digantikan</label><select id="pgSesiPilihan">' +
@@ -12595,7 +13262,7 @@
         } else {
           api('getHalaqohList', {}).then(function(res){
             if(!res.ok){ wrap.innerHTML = errBox(res.error); return; }
-            var daftar = res.data.filter(function(h){ return h.pengampuList && h.pengampuList.indexOf(guruAsli) !== -1; });
+            var daftar = res.data.filter(function(h){ return h.pengampuList && h.pengampuList.some(function(x){ return normNamaFE(x) === normNamaFE(guruAsli); }); });
             if(!daftar.length){ wrap.innerHTML = warnBox('Guru ini tidak punya jadwal halaqoh.'); return; }
             window.__pgDaftarSesi = daftar;
             wrap.innerHTML = '<label>Pilih Halaqoh yang Digantikan</label><select id="pgSesiPilihan">' +
@@ -12676,9 +13343,13 @@
         if(!res.data.length){ document.getElementById('listHalaqoh').innerHTML = '<p class="muted">Belum ada halaqoh.</p>'; return; }
         var html = '<table><tr><th>Nama Halaqoh</th><th>Pengampu</th><th>Waktu</th><th>Gender</th><th>Aksi</th></tr>';
         res.data.forEach(function(h){
-          html += '<tr><td>'+esc(h.namaHalaqoh)+'</td><td>'+esc(h.pengampu)+'</td><td>'+esc(h.waktu)+'</td><td>'+esc(h.gender)+'</td>' +
+          var pl = h.pengampuList || [];
+          var labelPengampu = pl.length > 1
+            ? esc(pl[0]) + ' <span class="muted" style="font-size:11.5px">(utama)</span><br><span style="font-size:12px">Pengganti: ' + pl.slice(1).map(esc).join(', ') + '</span>'
+            : esc(h.pengampu);
+          html += '<tr><td>'+esc(h.namaHalaqoh)+'</td><td>'+labelPengampu+'</td><td>'+esc(h.waktu)+'</td><td>'+esc(h.gender)+'</td>' +
             '<td><button class="small btnLihatHalaqoh" data-h="'+esc(h.namaHalaqoh)+'">Lihat/Kelola Santri</button> ' +
-            '<button class="small btnEditHalaqoh" data-h="'+esc(h.namaHalaqoh)+'" data-p="'+esc(h.pengampu)+'" data-w="'+esc(h.waktu)+'" data-g="'+esc(h.gender)+'">Edit</button> ' +
+            '<button class="small btnEditHalaqoh" data-h="'+esc(h.namaHalaqoh)+'" data-p="'+esc(h.pengampu)+'" data-pl="'+esc((h.pengampuList||[]).join('|'))+'" data-w="'+esc(h.waktu)+'" data-g="'+esc(h.gender)+'">Edit</button> ' +
             '<button class="small danger btnHapusHalaqoh" data-h="'+esc(h.namaHalaqoh)+'">Hapus</button></td></tr>';
         });
         html += '</table>';
@@ -12686,9 +13357,11 @@
         document.querySelectorAll('.btnLihatHalaqoh').forEach(function(b){ b.onclick=function(){ tampilkanDetailHalaqoh(b.dataset.h); }; });
         document.querySelectorAll('.btnEditHalaqoh').forEach(function(b){
           b.onclick = function(){
-            var pengampuTerpilihSaatIni = b.dataset.p.split(',').map(function(s){return s.trim();}).filter(Boolean);
+            // Daftar pengampu hasil pemecahan di server (gelar seperti ", S.H" tidak ikut terpecah)
+            var pengampuTerpilihSaatIni = (b.dataset.pl ? b.dataset.pl.split('|') : b.dataset.p.split(',')).map(function(s){return s.trim();}).filter(Boolean);
+            var _kunciTerpilih = pengampuTerpilihSaatIni.map(normNamaFE);
             var fieldsPengampu = '<label>Pengampu (boleh pilih lebih dari satu)</label><div id="editPengampuWrap">' +
-              daftarNamaGuru.map(function(g){ return '<label style="display:inline-flex;align-items:center;gap:5px;font-weight:400;margin-right:12px;margin-bottom:4px"><input type="checkbox" class="editPengampuChk" value="'+esc(g)+'" style="width:auto;margin:0" '+(pengampuTerpilihSaatIni.indexOf(g)!==-1?'checked':'')+'> '+esc(g)+'</label>'; }).join('') +
+              daftarNamaGuru.map(function(g){ return '<label style="display:inline-flex;align-items:center;gap:5px;font-weight:400;margin-right:12px;margin-bottom:4px"><input type="checkbox" class="editPengampuChk" value="'+esc(g)+'" style="width:auto;margin:0" '+(_kunciTerpilih.indexOf(normNamaFE(g))!==-1?'checked':'')+'> '+esc(g)+'</label>'; }).join('') +
               '</div>';
             openModal('Edit Halaqoh '+b.dataset.h,
               fieldsPengampu +
@@ -12788,6 +13461,221 @@
     muatDaftar();
   }
 
+
+
+  // ================= CARA BAYAR KASIR (Admin/Mudir) =================
+  function adminPengaturanKasir(){
+    var c = getContentEl();
+    c.innerHTML = '<div class="card"><p class="muted">Memuat...</p></div>';
+    api('getPengaturanBatch', {keys:['KasirModeIzin','KasirModeDefault']}).then(function(r){
+      var pg = (r && r.ok) ? r.data : {};
+      var izin = String(pg.KasirModeIzin || '').split(',').map(function(x){ return x.trim(); }).filter(Boolean);
+      if (!izin.length) izin = ['nisn_pin'];
+      var def = pg.KasirModeDefault || izin[0];
+      var OPSI = [
+        ['nisn_pin','NISN / scan kartu QR + PIN','Paling aman. Santri mengetik NISN atau memindai kartu QR, lalu memasukkan PIN Transaksi. (Cara yang berjalan selama ini.)'],
+        ['nama_pin','Pilih nama santri + PIN','Kasir mencari nama santri dari daftar, lalu santri memasukkan PIN Transaksi.'],
+        ['cepat','Pilih nama santri, TANPA PIN (paling cepat)','Kasir cukup memilih nama santri lalu Bayar. Bila belanja diwakilkan teman, nama temannya dipilih dari daftar (tidak bisa diketik bebas). Setiap transaksi tercatat dengan cara bayar dan nama teman yang mewakili, serta dikabarkan ke wali santri.']
+      ];
+      c.innerHTML = '<div class="card"><h3>&#128179; Cara Bayar di Kasir</h3>' +
+        '<p class="muted" style="font-size:13px;margin-top:-4px">Pilih cara bayar yang boleh dipakai kasir. Bila lebih dari satu diaktifkan, kasir bisa memilih di layar pembayaran.</p>' +
+        OPSI.map(function(o){
+          return '<label style="display:flex;gap:10px;align-items:flex-start;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:8px;font-weight:400;cursor:pointer">' +
+            '<input type="checkbox" class="kmIzin" value="'+o[0]+'" style="width:auto;margin-top:3px"'+(izin.indexOf(o[0])!==-1?' checked':'')+'>' +
+            '<span><b>'+esc(o[1])+'</b><br><span class="muted" style="font-size:12.5px">'+esc(o[2])+'</span></span></label>';
+        }).join('') +
+        '<label>Cara bayar yang tampil pertama</label><select id="kmDefault">' +
+          OPSI.map(function(o){ return '<option value="'+o[0]+'"'+(o[0]===def?' selected':'')+'>'+esc(o[1])+'</option>'; }).join('') + '</select>' +
+        '<button id="kmSimpan" style="margin-top:10px">Simpan</button><div id="kmPesan" style="margin-top:8px"></div></div>';
+      document.getElementById('kmSimpan').onclick = function(){
+        var dipilih = Array.prototype.map.call(document.querySelectorAll('.kmIzin:checked'), function(x){ return x.value; });
+        var pesan = document.getElementById('kmPesan');
+        if (!dipilih.length) { pesan.innerHTML = errBox('Aktifkan minimal satu cara bayar.'); return; }
+        var d = document.getElementById('kmDefault').value;
+        if (dipilih.indexOf(d) === -1) d = dipilih[0];
+        if (dipilih.indexOf('cepat') !== -1 && izin.indexOf('cepat') === -1 &&
+            !confirm('Aktifkan bayar TANPA PIN?\n\nKasir bisa memotong saldo santri hanya dengan memilih namanya. Pastikan kasir dapat dipercaya. Setiap transaksi tetap tercatat dan dikabarkan ke wali.')) return;
+        var b = this; loadingBtn(b, 'Menyimpan...');
+        api('simpanPengaturanBatch', {oleh: STATE.user.nama, data:{KasirModeIzin: dipilih.join(','), KasirModeDefault: d}}).then(function(res){
+          resetBtn(b, 'Simpan');
+          if (!res.ok) { pesan.innerHTML = errBox(res.error); return; }
+          STATE.pengaturan.KasirModeIzin = dipilih.join(','); STATE.pengaturan.KasirModeDefault = d;
+          izin = dipilih;
+          pesan.innerHTML = '<p style="color:#166534;font-size:13px">&#10003; Tersimpan. HP kasir memakai pengaturan baru setelah aplikasinya dibuka ulang.</p>';
+        }).catch(function(){ resetBtn(b, 'Simpan'); pesan.innerHTML = errBox('Gagal terhubung.'); });
+      };
+    });
+  }
+
+  // ================= MUTASI & ALUMNI =================
+  function adminMutasiSantri(){
+    var c = getContentEl();
+    var semesterDipilih = '', dataRekap = null, filterJenis = '';
+    var LABEL = {'Santri Baru':'Santri Baru','Pindahan Masuk':'Pindahan Masuk','Mutasi Keluar':'Mutasi Keluar','Lulus':'Lulus'};
+    var WARNA = {'Santri Baru':'#0d9488','Pindahan Masuk':'#2563eb','Mutasi Keluar':'#dc2626','Lulus':'#7c3aed'};
+    c.innerHTML =
+      '<div class="card"><h3>&#127891; Rekap Santri per Semester</h3>' +
+        '<p class="muted" style="font-size:12.5px;margin-top:-4px">Klik angka untuk melihat nama-nama santrinya.</p>' +
+        '<div id="mtRekap"><p class="muted">Memuat...</p></div><div id="mtRinci" style="margin-top:12px"></div></div>' +
+      '<div class="card"><h3>&#128221; Proses Mutasi Keluar / Kelulusan</h3>' +
+        warnBox('Santri yang diproses dikeluarkan dari daftar santri aktif (kelas, halaqoh, absensi, kasir), tetapi <b>tidak dihapus</b>: datanya tercatat di sini dan seluruh riwayatnya (absensi, nilai, hafalan, SPP, pelanggaran) tetap bisa dibuka. Bila salah, bisa <b>dibatalkan</b> dan santri kembali seperti semula. Santri yang masih punya saldo kantin harus ditarik/dikembalikan dulu saldonya.') +
+        '<div class="grid2"><div><label>Jenis</label><select id="mtJenis"><option value="Lulus">Lulus (jadi alumni)</option><option value="Mutasi Keluar">Mutasi Keluar (pindah/berhenti)</option></select></div>' +
+        '<div><label>Tanggal</label><input type="date" id="mtTanggal" value="'+todayStr()+'" max="'+todayStr()+'"></div></div>' +
+        '<div class="grid2"><div><label id="mtKetLabel">Keterangan / Angkatan</label><input id="mtKet" placeholder="mis. Lulus angkatan 2026"></div>' +
+        '<div id="mtTujuanWrap" style="display:none"><label>Pindah ke (sekolah/pondok tujuan)</label><input id="mtTujuan" placeholder="opsional"></div></div>' +
+        '<div class="grid2"><div><label>Pilih dari kelas</label><select id="mtKelas"><option value="">-- semua kelas --</option></select></div>' +
+        '<div><label>Cari nama</label><input id="mtCari" placeholder="ketik nama/NISN"></div></div>' +
+        '<div id="mtDaftar" style="max-height:340px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;padding:6px;margin-top:6px"><p class="muted">Memuat santri...</p></div>' +
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px"><label style="margin:0;display:flex;gap:6px;align-items:center"><input type="checkbox" id="mtPilihSemua" style="width:auto"> Pilih semua yang tampil</label>' +
+        '<span id="mtJumlahPilih" class="muted" style="font-size:12.5px"></span></div>' +
+        '<button id="mtProses" style="margin-top:8px">Proses</button><div id="mtPesan" style="margin-top:8px"></div></div>' +
+      '<div class="card" id="mtRiwayatSantriWrap" style="display:none"><div style="display:flex;justify-content:space-between;align-items:center"><h3 id="mtRiwayatJudul" style="margin:0">Riwayat</h3><button class="small secondary" id="mtTutupRiwayat">Tutup</button></div><div id="mtRiwayatSantri"></div></div>';
+
+    // ---- Rekap ----
+    function muatRekap(){
+      var el = document.getElementById('mtRekap'); if (!el) return;
+      api('getRekapMutasi', {oleh: STATE.user.nama, semesterId: semesterDipilih}).then(function(r){
+        if (!document.getElementById('mtRekap')) return;
+        if (!r.ok) { el.innerHTML = errBox(r.error); return; }
+        dataRekap = r; if (!semesterDipilih) semesterDipilih = r.dipilih;
+        var sel = function(id, jenis, n){ return '<a href="#" class="mtAngka" data-sem="'+esc(id)+'" data-jenis="'+esc(jenis)+'" onclick="return false" style="font-weight:700;color:'+(WARNA[jenis]||'#0f172a')+'">'+n+'</a>'; };
+        el.innerHTML = '<div style="overflow-x:auto"><table style="font-size:13px"><tr><th>Semester</th><th>Santri Aktif</th><th>Santri Baru</th><th>Pindahan Masuk</th><th>Mutasi Keluar</th><th>Lulus</th></tr>' +
+          r.rekap.slice().reverse().map(function(t){
+            return '<tr'+(t.id===semesterDipilih?' style="background:#f0fdfa"':'')+'><td><a href="#" class="mtSem" data-sem="'+esc(t.id)+'" onclick="return false"><b>'+esc(t.nama||'-')+'</b></a>'+(t.aktif?' <span style="font-size:11px;color:#0d9488">(aktif)</span>':'')+'</td>' +
+              '<td>'+(t.jumlahSantri===null?'-':'<b>'+t.jumlahSantri+'</b>')+'</td>' +
+              '<td>'+sel(t.id,'Santri Baru',t.santriBaru)+'</td><td>'+sel(t.id,'Pindahan Masuk',t.pindahanMasuk)+'</td>' +
+              '<td>'+sel(t.id,'Mutasi Keluar',t.mutasiKeluar)+'</td><td>'+sel(t.id,'Lulus',t.lulus)+'</td></tr>';
+          }).join('') + '</table></div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="small secondary mtAngka" data-sem="semua" data-jenis="Lulus">&#127891; Semua Alumni</button>' +
+          '<button class="small secondary mtAngka" data-sem="semua" data-jenis="Mutasi Keluar">Semua Santri Keluar</button>' +
+          '<button class="small secondary mtAngka" data-sem="semua" data-jenis="">Semua Catatan</button></div>';
+        el.querySelectorAll('.mtSem').forEach(function(a){ a.onclick = function(){ semesterDipilih = a.dataset.sem; filterJenis = ''; muatRekap(); }; });
+        el.querySelectorAll('.mtAngka').forEach(function(a){ a.onclick = function(){
+          filterJenis = a.dataset.jenis;
+          if (a.dataset.sem !== semesterDipilih) { semesterDipilih = a.dataset.sem; muatRekap(); } else tampilRinci();
+        }; });
+        tampilRinci();
+      }).catch(function(){ el.innerHTML = errBox('Gagal memuat. Periksa koneksi.'); });
+    }
+    function tampilRinci(){
+      var el = document.getElementById('mtRinci'); if (!el || !dataRekap) return;
+      var daftar = dataRekap.rinci.filter(function(m){ return !filterJenis || m.jenis === filterJenis; });
+      var namaSem = semesterDipilih === 'semua' ? 'Semua semester' : ((dataRekap.rekap.find(function(t){ return t.id === semesterDipilih; }) || {}).nama || '');
+      var judul = (filterJenis ? LABEL[filterJenis] : 'Semua catatan') + ' &mdash; ' + esc(namaSem) + ' (' + daftar.length + ')';
+      if (!daftar.length) { el.innerHTML = '<h4 style="margin:0 0 6px">'+judul+'</h4><p class="muted">Belum ada data.</p>'; return; }
+      el.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px"><h4 style="margin:0">'+judul+'</h4>' +
+        '<button class="small secondary" id="mtExcel">&#128196; Unduh Excel</button></div>' +
+        '<div style="overflow-x:auto;margin-top:6px"><table style="font-size:12.5px"><tr><th>No</th><th>Tanggal</th><th>Jenis</th><th>Nama</th><th>NISN</th><th>Kelas</th><th>Keterangan</th><th>Asal/Tujuan</th><th></th></tr>' +
+        daftar.map(function(m, i){
+          var keluar = m.jenis === 'Lulus' || m.jenis === 'Mutasi Keluar';
+          return '<tr><td>'+(i+1)+'</td><td style="white-space:nowrap">'+esc(m.tanggal)+'</td>' +
+            '<td><span style="color:'+(WARNA[m.jenis]||'#0f172a')+';font-weight:600">'+esc(m.jenis)+'</span>'+(semesterDipilih==='semua'?'<div class="muted" style="font-size:11px">'+esc(m.semester)+'</div>':'')+'</td>' +
+            '<td><b>'+esc(m.nama)+'</b></td><td>'+esc(m.nisn)+'</td><td>'+esc(m.kelas||'-')+'</td><td style="font-size:12px">'+esc(m.keterangan||'')+'</td><td style="font-size:12px">'+esc(m.asalTujuan||'')+'</td>' +
+            '<td style="white-space:nowrap"><button class="small mtLihat" data-nisn="'+esc(m.nisn)+'" data-nama="'+esc(m.nama)+'">Riwayat</button> ' +
+            (keluar ? '' : '<button class="small secondary mtUbahJenis" data-id="'+esc(m.id)+'" data-jenis="'+esc(m.jenis)+'">'+(m.jenis==='Santri Baru'?'Jadikan Pindahan':'Jadikan Santri Baru')+'</button> ') +
+            '<button class="small danger mtBatal" data-id="'+esc(m.id)+'" data-nama="'+esc(m.nama)+'" data-keluar="'+(keluar?'1':'0')+'">Batalkan</button></td></tr>';
+        }).join('') + '</table></div>';
+      document.getElementById('mtExcel').onclick = function(){
+        if (typeof XLSX === 'undefined') { alert('Modul Excel belum termuat. Muat ulang halaman.'); return; }
+        var aoa = [['No','Tanggal','Jenis','Nama','NISN','Jenis Kelamin','Kelas','Halaqoh','Keterangan','Asal/Tujuan','Semester','Dicatat oleh']]
+          .concat(daftar.map(function(m, i){ return [i+1, m.tanggal, m.jenis, m.nama, m.nisn, m.jk, m.kelas, m.halaqoh, m.keterangan, m.asalTujuan, m.semester, m.oleh]; }));
+        var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Data');
+        XLSX.writeFile(wb, ((filterJenis || 'Mutasi') + ' - ' + namaSem).replace(/[\\\/:*?"<>|]/g, '') + '.xlsx');
+      };
+      el.querySelectorAll('.mtLihat').forEach(function(b){ b.onclick = function(){
+        var w = document.getElementById('mtRiwayatSantriWrap'); w.style.display = '';
+        document.getElementById('mtRiwayatJudul').textContent = 'Riwayat ' + b.dataset.nama + ' (' + b.dataset.nisn + ')';
+        renderRekapLengkapSantri('mtRiwayatSantri', b.dataset.nisn, {});
+        w.scrollIntoView({behavior:'smooth'});
+      }; });
+      el.querySelectorAll('.mtUbahJenis').forEach(function(b){ b.onclick = function(){
+        var jenisBaru = b.dataset.jenis === 'Santri Baru' ? 'Pindahan Masuk' : 'Santri Baru';
+        var asal = jenisBaru === 'Pindahan Masuk' ? prompt('Asal sekolah/pondok sebelumnya (boleh dikosongkan):', '') : '';
+        if (asal === null) return;
+        api('ubahCatatanMutasi', {oleh: STATE.user.nama, id: b.dataset.id, jenis: jenisBaru, asalTujuan: asal}).then(function(r){ if (!r.ok) alert(r.error); muatRekap(); });
+      }; });
+      el.querySelectorAll('.mtBatal').forEach(function(b){ b.onclick = function(){
+        var pesan = b.dataset.keluar === '1'
+          ? 'Batalkan catatan untuk '+b.dataset.nama+'?\n\nSantri akan dikembalikan menjadi santri AKTIF beserta kelas & halaqohnya.'
+          : 'Batalkan catatan masuk untuk '+b.dataset.nama+'?\n\nData santrinya tidak diubah, hanya catatannya yang dibatalkan.';
+        if (!confirm(pesan)) return;
+        api('batalkanMutasi', {oleh: STATE.user.nama, id: b.dataset.id}).then(function(r){ alert(r.ok ? r.pesan : r.error); muatRekap(); muatSantri(); });
+      }; });
+    }
+    document.getElementById('mtTutupRiwayat').onclick = function(){ document.getElementById('mtRiwayatSantriWrap').style.display = 'none'; };
+
+    // ---- Proses ----
+    var semuaSantri = [];
+    function aturJenis(){
+      var keluar = document.getElementById('mtJenis').value === 'Mutasi Keluar';
+      document.getElementById('mtTujuanWrap').style.display = keluar ? '' : 'none';
+      document.getElementById('mtKetLabel').textContent = keluar ? 'Alasan keluar (wajib)' : 'Keterangan / Angkatan';
+      document.getElementById('mtKet').placeholder = keluar ? 'mis. pindah ke sekolah lain / permintaan orang tua' : 'mis. Lulus angkatan 2026';
+    }
+    function hitungPilih(){
+      var n = document.querySelectorAll('.mtPilih:checked').length;
+      document.getElementById('mtJumlahPilih').textContent = n ? n + ' santri dipilih' : '';
+    }
+    function tampilDaftar(){
+      var el = document.getElementById('mtDaftar'); if (!el) return;
+      var kelas = document.getElementById('mtKelas').value, cari = document.getElementById('mtCari').value.trim().toLowerCase();
+      var dipilih = {}; document.querySelectorAll('.mtPilih:checked').forEach(function(x){ dipilih[x.value] = true; });
+      var tampil = semuaSantri.filter(function(x){
+        if (kelas && x.kelasSaatIni !== kelas) return false;
+        if (cari && (x.nama + ' ' + x.nisn).toLowerCase().indexOf(cari) === -1) return false;
+        return true;
+      });
+      el.innerHTML = tampil.length ? tampil.map(function(x){
+        var adaSaldo = Number(x.saldoKantin) !== 0;
+        return '<label style="display:flex;gap:8px;align-items:center;padding:5px 4px;border-bottom:1px solid #f1f5f9;font-weight:400;margin:0">' +
+          '<input type="checkbox" class="mtPilih" value="'+esc(x.nisn)+'" style="width:auto;margin:0"'+(dipilih[x.nisn]?' checked':'')+'>' +
+          '<span style="flex:1"><b>'+esc(x.nama)+'</b> <span class="muted" style="font-size:11.5px">'+esc(x.nisn)+' &middot; '+esc(x.kelasSaatIni)+'</span></span>' +
+          (adaSaldo ? '<span style="font-size:11px;color:#b45309">saldo '+rupiah(Number(x.saldoKantin))+'</span>' : '') + '</label>';
+      }).join('') : '<p class="muted">Tidak ada santri yang cocok.</p>';
+      el.querySelectorAll('.mtPilih').forEach(function(x){ x.onchange = hitungPilih; });
+      document.getElementById('mtPilihSemua').checked = false;
+      hitungPilih();
+    }
+    function muatSantri(){
+      api('getSemuaSantri', {}).then(function(r){
+        if (!document.getElementById('mtDaftar')) return;
+        semuaSantri = (r.ok ? r.data : []).slice().sort(function(a,b){ return String(a.nama).localeCompare(String(b.nama)); });
+        var kelasSet = {}; semuaSantri.forEach(function(x){ if (x.kelasSaatIni) kelasSet[x.kelasSaatIni] = true; });
+        var selK = document.getElementById('mtKelas'), nilai = selK.value;
+        selK.innerHTML = '<option value="">-- semua kelas --</option>' + Object.keys(kelasSet).sort().map(function(k){ return '<option'+(k===nilai?' selected':'')+'>'+esc(k)+'</option>'; }).join('');
+        tampilDaftar();
+      });
+    }
+    document.getElementById('mtJenis').onchange = aturJenis;
+    document.getElementById('mtKelas').onchange = tampilDaftar;
+    document.getElementById('mtCari').oninput = tampilDaftar;
+    document.getElementById('mtPilihSemua').onchange = function(){
+      var v = this.checked; document.querySelectorAll('.mtPilih').forEach(function(x){ x.checked = v; }); hitungPilih();
+    };
+    document.getElementById('mtProses').onclick = function(){
+      var jenis = document.getElementById('mtJenis').value;
+      var nisnList = Array.prototype.map.call(document.querySelectorAll('.mtPilih:checked'), function(x){ return x.value; });
+      var ket = document.getElementById('mtKet').value.trim();
+      var pesanEl = document.getElementById('mtPesan');
+      if (!nisnList.length) { pesanEl.innerHTML = errBox('Pilih santri dulu.'); return; }
+      if (jenis === 'Mutasi Keluar' && !ket) { pesanEl.innerHTML = errBox('Alasan keluar wajib diisi.'); return; }
+      var nama = semuaSantri.filter(function(x){ return nisnList.indexOf(x.nisn) !== -1; }).map(function(x){ return x.nama; });
+      if (!confirm('Proses '+nisnList.length+' santri sebagai '+(jenis==='Lulus'?'LULUS':'MUTASI KELUAR')+'?\n\n'+nama.slice(0,15).join('\n')+(nama.length>15?'\n...dan '+(nama.length-15)+' lainnya':'')+'\n\nMereka keluar dari daftar santri aktif, tetapi seluruh datanya tetap tersimpan dan bisa dibatalkan.')) return;
+      var b = this; loadingBtn(b, 'Memproses...');
+      api('prosesMutasiSantri', {oleh: STATE.user.nama, jenis: jenis, nisnList: nisnList, tanggal: document.getElementById('mtTanggal').value,
+        keterangan: ket, tujuan: document.getElementById('mtTujuan').value.trim()}).then(function(r){
+        resetBtn(b, 'Proses');
+        if (!r.ok) { pesanEl.innerHTML = errBox(esc(r.error).replace(/\n/g,'<br>')); return; }
+        pesanEl.innerHTML = '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;font-size:13px;color:#166534">'+esc(r.pesan).replace(/\n/g,'<br>')+'</div>';
+        document.getElementById('mtKet').value = ''; document.getElementById('mtTujuan').value = '';
+        muatSantri(); muatRekap();
+      }).catch(function(){ resetBtn(b, 'Proses'); pesanEl.innerHTML = errBox('Gagal terhubung. Periksa koneksi lalu coba lagi.'); });
+    };
+    aturJenis();
+    muatRekap();
+    muatSantri();
+  }
+
   // ---------------- DATA SANTRI ----------------
   function adminDataSantri(){
     var c = getContentEl();
@@ -12798,7 +13686,10 @@
         '<div><label>Jenis Kelamin</label><select id="nsGender"><option value="Laki-laki">Laki-laki</option><option value="Perempuan">Perempuan</option></select></div>' +
         '<div><label>No WA Orang Tua</label><input id="nsWa"></div>' +
         '<div><label>Masukkan ke Rombel (opsional)</label><select id="nsKelas"><option value="">-- Tidak dimasukkan dulu --</option></select></div>' +
-        '</div><button id="btnTambahSantri">Simpan Santri</button><div id="pesanTambahSantri"></div></div>' +
+        '<div><label>Jenis Masuk</label><select id="nsJenisMasuk"><option>Santri Baru</option><option>Pindahan Masuk</option></select></div>' +
+        '<div><label>Asal Sekolah/Pondok (untuk pindahan)</label><input id="nsAsal" placeholder="opsional"></div>' +
+        '</div><button id="btnTambahSantri">Simpan Santri</button><div id="pesanTambahSantri"></div>' +
+        '<p class="muted" style="font-size:12px;margin:8px 0 0">Santri yang <b>keluar</b> atau <b>lulus</b> jangan dihapus. Proses lewat menu <b>Mutasi &amp; Alumni</b> supaya datanya tetap tercatat.</p></div>' +
 
       '<div class="card"><h3>Import Massal dari Excel</h3>' +
         '<p class="muted">1) Unduh template, 2) isi data, 3) unggah kembali file-nya.</p>' +
@@ -12815,19 +13706,20 @@
     document.getElementById('btnTambahSantri').onclick = function(){
       var payload = { nisn: document.getElementById('nsNisn').value.trim(), nama: document.getElementById('nsNama').value.trim(),
         tahunMasuk: document.getElementById('nsTahun').value.trim(), jenisKelamin: document.getElementById('nsGender').value,
-        noWaOrtu: document.getElementById('nsWa').value.trim(), kelas: document.getElementById('nsKelas').value };
+        noWaOrtu: document.getElementById('nsWa').value.trim(), kelas: document.getElementById('nsKelas').value,
+        jenisMasuk: document.getElementById('nsJenisMasuk').value, asalSekolah: document.getElementById('nsAsal').value.trim(), oleh: STATE.user.nama };
       api('tambahSantriManual', payload).then(function(res){
         var box = document.getElementById('pesanTambahSantri');
         if(!res.ok){ box.innerHTML = errBox(res.error); return; }
         box.innerHTML = '<p class="muted">Tersimpan. '+(res.pesanRombel||'')+'</p>';
-        ['nsNisn','nsNama','nsTahun','nsWa'].forEach(function(id){ document.getElementById(id).value=''; });
+        ['nsNisn','nsNama','nsTahun','nsWa','nsAsal'].forEach(function(id){ document.getElementById(id).value=''; });
         muatTabelSantri();
       });
     };
 
     document.getElementById('btnUnduhTemplate').onclick = function(){
-      var data = [['NISN','Nama','Tahun Masuk','Jenis Kelamin','No WA Ortu','Kelas (opsional, harus sama persis dgn nama Rombel yang sudah ada)'],
-        ['0011229901','Contoh Nama Santri',2025,'Laki-laki','6281200000000','7A']];
+      var data = [['NISN','Nama','Tahun Masuk','Jenis Kelamin','No WA Ortu','Kelas (opsional, harus sama persis dgn nama Rombel yang sudah ada)','Jenis Masuk (Santri Baru / Pindahan Masuk)','Asal Sekolah'],
+        ['0011229901','Contoh Nama Santri',2025,'Laki-laki','6281200000000','7A','Santri Baru','']];
       var ws = XLSX.utils.aoa_to_sheet(data);
       var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Template Santri'); XLSX.writeFile(wb, 'Template_Import_Santri.xlsx');
     };
@@ -12844,11 +13736,13 @@
           var payload = rows.map(function(r){
             return { nisn: String(r['NISN']||'').trim(), nama: String(r['Nama']||'').trim(), tahunMasuk: String(r['Tahun Masuk']||'').trim(),
               jenisKelamin: String(r['Jenis Kelamin']||'').trim(), noWaOrtu: String(r['No WA Ortu']||'').trim(),
-              kelas: String(r['Kelas (opsional, harus sama persis dgn nama Rombel yang sudah ada)'] || r['Kelas'] || '').trim() };
+              kelas: String(r['Kelas (opsional, harus sama persis dgn nama Rombel yang sudah ada)'] || r['Kelas'] || '').trim(),
+              jenisMasuk: String(r['Jenis Masuk (Santri Baru / Pindahan Masuk)'] || r['Jenis Masuk'] || '').trim(),
+              asalSekolah: String(r['Asal Sekolah'] || '').trim() };
           }).filter(function(r){ return r.nisn; });
           if(!payload.length){ document.getElementById('hasilImport').innerHTML = errBox('Tidak ada baris data yang terbaca dari file.'); return; }
           document.getElementById('hasilImport').innerHTML = '<p class="muted">Mengimpor '+payload.length+' baris...</p>';
-          api('importSantriMassal', {rows: payload}).then(function(res){
+          api('importSantriMassal', {rows: payload, oleh: STATE.user.nama}).then(function(res){
             if(!res.ok){ document.getElementById('hasilImport').innerHTML = errBox(res.error); return; }
             var html = '<p>Berhasil ditambah: <b>'+res.ditambah+'</b>, dilewati: <b>'+res.dilewati+'</b></p>';
             if(res.errors && res.errors.length){ html += '<div class="warn">' + res.errors.map(esc).join('<br>') + '</div>'; }
@@ -14345,7 +15239,78 @@
         '<label>NISN baru</label><input id="gnBaru" inputmode="numeric" placeholder="Ketik NISN baru" autocomplete="off">' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button id="gnPeriksa">Periksa Dampak</button></div>' +
         '<div id="gnHasil" style="margin-top:12px"></div></div>' +
+        '<div class="card"><h4 style="margin-top:0">&#128737; Ubah NISN Langsung di Spreadsheet</h4>' +
+          '<p style="font-size:13px;margin-top:0">Bila NISN diubah <b>langsung di sheet Santri</b>, aplikasi otomatis memindahkan seluruh riwayatnya ke NISN baru (proses sama seperti di atas), asalkan <b>Penjaga NISN</b> aktif.</p>' +
+          '<ul style="font-size:12.5px;margin:0 0 8px 18px;padding:0"><li>Ubah <b>satu sel NISN</b> saja per santri, di baris santri itu. Nama santri jangan diubah bersamaan.</li>' +
+          '<li>Riwayat dipindah beberapa detik setelah sel diubah. Yang terlewat (mis. tempel banyak sel sekaligus) ditangkap pemeriksaan otomatis tiap jam.</li>' +
+          '<li>Perubahan yang meragukan (NISN dobel, nama ikut berubah, baris dipindah) <b>tidak diproses otomatis</b>, tetapi tampil di bawah untuk Anda konfirmasi.</li></ul>' +
+          '<div id="gnPenjaga"><p class="muted">Memuat status...</p></div></div>' +
         '<div class="card"><h4 style="margin-top:0">Riwayat Penggantian NISN</h4><div id="gnRiwayat"><p class="muted">Memuat...</p></div></div>';
+
+      // ---- Penjaga NISN (ubah langsung di spreadsheet) ----
+      function muatPenjaga(aksi, tombol){
+        var el = document.getElementById('gnPenjaga'); if (!el) return;
+        if (tombol) loadingBtn(tombol, aksi === 'periksa' ? 'Memeriksa...' : 'Memasang...');
+        api('penjagaNisn', {oleh: STATE.user.nama, aksi: aksi || 'status'}).then(function(r){
+          if (!document.getElementById('gnPenjaga')) return;
+          if (!r.ok) { el.innerHTML = errBox(r.error); return; }
+          var html = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
+            (r.terpasang ? '<span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:99px;font-size:12.5px;font-weight:600">&#10003; Penjaga NISN aktif</span>'
+                         : '<span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:99px;font-size:12.5px;font-weight:600">Penjaga NISN belum aktif</span>') +
+            (r.terpasang ? '' : '<button class="small" id="gnPasang">Aktifkan Penjaga NISN</button>') +
+            '<button class="small secondary" id="gnCekSekarang">Periksa perubahan sekarang</button></div>' +
+            (r.galat ? errBox(esc(r.galat)) : '');
+          if (r.periksa) {
+            if (r.periksa.awal) html += '<p style="font-size:12.5px;color:#166534">Jejak NISN awal sudah direkam. Mulai sekarang perubahan NISN di spreadsheet akan dikenali.</p>';
+            else if (r.periksa.diproses && r.periksa.diproses.length) html += '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px;font-size:12.5px;margin-bottom:8px">Riwayat dipindahkan:<br>' +
+              r.periksa.diproses.map(function(x){ return esc(x.nama)+': '+esc(x.lama)+' &rarr; <b>'+esc(x.baru)+'</b> ('+x.total+' baris)'; }).join('<br>') + '</div>';
+            else if (r.periksa.ok) html += '<p style="font-size:12.5px;color:#166534">Tidak ada perubahan NISN baru yang perlu diproses.</p>';
+          }
+          if (r.perluCek && r.perluCek.length) {
+            html += '<b style="font-size:13px;color:#b45309">Perlu dicek ('+r.perluCek.length+')</b>' +
+              '<div style="overflow-x:auto"><table style="font-size:12.5px"><tr><th>Santri</th><th>NISN lama</th><th>NISN baru</th><th>Sebab</th><th></th></tr>' +
+              r.perluCek.map(function(x, i){
+                return '<tr><td>'+esc(x.nama||'-')+'<div class="muted" style="font-size:11px">'+esc(x.waktu||'')+'</div></td><td>'+esc(x.lama)+'</td>' +
+                  '<td>'+(x.baru ? '<b>'+esc(x.baru)+'</b>' : '<input class="gnPcBaru" data-i="'+i+'" placeholder="NISN barunya" style="width:120px">')+'</td>' +
+                  '<td style="font-size:12px">'+esc(x.alasan||'')+'</td>' +
+                  '<td style="white-space:nowrap"><button class="small gnPcPindah" data-i="'+i+'">Pindahkan riwayat</button> <button class="small secondary gnPcAbaikan" data-i="'+i+'">Abaikan</button></td></tr>';
+              }).join('') + '</table></div>' +
+              '<p class="muted" style="font-size:11.5px">"Pindahkan riwayat" memindahkan data ber-NISN lama ke NISN baru (didahului pratinjau). "Abaikan" bila santri memang dihapus/keluar.</p>';
+          }
+          el.innerHTML = html;
+          var bP = document.getElementById('gnPasang'); if (bP) bP.onclick = function(){ muatPenjaga('pasang', bP); };
+          var bC = document.getElementById('gnCekSekarang'); if (bC) bC.onclick = function(){ muatPenjaga('periksa', bC); };
+          el.querySelectorAll('.gnPcAbaikan').forEach(function(b){
+            b.onclick = function(){
+              var x = r.perluCek[Number(b.dataset.i)];
+              if (!confirm('Abaikan catatan untuk '+(x.nama||x.lama)+'? Riwayatnya TIDAK dipindahkan.')) return;
+              api('penjagaNisn', {oleh: STATE.user.nama, aksi:'abaikan', nisnLama: x.lama, nisnBaru: x.baru}).then(function(){ muatPenjaga(); });
+            };
+          });
+          el.querySelectorAll('.gnPcPindah').forEach(function(b){
+            b.onclick = function(){
+              var x = r.perluCek[Number(b.dataset.i)];
+              var inp = el.querySelector('.gnPcBaru[data-i="'+b.dataset.i+'"]');
+              var baru = x.baru || (inp ? inp.value.trim() : '');
+              if (!baru) { alert('Isi NISN baru santri ini dulu (lihat di sheet Santri).'); return; }
+              loadingBtn(b, 'Memeriksa...');
+              api('gantiNisn', {oleh: STATE.user.nama, nisnLama: x.lama, nisnBaru: baru, jalankan: false, sudahDiubahDiSheet: true}).then(function(pv){
+                if (!pv.ok) { resetBtn(b, 'Pindahkan riwayat'); alert(pv.error); return; }
+                if (!confirm('Pindahkan '+pv.total+' baris riwayat dari NISN '+x.lama+' ke '+baru+' ('+(pv.nama||'')+')?' + (pv.rincian && pv.rincian.length ? '\n\n'+pv.rincian.map(function(q){ return '- '+q.spreadsheet+' / '+q.sheet+': '+q.jumlah; }).join('\n') : ''))) { resetBtn(b, 'Pindahkan riwayat'); return; }
+                b.textContent = 'Memindahkan...';
+                api('gantiNisn', {oleh: STATE.user.nama, nisnLama: x.lama, nisnBaru: baru, jalankan: true, sudahDiubahDiSheet: true}).then(function(h){
+                  if (!h.ok) { resetBtn(b, 'Pindahkan riwayat'); alert(h.error); return; }
+                  api('penjagaNisn', {oleh: STATE.user.nama, aksi:'abaikan', nisnLama: x.lama, nisnBaru: x.baru}).then(function(){
+                    alert(h.total+' baris riwayat dipindahkan ke NISN '+baru+'.');
+                    muatPenjaga(); muatRiwayat();
+                  });
+                });
+              }).catch(function(){ resetBtn(b, 'Pindahkan riwayat'); });
+            };
+          });
+        }).catch(function(){ if (tombol) resetBtn(tombol, 'Coba lagi'); });
+      }
+      muatPenjaga();
 
       function muatRiwayat(){
         api('getRiwayatGantiNisn', {oleh: STATE.user.nama}).then(function(r){
@@ -14853,6 +15818,8 @@
         '<div>'+fieldText('wbTelp','No Telepon / WhatsApp (contoh: 081234567890)', d.NoTeleponPesantren||'')+'</div>' +
         '<div>'+fieldText('wbEmail','Email', d.EmailPesantren||'')+'</div>' +
       '</div>' +
+      fieldText('wbJamLayanan','Jam Layanan Informasi (opsional, contoh: Senin – Sabtu | 08.00 – 16.00 WITA)', d.JamLayananInfo||'') +
+      '<p class="muted" style="margin-top:-6px;font-size:12px">Tampil di jendela &quot;Layanan Informasi&quot; yang muncul untuk pengunjung baru halaman depan. Kosongkan untuk menyembunyikan baris jam.</p>' +
       '<button id="btnSimpanWbKontak" style="margin-top:12px">Simpan</button><div id="pesanWbKontak"></div>';
 
     // Unggah brosur -- memakai endpoint uploadSlideImage yang sudah dipakai fitur lain
@@ -14896,7 +15863,8 @@
         VideoPPDBURL: document.getElementById('wbVideoPPDB').value.trim(),
         AlamatPesantren: document.getElementById('wbAlamat').value.trim(),
         NoTeleponPesantren: document.getElementById('wbTelp').value.trim(),
-        EmailPesantren: document.getElementById('wbEmail').value.trim()
+        EmailPesantren: document.getElementById('wbEmail').value.trim(),
+        JamLayananInfo: document.getElementById('wbJamLayanan').value.trim()
       };
       Promise.all(Object.keys(data).map(function(k){ return api('simpanPengaturan', {key:k, value:data[k]}); })).then(function(hasil){
         var gagal = hasil.find(function(h){ return !h.ok; });
@@ -15736,7 +16704,9 @@
     var tanggalHariIni = todayStr();
 
     function muat(tanggal){
-      api('getTugasHariIni', {pembina: namaPembina, tanggal: tanggal}).then(function(res){
+      var _roles = (STATE.user && (STATE.user.roles || [STATE.user.level])) || [];
+      var _gender = _roles.indexOf('PembinaPutra')!==-1 ? 'Putra' : (_roles.indexOf('PembinaPutri')!==-1 ? 'Putri' : '');
+      api('getTugasHariIni', {pembina: namaPembina, tanggal: tanggal, gender: _gender}).then(function(res){
         if (!res.ok){ c.innerHTML = errBox(res.error); return; }
         var d = res;
         var persen = d.persen;
@@ -15754,20 +16724,30 @@
           '<span>Progress: <b>'+d.selesai+'/'+d.total+'</b> tugas selesai</span>' +
           '<span style="font-weight:700;color:'+warnaBar+'">'+persen+'%</span></div>' +
           '<div style="height:10px;background:#e2e8f0;border-radius:99px;overflow:hidden">' +
-          '<div style="height:100%;width:'+persen+'%;background:'+warnaBar+';border-radius:99px;transition:.3s"></div></div></div>';
+          '<div style="height:100%;width:'+persen+'%;background:'+warnaBar+';border-radius:99px;transition:.3s"></div></div>' +
+          (d.opsionalTotal ? '<div style="font-size:12px;color:#7c3aed;margin-top:6px">Tugas opsional: <b>'+d.opsionalSelesai+'/'+d.opsionalTotal+'</b> dikerjakan &middot; tambahan jam kerja <b>'+(d.jamTambahan||0)+' jam</b></div>' : '') +
+          (d.gender ? '<div style="font-size:11.5px;color:#64748b;margin-top:4px">Sesuai SK tugas Pembina Pondok '+esc(d.gender)+'</div>' : '') +
+          '</div>' + (d.peringatan ? warnBox(esc(d.peringatan)) : '');
 
         if (!d.data.length){
           html += warnBox('Tidak ada tugas yang ditetapkan untuk hari '+d.hari+'. Hubungi Admin/Mudir untuk menambahkan tugas.');
         } else {
           html += '<div id="tugasChecklist">';
-          // Kelompokkan per kategori
-          var kategoriMap = {};
+          // Kelompok: jadwal tugas (urut jam), tugas umum & pelaporan, lalu tugas opsional.
+          // Tugas lama tanpa jam tetap dikelompokkan per kategori seperti sebelumnya.
+          var kategoriMap = {}, urutKat = [];
           d.data.forEach(function(t){
-            var kat = t.kategori || 'Umum';
-            if (!kategoriMap[kat]) kategoriMap[kat] = [];
+            var kat = t.opsional ? 'Tugas Opsional — menambah jam kerja' :
+                      (t.kategori === 'Tugas Umum' ? 'Tugas Umum & Pelaporan' :
+                      (t.jamMulai ? 'Jadwal Tugas Hari Ini' : (t.kategori || 'Umum')));
+            if (!kategoriMap[kat]) { kategoriMap[kat] = []; urutKat.push(kat); }
             kategoriMap[kat].push(t);
           });
-          Object.keys(kategoriMap).sort().forEach(function(kat){
+          urutKat.sort(function(a,b){
+            var bobot = function(k){ return k === 'Jadwal Tugas Hari Ini' ? 0 : (k.indexOf('Tugas Opsional') === 0 ? 3 : (k === 'Tugas Umum & Pelaporan' ? 2 : 1)); };
+            return bobot(a) - bobot(b);
+          });
+          urutKat.forEach(function(kat){
             html += '<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">'+esc(kat)+'</div>';
             kategoriMap[kat].forEach(function(t){
               var done = t.selesai;
@@ -15780,8 +16760,11 @@
                 (done?'<span style="color:#fff;font-size:14px">&#10003;</span>':'') +
                 '</div>' +
                 '<div style="flex:1">' +
-                '<div style="display:flex;align-items:center;gap:6px">' +
+                '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">' +
+                (t.jamMulai ? '<span style="font-size:11px;font-weight:700;color:#0d9488;white-space:nowrap">'+esc(t.jamMulai)+(t.jamSelesai?'–'+esc(t.jamSelesai):'')+'</span>' : '') +
                 '<span style="font-weight:600;'+(done?'text-decoration:line-through;color:#94a3b8':'')+'">' + esc(t.nama) + '</span>' +
+                (t.piket ? '<span style="font-size:10px;background:#e0e7ff;color:#3730a3;padding:1px 6px;border-radius:99px;white-space:nowrap">Giliran Anda</span>' : '') +
+                (t.opsional ? '<span style="font-size:10px;background:#ede9fe;color:#6d28d9;padding:1px 6px;border-radius:99px;white-space:nowrap">Opsional'+(t.durasiJam?' · +'+t.durasiJam+' jam':'')+'</span>' : '') +
                 (t.wajibFoto ? '<span style="font-size:10px;background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:99px;white-space:nowrap">📷 Wajib Foto</span>' : '') +
                 '</div>' +
                 (t.berlaku !== 'Setiap Hari' ? '<div style="font-size:10px;color:#64748b">'+esc(t.berlaku)+'</div>' : '') +
@@ -15917,87 +16900,104 @@
   function adminKelolaTugasPembina(){
     var c = getContentEl();
     c.innerHTML = '<p>Memuat...</p>';
-    var BERLAKU_OPT = ['Setiap Hari','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu','Minggu','Insidental'];
-    var KAT_OPT = ['Umum','Asrama','Sholat','Belajar','Keamanan','Kebersihan','Lainnya'];
+    var BERLAKU_OPT = ['Setiap Hari','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu','Ahad','Senin, Kamis','Insidental'];
+    var KAT_OPT = ['Ibadah','Halaqah','Kegiatan Harian','Keamanan','Piket Jaga','Tugas Umum','Umum','Asrama','Sholat','Belajar','Kebersihan','Lainnya'];
+    var filterUntuk = 'Semua tampil';
+
+    function formTugas(t){
+      t = t || {};
+      var sel = function(id, opsi, nilai){ return '<select id="'+id+'">'+opsi.map(function(o){ return '<option'+(o===nilai?' selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select>'; };
+      return fieldText('tgNama','Nama Tugas', t.nama||'') +
+        '<div class="grid2"><div><label>Untuk</label>'+sel('tgUntuk',['Semua','Putra','Putri'], t.untuk||'Semua')+'</div>' +
+        '<div><label>Kategori</label>'+sel('tgKat', KAT_OPT.indexOf(t.kategori)===-1 && t.kategori ? KAT_OPT.concat([t.kategori]) : KAT_OPT, t.kategori||'Umum')+'</div></div>' +
+        '<label>Berlaku (hari)</label><input id="tgBerlaku" list="tgBerlakuOpt" value="'+esc(t.berlaku||'Setiap Hari')+'">' +
+        '<datalist id="tgBerlakuOpt">'+BERLAKU_OPT.map(function(b){ return '<option value="'+esc(b)+'">'; }).join('')+'</datalist>' +
+        '<p class="muted" style="font-size:11.5px;margin:2px 0 6px">Bisa beberapa hari dipisah koma, mis. "Senin, Kamis".</p>' +
+        '<div class="grid2"><div><label>Jam mulai</label><input id="tgJamMulai" placeholder="mis. 03.30" value="'+esc(t.jamMulai||'')+'"></div>' +
+        '<div><label>Jam selesai</label><input id="tgJamSelesai" placeholder="mis. 04.10 / Ashar" value="'+esc(t.jamSelesai||'')+'"></div></div>' +
+        fieldText('tgUrutan','Urutan (angka kecil tampil duluan)', String(t.urutan||0)) +
+        '<label>Petugas khusus (opsional)</label><textarea id="tgPetugas" rows="2" placeholder="Kosongkan = semua pembina. Satu nama: Ustz. Fadlia. Bergilir per hari: Senin=Ustz. Fadlia | Selasa=Ustz. Haifa">'+esc(t.petugas||'')+'</textarea>' +
+        '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:6px"><input type="checkbox" id="tgOpsional"'+(t.opsional?' checked':'')+'> <span>Opsional (bila dikerjakan, dihitung tambahan jam kerja)</span></label>' +
+        '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:6px"><input type="checkbox" id="tgWajibFoto"'+(t.wajibFoto?' checked':'')+'> <span>&#128247; Wajib upload foto bukti saat selesai</span></label>';
+    }
+    function ambilForm(m){
+      return {nama: m.querySelector('#tgNama').value.trim(), untuk: m.querySelector('#tgUntuk').value,
+        kategori: m.querySelector('#tgKat').value, berlaku: m.querySelector('#tgBerlaku').value.trim() || 'Setiap Hari',
+        jamMulai: m.querySelector('#tgJamMulai').value.trim(), jamSelesai: m.querySelector('#tgJamSelesai').value.trim(),
+        urutan: m.querySelector('#tgUrutan').value || 0, petugas: m.querySelector('#tgPetugas').value.trim(),
+        opsional: m.querySelector('#tgOpsional').checked, wajibFoto: m.querySelector('#tgWajibFoto').checked};
+    }
 
     function muat(){
       api('getDaftarTugasPembina', {termasukNonaktif: true}).then(function(res){
         if (!res.ok){ c.innerHTML = errBox(res.error); return; }
-        var data = res.data;
+        var semua = res.data.slice().sort(function(a,b){
+          var g = function(t){ return t.untuk === 'Putra' ? 0 : t.untuk === 'Putri' ? 1 : 2; };
+          return (b.aktif?1:0) - (a.aktif?1:0) || g(a) - g(b) || a.urutan - b.urutan;
+        });
+        var data = semua.filter(function(t){ return filterUntuk === 'Semua tampil' || t.untuk === filterUntuk || (filterUntuk === 'Semua' && !t.untuk); });
         var html = '<div class="card"><h3>&#9989; Kelola Tugas Harian Pembina</h3>' +
-          '<button id="btnTambahTugas">&#43; Tambah Tugas Baru</button>' +
+          '<div style="background:#ecfeff;border:1px solid #a5f3fc;border-radius:8px;padding:10px;font-size:13px;margin-bottom:10px">' +
+            '<b>Sesuai SK Mudir</b>: Pembina Putra (K.310/PPS-WU/IX/2026) dan Pembina Putri beserta piket jaga bergilir (K.311/PPS-WU/IX/2026). ' +
+            'Tombol di bawah memasang seluruh tugas dari kedua SK. Tugas lama hanya <b>dinonaktifkan</b> (tidak dihapus), riwayat centang tetap utuh, dan tombol aman ditekan ulang.' +
+            '<div style="margin-top:8px"><button id="btnTerapkanSK">&#128221; Terapkan Tugas sesuai SK</button></div></div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button id="btnTambahTugas" class="secondary">&#43; Tambah Tugas</button>' +
+          '<label style="margin:0">Tampilkan</label><select id="tgFilterUntuk" style="width:auto">' +
+            ['Semua tampil','Putra','Putri','Semua'].map(function(o){ return '<option'+(o===filterUntuk?' selected':'')+'>'+o+'</option>'; }).join('') + '</select></div>' +
           '<div id="pesanKelola" style="margin-top:8px"></div>' +
           '<div style="overflow-x:auto;margin-top:12px">' +
-          '<table style="font-size:13px"><tr><th>No</th><th>Nama Tugas</th><th>Kategori</th>' +
-          '<th>Berlaku</th><th>Urutan</th><th>Wajib Foto</th><th>Status</th><th>Aksi</th></tr>';
-        if (!data.length) html += '<tr><td colspan="8" class="muted">Belum ada tugas. Klik tombol di atas untuk menambah.</td></tr>';
+          '<table style="font-size:12.5px"><tr><th>No</th><th>Untuk</th><th>Jam</th><th>Nama Tugas</th><th>Berlaku</th><th>Petugas</th><th>Ket.</th><th>Status</th><th>Aksi</th></tr>';
+        if (!data.length) html += '<tr><td colspan="9" class="muted">Belum ada tugas.</td></tr>';
         data.forEach(function(t, i){
           var aktifBadge = t.aktif ?
             '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:99px;font-size:11px">Aktif</span>' :
             '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:99px;font-size:11px">Nonaktif</span>';
-          var fotoBadge = t.wajibFoto ?
-            '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:99px;font-size:11px">&#128247; Ya</span>' :
-            '<span style="color:#94a3b8;font-size:11px">-</span>';
-          html += '<tr>' +
-            '<td class="center">'+(i+1)+'</td>' +
-            '<td><b>'+esc(t.nama)+'</b></td>' +
-            '<td>'+esc(t.kategori)+'</td>' +
-            '<td>'+esc(t.berlaku)+'</td>' +
-            '<td class="center">'+t.urutan+'</td>' +
-            '<td class="center">'+fotoBadge+'</td>' +
-            '<td class="center">'+aktifBadge+'</td>' +
+          var ket = (t.opsional ? '<span style="background:#ede9fe;color:#6d28d9;padding:1px 6px;border-radius:99px;font-size:11px">Opsional</span> ' : '') +
+                    (t.wajibFoto ? '<span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:99px;font-size:11px">&#128247;</span>' : '');
+          var petugas = t.petugas ? (t.petugas.indexOf('=') !== -1 ? '<span title="'+esc(t.petugas)+'">Bergilir per hari</span>' : esc(t.petugas)) : '<span class="muted">semua</span>';
+          html += '<tr'+(t.aktif?'':' style="opacity:.55"')+'>' +
+            '<td class="center">'+(i+1)+'</td><td>'+esc(t.untuk||'Semua')+'</td>' +
+            '<td style="white-space:nowrap">'+esc(t.jamMulai||'')+(t.jamSelesai?'–'+esc(t.jamSelesai):'')+'</td>' +
+            '<td><b>'+esc(t.nama)+'</b><div class="muted" style="font-size:11px">'+esc(t.kategori)+'</div></td>' +
+            '<td>'+esc(t.berlaku)+'</td><td style="font-size:11.5px">'+petugas+'</td><td>'+ket+'</td><td class="center">'+aktifBadge+'</td>' +
             '<td style="white-space:nowrap">' +
-            '<button class="small btnEditTugas" data-row="'+t.rowIndex+'" data-nama="'+esc(t.nama)+'" data-kat="'+esc(t.kategori)+'" data-berlaku="'+esc(t.berlaku)+'" data-urutan="'+t.urutan+'" data-wajib-foto="'+(t.wajibFoto?'1':'0')+'">Edit</button> ' +
-            '<button class="small '+(t.aktif?'secondary':'primary')+' btnToggleTugas" data-row="'+t.rowIndex+'" data-aktif="'+(t.aktif?'1':'0')+'">'+
-            (t.aktif?'Nonaktifkan':'Aktifkan')+'</button> ' +
+            '<button class="small btnEditTugas" data-row="'+t.rowIndex+'">Edit</button> ' +
+            '<button class="small '+(t.aktif?'secondary':'primary')+' btnToggleTugas" data-row="'+t.rowIndex+'" data-aktif="'+(t.aktif?'1':'0')+'">'+(t.aktif?'Nonaktifkan':'Aktifkan')+'</button> ' +
             '<button class="small danger btnHapusTugas" data-row="'+t.rowIndex+'">Hapus</button>' +
             '</td></tr>';
         });
         html += '</table></div></div>';
         c.innerHTML = html;
 
+        document.getElementById('tgFilterUntuk').onchange = function(){ filterUntuk = this.value; muat(); };
+        document.getElementById('btnTerapkanSK').onclick = function(){
+          if (!confirm('Terapkan tugas Pembina Putra & Putri sesuai SK?\n\nTugas lama akan dinonaktifkan (tidak dihapus). Riwayat centang tetap tersimpan.')) return;
+          var b = this; b.disabled = true; b.innerText = 'Menerapkan...';
+          api('terapkanTugasSK', {oleh: STATE.user.nama}).then(function(r){
+            b.disabled = false; b.innerHTML = '&#128221; Terapkan Tugas sesuai SK';
+            if (!r.ok){ alert(r.error); return; }
+            alert(r.pesan); muat();
+          }).catch(function(){ b.disabled = false; b.innerHTML = '&#128221; Terapkan Tugas sesuai SK'; alert('Gagal terhubung. Coba lagi.'); });
+        };
+
         document.getElementById('btnTambahTugas').onclick = function(){
-          openModal('Tambah Tugas Baru',
-            fieldText('tgNama','Nama Tugas','') +
-            '<label>Kategori</label><select id="tgKat">'+KAT_OPT.map(function(k){return '<option>'+k+'</option>';}).join('')+'</select>'+
-            '<label>Berlaku</label><select id="tgBerlaku">'+BERLAKU_OPT.map(function(b){return '<option>'+b+'</option>';}).join('')+'</select>'+
-            fieldText('tgUrutan','Urutan (angka kecil tampil duluan)','0')+
-            '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:6px">'+
-            '<input type="checkbox" id="tgWajibFoto"> <span>📷 Wajib Upload Foto Bukti saat selesai</span></label>',
-            function(m){
-              var nama = m.querySelector('#tgNama').value.trim();
-              if (!nama){ alert('Nama tugas wajib diisi.'); return false; }
-              return api('simpanTugasPembina',{nama:nama, kategori:m.querySelector('#tgKat').value,
-                berlaku:m.querySelector('#tgBerlaku').value,
-                urutan:m.querySelector('#tgUrutan').value||0,
-                wajibFoto: m.querySelector('#tgWajibFoto').checked,
-                oleh:STATE.user.nama}).then(function(r){
-                if(!r.ok){ alert(r.error); throw new Error(r.error); }
-                muat();
-              });
-            });
+          openModal('Tambah Tugas Baru', formTugas({}), function(m){
+            var f = ambilForm(m);
+            if (!f.nama){ alert('Nama tugas wajib diisi.'); return false; }
+            f.oleh = STATE.user.nama;
+            return api('simpanTugasPembina', f).then(function(r){ if(!r.ok){ alert(r.error); throw new Error(r.error); } muat(); });
+          });
         };
 
         document.querySelectorAll('.btnEditTugas').forEach(function(btn){
           btn.onclick = function(){
-            openModal('Edit Tugas',
-              fieldText('tgNama','Nama Tugas', btn.dataset.nama) +
-              '<label>Kategori</label><select id="tgKat">'+KAT_OPT.map(function(k){return '<option'+(k===btn.dataset.kat?' selected':'')+'>'+k+'</option>';}).join('')+'</select>'+
-              '<label>Berlaku</label><select id="tgBerlaku">'+BERLAKU_OPT.map(function(b){return '<option'+(b===btn.dataset.berlaku?' selected':'')+'>'+b+'</option>';}).join('')+'</select>'+
-              fieldText('tgUrutan','Urutan', btn.dataset.urutan||'0')+
-              '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:6px">'+
-              '<input type="checkbox" id="tgWajibFoto"'+(btn.dataset.wajibFoto==='1'?' checked':'')+'>'+
-              ' <span>📷 Wajib Upload Foto Bukti saat selesai</span></label>',
-              function(m){
-                var nama = m.querySelector('#tgNama').value.trim();
-                if (!nama){ alert('Nama tugas wajib diisi.'); return false; }
-                return api('simpanTugasPembina',{rowIndex:Number(btn.dataset.row), nama:nama,
-                  kategori:m.querySelector('#tgKat').value, berlaku:m.querySelector('#tgBerlaku').value,
-                  urutan:m.querySelector('#tgUrutan').value||0,
-                  wajibFoto: m.querySelector('#tgWajibFoto').checked}).then(function(r){
-                  if(!r.ok){ alert(r.error); throw new Error(r.error); } muat();
-                });
-              });
+            var t = semua.find(function(x){ return x.rowIndex === Number(btn.dataset.row); }) || {};
+            openModal('Edit Tugas', formTugas(t), function(m){
+              var f = ambilForm(m);
+              if (!f.nama){ alert('Nama tugas wajib diisi.'); return false; }
+              f.rowIndex = Number(btn.dataset.row);
+              return api('simpanTugasPembina', f).then(function(r){ if(!r.ok){ alert(r.error); throw new Error(r.error); } muat(); });
+            });
           };
         });
 
@@ -16011,7 +17011,7 @@
 
         document.querySelectorAll('.btnHapusTugas').forEach(function(btn){
           btn.onclick = function(){
-            if(!confirm('Hapus tugas ini? Data realisasi yang sudah ada tidak ikut terhapus.')) return;
+            if(!confirm('Hapus tugas ini? Data realisasi yang sudah ada tidak ikut terhapus.\n\nSaran: pakai "Nonaktifkan" bila hanya ingin menyembunyikan.')) return;
             api('hapusTugasPembina',{rowIndex:Number(btn.dataset.row)}).then(function(r){
               if(!r.ok){ alert(r.error); return; } muat();
             });
@@ -16023,15 +17023,16 @@
   }
 
   // ---- UI MUDIR: Rekap + History Tugas Semua Pembina ----
-  function adminRekapTugasPembina(){
+  function adminRekapTugasPembina(genderKabag){
     var c = getContentEl();
     c.innerHTML = '<p>Memuat...</p>';
+    var gFilter = (genderKabag === 'Putra' || genderKabag === 'Putri') ? genderKabag : '';
 
     function muatRekap(tanggal){
-      api('getRekapTugasPembina', {tanggal: tanggal}).then(function(res){
+      api('getRekapTugasPembina', {tanggal: tanggal, gender: gFilter}).then(function(res){
         if (!res.ok){ document.getElementById('rekapTugasWrap').innerHTML = errBox(res.error); return; }
         var d = res;
-        var html = '<div style="margin-bottom:16px"><b>'+esc(d.hari)+', '+esc(d.tanggal)+'</b> — '+d.totalTugas+' tugas aktif hari ini</div>';
+        var html = '<div style="margin-bottom:16px"><b>'+esc(d.hari)+', '+esc(d.tanggal)+'</b> — progres dihitung dari tugas wajib masing-masing pembina sesuai SK (Putra/Putri & giliran piket)</div>';
         if (!d.data.length){
           html += '<p class="muted">Belum ada data Pembina.</p>';
         } else {
@@ -16039,11 +17040,14 @@
             var warna = pb.persen===100?'#16a34a':pb.persen>=60?'#f59e0b':'#ef4444';
             html += '<div style="margin-bottom:10px;padding:12px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:10px">' +
               '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
-              '<b>'+esc(pb.pembina)+'</b>' +
+              '<b>'+esc(pb.pembina)+(pb.gender?' <span style="font-weight:400;font-size:11.5px;color:#64748b">(Pembina '+esc(pb.gender)+')</span>':' <span style="font-weight:400;font-size:11.5px;color:#b45309">(peran Putra/Putri belum diatur)</span>')+'</b>' +
               '<span style="font-weight:700;font-size:15px;color:'+warna+'">'+pb.persen+'%</span></div>' +
               '<div style="height:8px;background:#e2e8f0;border-radius:99px;overflow:hidden">' +
               '<div style="height:100%;width:'+pb.persen+'%;background:'+warna+';border-radius:99px;transition:.3s"></div></div>' +
-              '<div style="font-size:12px;color:#64748b;margin-top:4px">'+pb.selesai+'/'+pb.total+' tugas selesai</div>' +
+              '<div style="font-size:12px;color:#64748b;margin-top:4px">'+pb.selesai+'/'+pb.total+' tugas wajib selesai' +
+                (pb.opsionalSelesai ? ' &middot; <span style="color:#6d28d9">opsional '+pb.opsionalSelesai+' (+'+pb.jamTambahan+' jam kerja)</span>' : '') + '</div>' +
+              ((pb.belum && pb.belum.length) ? '<details style="margin-top:4px;font-size:12px"><summary style="cursor:pointer;color:#b45309">'+pb.belum.length+' tugas belum dicentang</summary><ul style="margin:4px 0 0 18px;padding:0">' +
+                pb.belum.map(function(x){ return '<li>'+esc(x)+'</li>'; }).join('') + '</ul></details>' : '') +
               '</div>';
           });
         }
@@ -16056,7 +17060,8 @@
       var tglAkhir = document.getElementById('htAkhir') ? document.getElementById('htAkhir').value : '';
       var pembinaF = document.getElementById('htPembina') ? document.getElementById('htPembina').value.trim() : '';
       document.getElementById('historyTugasWrap').innerHTML = 'Memuat...';
-      api('getHistoryTugasPembina',{tglMulai:tglMulai, tglAkhir:tglAkhir, pembina:pembinaF}).then(function(res){
+      muatRingkasan(tglMulai, tglAkhir);
+      api('getHistoryTugasPembina',{tglMulai:tglMulai, tglAkhir:tglAkhir, pembina:pembinaF, gender:gFilter}).then(function(res){
         if (!res.ok){ document.getElementById('historyTugasWrap').innerHTML = errBox(res.error); return; }
         var data = res.data;
         if (!data.length){ document.getElementById('historyTugasWrap').innerHTML = '<p class="muted">Tidak ada data pada rentang ini.</p>'; return; }
@@ -16087,24 +17092,45 @@
       });
     }
 
+    // Ringkasan kinerja per pembina dalam rentang tanggal: dasar penilaian kinerja (SK
+    // diktum KELIMA/KETUJUH) dan tambahan jam kerja dari tugas opsional (honorarium).
+    function muatRingkasan(tglMulai, tglAkhir){
+      var el = document.getElementById('ringkasTugasWrap'); if (!el) return;
+      el.innerHTML = '<p class="muted">Memuat ringkasan...</p>';
+      api('getRingkasanTugasPembina', {tglMulai:tglMulai, tglAkhir:tglAkhir, gender:gFilter}).then(function(r){
+        if (!document.getElementById('ringkasTugasWrap')) return;
+        if (!r.ok){ el.innerHTML = errBox(r.error); return; }
+        if (!r.data.length){ el.innerHTML = '<p class="muted">Belum ada pembina terdaftar.</p>'; return; }
+        el.innerHTML = '<div style="overflow-x:auto"><table style="font-size:12.5px"><tr><th>Pembina</th><th>Bagian</th><th>Tugas Wajib Selesai</th><th>Kinerja</th><th>Tugas Opsional</th><th>Tambahan Jam Kerja</th></tr>' +
+          r.data.map(function(x){
+            var w = x.persen>=90?'#16a34a':x.persen>=70?'#f59e0b':'#ef4444';
+            return '<tr><td><b>'+esc(x.pembina)+'</b></td><td>'+esc(x.gender||'-')+'</td><td>'+x.wajibSelesai+' / '+x.wajib+'</td>' +
+              '<td><b style="color:'+w+'">'+x.persen+'%</b></td><td>'+x.opsionalSelesai+'</td><td><b>'+x.jamTambahan+' jam</b></td></tr>';
+          }).join('') + '</table></div>' +
+          '<p class="muted" style="font-size:11.5px;margin:6px 0 0">Periode '+esc(r.mulai)+' s/d '+esc(r.akhir)+'. Tambahan jam kerja dihitung dari durasi tugas opsional yang dicentang (mis. Halaqah Subuh 05.30–07.00 = 1,5 jam).</p>';
+      });
+    }
+
     var now = new Date();
     var tglHariIni = todayStr();
     var tgl7Lalu = new Date(now - 7*24*3600*1000);
     var tgl7LaluStr = tgl7Lalu.getFullYear()+'-'+String(tgl7Lalu.getMonth()+1).padStart(2,'0')+'-'+String(tgl7Lalu.getDate()).padStart(2,'0');
 
-    c.innerHTML = '<div class="card"><h3>&#128202; Rekap Tugas Harian Pembina</h3>' +
+    c.innerHTML = '<div class="card"><h3>&#128202; Rekap Tugas Harian Pembina'+(gFilter?' '+esc(gFilter):'')+'</h3>' +
       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">' +
       '<input type="date" id="rekapTanggal" value="'+tglHariIni+'" style="padding:5px 8px;border-radius:6px;border:1px solid #e2e8f0">' +
       '<button id="btnMuatRekap">Tampilkan</button></div>' +
       '<div id="rekapTugasWrap">Memuat...</div></div>' +
-      '<div class="card" style="margin-top:12px"><h3>&#128203; History Lengkap</h3>' +
+      '<div class="card" style="margin-top:12px"><h3>&#128203; Ringkasan Kinerja &amp; History</h3>' +
       '<div class="grid2" style="margin-bottom:8px">' +
       '<div><label class="muted">Dari Tanggal</label><input type="date" id="htMulai" value="'+tgl7LaluStr+'"></div>' +
       '<div><label class="muted">Sampai Tanggal</label><input type="date" id="htAkhir" value="'+tglHariIni+'"></div></div>' +
       '<div style="margin-bottom:8px"><label class="muted">Filter Pembina (kosongkan = semua)</label>' +
       '<input id="htPembina" placeholder="Nama pembina..." style="width:100%"></div>' +
-      '<button id="btnCariHistory">Cari History</button>' +
-      '<div id="historyTugasWrap" style="margin-top:12px"></div></div>';
+      '<button id="btnCariHistory">Tampilkan</button>' +
+      '<h4 style="margin:14px 0 6px">Ringkasan per Pembina</h4><div id="ringkasTugasWrap"></div>' +
+      '<h4 style="margin:14px 0 6px">History Centang</h4>' +
+      '<div id="historyTugasWrap" style="margin-top:6px"></div></div>';
 
     muatRekap(tglHariIni);
     document.getElementById('btnMuatRekap').onclick = function(){
