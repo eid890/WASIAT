@@ -414,7 +414,13 @@
   #absensi-app .bv2 .bv-hero>.bv-isi{padding-top:56px;padding-bottom:64px;position:relative;z-index:1}
   #absensi-app .bv2 .bv-hero::after{content:"";position:absolute;right:-60px;top:-40px;width:340px;height:340px;border:1px solid var(--garis);transform:rotate(45deg);opacity:.7}
   #absensi-app .bv2 .bv-hero.ada-gambar{background-size:cover;background-position:center;border-bottom:0}
-  #absensi-app .bv2 .bv-hero.ada-gambar::before{content:"";position:absolute;inset:0;background:linear-gradient(100deg,rgba(7,29,64,.92) 0%,rgba(11,44,95,.78) 55%,rgba(11,44,95,.45) 100%)}
+  /* Foto sampul dibiarkan terlihat: lapisan gelap hanya tipis di atas dan menebal di bawah
+     tempat judul berada, supaya tulisan tetap terbaca tanpa menutupi foto. */
+  #absensi-app .bv2 .bv-hero.ada-gambar::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(7,29,64,.15) 0%,rgba(7,29,64,.35) 45%,rgba(7,29,64,.85) 100%)}
+  #absensi-app .bv2 .bv-hero.ada-gambar>.bv-isi{padding-top:140px;padding-bottom:34px}
+  #absensi-app .bv2 .bv-hero.ada-gambar h1{text-shadow:0 2px 14px rgba(0,0,0,.35)}
+  #absensi-app .bv2 .bv-hero.ada-gambar .bv-garis-emas{margin-bottom:0}
+  #absensi-app .bv2 .bv-hero.ada-gambar p{margin:16px 0 0}
   #absensi-app .bv2 .bv-hero.ada-gambar::after{border-color:rgba(255,255,255,.18)}
   #absensi-app .bv2 .bv-tagline{display:inline-flex;align-items:center;gap:12px;border:1px solid var(--garis);background:#fff;padding:10px 18px;font-size:11.5px;font-weight:700;letter-spacing:.3em;text-transform:uppercase;color:var(--navy)}
   #absensi-app .bv2 .bv-tagline::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--emas);flex:none}
@@ -428,14 +434,16 @@
   #absensi-app .bv2 .bv-hero.ada-gambar .bv-garis-emas{background:#fff}
   #absensi-app .bv2 .bv-hero.ada-gambar p{color:#dfe6f1}
   #absensi-app .bv2 .bv-aksi{display:flex;gap:12px;flex-wrap:wrap}
-  #absensi-app .bv2 .bv-cta{font:700 13px var(--bv-font);letter-spacing:.14em;text-transform:uppercase;padding:16px 26px;margin:0;border-radius:2px;border:1px solid var(--navy);background:var(--navy);color:#fff;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:10px;width:auto}
+  #absensi-app .bv2 .bv-cta{font:700 12px var(--bv-font);letter-spacing:.12em;text-transform:uppercase;padding:12px 20px;margin:0;border-radius:2px;border:1px solid var(--navy);background:var(--navy);color:#fff;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:10px;width:auto}
   #absensi-app .bv2 .bv-cta:hover{background:var(--navy-tua);color:#fff}
   #absensi-app .bv2 .bv-cta.garis{background:#fff;color:var(--navy);border-color:var(--garis)}
   #absensi-app .bv2 .bv-cta.garis::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--emas)}
   #absensi-app .bv2 .bv-cta.emas{background:var(--emas);border-color:var(--emas);color:var(--navy-tua)}
-  #absensi-app .bv2 .bv-hero.ada-gambar .bv-cta{background:var(--emas);border-color:var(--emas);color:var(--navy-tua)}
-  #absensi-app .bv2 .bv-hero.ada-gambar .bv-cta.garis{background:transparent;color:#fff;border-color:rgba(255,255,255,.5)}
-  @media (max-width:600px){ #absensi-app .bv2 .bv-aksi .bv-cta{flex:1 1 100%} }
+  /* Tombol hero: ukuran ringkas. Kalau ada foto sampul, tombol dipindah ke pita putih di
+     BAWAH foto (bv-aksi-bar) supaya foto tidak tertutup. */
+  #absensi-app .bv2 .bv-aksi-bar{background:#fff;border-bottom:1px solid var(--garis)}
+  #absensi-app .bv2 .bv-aksi-bar .bv-aksi{padding-top:14px;padding-bottom:14px}
+  @media (max-width:600px){ #absensi-app .bv2 .bv-aksi{gap:8px} #absensi-app .bv2 .bv-aksi .bv-cta{flex:1 1 0;min-width:0;padding:11px 10px;font-size:11px;letter-spacing:.08em;white-space:nowrap} }
 
   /* Statistik */
   #absensi-app .bv2 .bv-stat{background:var(--navy-tua);color:#fff}
@@ -567,12 +575,24 @@
   #absensi-app .bv2 .bv-wa-float:hover{background:#1fb855}
   #absensi-app .bv2 .bv-wa-float .ikon-wa-svg{width:30px;height:30px}
   #absensi-app .bv2 .bv-wa-float .titik{position:absolute;top:2px;right:2px;width:14px;height:14px;border-radius:50%;background:#ef4444;border:2px solid #fff}
-  #absensi-app .bv2 .bv-ibadah{position:fixed;left:14px;bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:400;display:flex;flex-direction:column;gap:8px}
-  #absensi-app .bv2 .bv-ibadah a{width:44px;height:44px;border-radius:2px;background:#fff;border:1px solid var(--garis);display:grid;place-items:center;font-size:19px;text-decoration:none;box-shadow:0 6px 16px rgba(11,44,95,.12);position:relative}
-  #absensi-app .bv2 .bv-ibadah a::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--emas);z-index:1}
-  #absensi-app .bv2 .bv-ibadah a img{width:100%;height:100%;object-fit:cover;display:block}
-  #absensi-app .bv2 .bv-ibadah .tip{position:absolute;left:52px;top:50%;transform:translateY(-50%);background:var(--navy-tua);color:#fff;font-size:11px;padding:4px 9px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s;max-width:none}
-  #absensi-app .bv2 .bv-ibadah a:hover .tip{opacity:1}
+  /* Menu ibadah: satu tombol kecil di kiri bawah; diketuk -> Jadwal Sholat, Al-Quran, Dzikir
+     muncul ke atas. Ketiganya juga tersedia sebagai deret tautan di kaki halaman. */
+  #absensi-app .bv2 .bv-ibadah{position:fixed;left:14px;bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:400;display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+  #absensi-app .bv2 .bv-ibadah-toggle{width:40px;height:40px;padding:0;margin:0;border-radius:2px;background:#fff;border:1px solid var(--garis);box-shadow:0 6px 16px rgba(11,44,95,.14);display:grid;place-items:center;cursor:pointer;position:relative;color:var(--navy)}
+  #absensi-app .bv2 .bv-ibadah-toggle:hover{background:#fff}
+  #absensi-app .bv2 .bv-ibadah-toggle::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--emas)}
+  #absensi-app .bv2 .bv-ibadah-toggle svg{width:20px;height:20px;fill:var(--navy)}
+  #absensi-app .bv2 .bv-ibadah-toggle .x{display:none;font-size:22px;line-height:1}
+  #absensi-app .bv2 .bv-ibadah.buka .bv-ibadah-toggle svg{display:none}
+  #absensi-app .bv2 .bv-ibadah.buka .bv-ibadah-toggle .x{display:block}
+  #absensi-app .bv2 .bv-ibadah-daftar{display:none;flex-direction:column;gap:6px}
+  #absensi-app .bv2 .bv-ibadah.buka .bv-ibadah-daftar{display:flex;animation:bvMuncul .2s ease-out}
+  #absensi-app .bv2 .bv-ibadah-item,#absensi-app .bv2 .bv-ibadah-baris a{display:inline-flex;align-items:center;gap:10px;height:38px;padding:0 14px 0 0;background:#fff;border:1px solid var(--garis);text-decoration:none;color:var(--navy);font-size:12.5px;font-weight:700;white-space:nowrap;box-shadow:0 6px 16px rgba(11,44,95,.12)}
+  #absensi-app .bv2 .bv-ibadah-item .ik,#absensi-app .bv2 .bv-ibadah-baris .ik{width:36px;height:36px;display:grid;place-items:center;font-size:17px;border-right:1px solid var(--garis);flex:none;overflow:hidden}
+  #absensi-app .bv2 .bv-ibadah-item .ik img,#absensi-app .bv2 .bv-ibadah-baris .ik img{width:100%;height:100%;object-fit:cover;display:block}
+  #absensi-app .bv2 .bv-ibadah-baris{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  #absensi-app .bv2 .bv-ibadah-baris a{box-shadow:none;background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.18);color:#fff}
+  #absensi-app .bv2 .bv-ibadah-baris .ik{border-right-color:rgba(255,255,255,.18);background:#fff}
 
   /* Jendela "Layanan Informasi" (sambutan pengunjung baru) */
   #absensi-app .bv2 .bv-info{position:fixed;right:18px;bottom:calc(92px + env(safe-area-inset-bottom,0px));z-index:650;width:380px;max-width:calc(100vw - 32px);max-height:calc(100vh - 120px);overflow-y:auto;background:#fff;border:1px solid var(--garis);box-shadow:0 24px 60px rgba(7,29,64,.22);animation:bvMuncul .28s ease-out}
@@ -602,12 +622,87 @@
   #absensi-app .bv2 .bv-info .jangan input{width:16px;height:16px;min-height:0;accent-color:var(--navy);margin:0;padding:0;flex:none}
 
   #absensi-app .bv2 a:focus-visible,#absensi-app .bv2 button:focus-visible{outline:2px solid var(--emas);outline-offset:2px}
+  /* ---- Beranda v2: kartu bisa diklik, slide galeri, halaman album, penampil foto ---- */
+  #absensi-app .bv2 .bv-bisa-klik{cursor:pointer}
+  #absensi-app .bv2 .bv-program.bv-bisa-klik:hover h4,#absensi-app .bv2 .bv-fasilitas.bv-bisa-klik:hover h4{text-decoration:underline;text-decoration-color:var(--emas);text-underline-offset:4px}
+  #absensi-app .bv2 .bv-program .lihat,#absensi-app .bv2 .bv-fasilitas .lihat{display:inline-block;margin-top:10px;font-size:11px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--emas)}
+  #absensi-app .bv2 .bv-fasilitas .lihat{color:var(--navy)}
+
+  /* Slide otomatis galeri */
+  #absensi-app .bv2 .bv-slide{max-width:900px;position:relative;background:var(--navy-tua);border:1px solid var(--garis);padding:10px;cursor:pointer}
+  #absensi-app .bv2 .bv-slide-layar{position:relative;width:100%;padding-top:56.25%;overflow:hidden;background:#0a1b38}
+  #absensi-app .bv2 .bv-slide-layar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .8s ease}
+  #absensi-app .bv2 .bv-slide-layar img.aktif{opacity:1}
+  #absensi-app .bv2 .bv-slide-info{position:absolute;left:10px;right:10px;bottom:10px;padding:46px 20px 16px;background:linear-gradient(transparent,rgba(7,29,64,.92));color:#fff;pointer-events:none}
+  #absensi-app .bv2 .bv-slide-info .album{display:block;font-size:11px;font-weight:700;letter-spacing:.24em;text-transform:uppercase;color:var(--emas)}
+  #absensi-app .bv2 .bv-slide-info .ket{display:block;font-size:15px;font-weight:600;margin-top:4px;line-height:1.4}
+  #absensi-app .bv2 .bv-slide-hitung{position:absolute;right:22px;top:22px;background:rgba(7,29,64,.75);color:#fff;font-size:11.5px;font-weight:700;letter-spacing:.1em;padding:4px 10px;pointer-events:none}
+  #absensi-app .bv2 .bv-slide-panah{position:absolute;top:50%;transform:translateY(-50%);width:40px;height:40px;margin:0;padding:0;border:0;border-radius:2px;background:rgba(255,255,255,.88);color:var(--navy);font-size:22px;line-height:1;display:grid;place-items:center;cursor:pointer}
+  #absensi-app .bv2 .bv-slide-panah:hover{background:#fff}
+  #absensi-app .bv2 .bv-slide-panah.kiri{left:20px}
+  #absensi-app .bv2 .bv-slide-panah.kanan{right:20px}
+  #absensi-app .bv2 .bv-galeri-aksi{margin-top:18px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  #absensi-app .bv2 .bv-galeri-aksi small{color:var(--redup);font-size:12.5px}
+  @media (max-width:600px){ #absensi-app .bv2 .bv-slide-panah{width:34px;height:34px;font-size:19px} #absensi-app .bv2 .bv-slide-panah.kiri{left:16px} #absensi-app .bv2 .bv-slide-panah.kanan{right:16px} #absensi-app .bv2 .bv-slide-info .ket{font-size:13.5px} }
+
+  /* Saat galeri/detail terbuka, tombol Instal Aplikasi & lencana antrian disembunyikan dulu */
+  body.bv-lapis-buka #btnInstallPWA,body.bv-lapis-buka #outboxBadge{visibility:hidden}
+  /* Halaman album (layar penuh, putih) */
+  #absensi-app .bv2 .bv-lapis{position:fixed;inset:0;z-index:9000;background:#fff;overflow-y:auto;-webkit-overflow-scrolling:touch;animation:bvMuncul .2s ease-out}
+  #absensi-app .bv2 .bv-lapis-kepala{position:sticky;top:0;z-index:2;background:#fff;border-bottom:1px solid var(--garis)}
+  #absensi-app .bv2 .bv-lapis-kepala .bv-isi{display:flex;align-items:center;gap:12px;padding-top:12px;padding-bottom:12px}
+  #absensi-app .bv2 .bv-lapis-kepala .judul{flex:1;min-width:0}
+  #absensi-app .bv2 .bv-lapis-kepala .judul b{display:block;font-size:17px;font-weight:800;color:var(--tinta);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #absensi-app .bv2 .bv-lapis-kepala .judul small{font-size:10.5px;letter-spacing:.24em;text-transform:uppercase;color:var(--redup)}
+  #absensi-app .bv2 .bv-tombol-ikon{width:42px;height:42px;flex:none;margin:0;padding:0;border:1px solid var(--garis);border-radius:2px;background:#fff;color:var(--navy);font-size:24px;line-height:1;display:grid;place-items:center;cursor:pointer}
+  #absensi-app .bv2 .bv-tombol-ikon:hover{background:var(--latar-alt)}
+  #absensi-app .bv2 .bv-lapis-isi{padding-top:24px;padding-bottom:60px}
+  #absensi-app .bv2 .bv-album-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px}
+  #absensi-app .bv2 .bv-album{border:1px solid var(--garis);background:#fff;cursor:pointer;min-width:0;transition:border-color .2s,box-shadow .2s}
+  #absensi-app .bv2 .bv-album:hover{border-color:var(--navy);box-shadow:0 12px 28px rgba(11,44,95,.1)}
+  #absensi-app .bv2 .bv-album .sampul{position:relative;width:100%;padding-top:72%;background:var(--latar-alt);overflow:hidden}
+  #absensi-app .bv2 .bv-album .sampul img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  #absensi-app .bv2 .bv-album .sampul .jumlah{position:absolute;right:8px;bottom:8px;background:rgba(7,29,64,.85);color:#fff;font-size:11.5px;font-weight:700;padding:3px 9px}
+  #absensi-app .bv2 .bv-album .nama{padding:12px 14px 14px;border-top:3px solid var(--navy);display:flex;gap:10px;align-items:center}
+  #absensi-app .bv2 .bv-album .nama::before{content:"\1F4C1";font-size:18px}
+  #absensi-app .bv2 .bv-album .nama b{font-size:15px;font-weight:700;color:var(--tinta);line-height:1.3}
+  #absensi-app .bv2 .bv-foto-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+  #absensi-app .bv2 .bv-foto{position:relative;padding-top:100%;background:var(--latar-alt);cursor:zoom-in;overflow:hidden}
+  #absensi-app .bv2 .bv-foto img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform .35s ease}
+  #absensi-app .bv2 .bv-foto:hover img{transform:scale(1.05)}
+  @media (max-width:600px){ #absensi-app .bv2 .bv-album-grid{grid-template-columns:1fr 1fr;gap:10px} #absensi-app .bv2 .bv-album .nama b{font-size:13px} #absensi-app .bv2 .bv-foto-grid{grid-template-columns:repeat(3,1fr);gap:4px} }
+
+  /* Penampil foto layar penuh (latar gelap) */
+  #absensi-app .bv2 .bv-penampil{position:fixed;inset:0;z-index:9500;background:rgba(2,8,23,.97);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 12px 20px;animation:bvMuncul .18s ease-out}
+  #absensi-app .bv2 .bv-penampil img{max-width:100%;max-height:calc(100vh - 170px);object-fit:contain;display:block;width:auto;height:auto}
+  #absensi-app .bv2 .bv-penampil .tutup{position:absolute;top:12px;right:12px;width:46px;height:46px;margin:0;padding:0;border:1px solid rgba(255,255,255,.3);border-radius:2px;background:rgba(255,255,255,.08);color:#fff;font-size:30px;line-height:1;cursor:pointer;display:grid;place-items:center}
+  #absensi-app .bv2 .bv-penampil .tutup:hover{background:rgba(255,255,255,.2)}
+  #absensi-app .bv2 .bv-penampil .hitung{position:absolute;top:24px;left:18px;color:#cfd9ea;font-size:12.5px;font-weight:700;letter-spacing:.12em}
+  #absensi-app .bv2 .bv-penampil .panah{position:absolute;top:50%;transform:translateY(-50%);width:46px;height:46px;margin:0;padding:0;border:0;border-radius:2px;background:rgba(255,255,255,.12);color:#fff;font-size:28px;line-height:1;cursor:pointer;display:grid;place-items:center}
+  #absensi-app .bv2 .bv-penampil .panah:hover{background:rgba(255,255,255,.25)}
+  #absensi-app .bv2 .bv-penampil .panah.kiri{left:10px}
+  #absensi-app .bv2 .bv-penampil .panah.kanan{right:10px}
+  #absensi-app .bv2 .bv-penampil .teks{color:#fff;text-align:center;max-width:760px;margin-top:14px;padding:0 10px}
+  #absensi-app .bv2 .bv-penampil .teks b{display:block;font-size:15px;font-weight:700}
+  #absensi-app .bv2 .bv-penampil .teks span{display:block;font-size:13.5px;color:#cfd9ea;margin-top:4px;white-space:pre-line}
+
+  /* Detail Program Unggulan / Fasilitas: gambar besar + judul + deskripsi */
+  #absensi-app .bv2 .bv-detail-bg{position:fixed;inset:0;z-index:9000;background:rgba(2,8,23,.86);overflow-y:auto;display:flex;align-items:flex-start;justify-content:center;padding:40px 14px;animation:bvMuncul .2s ease-out}
+  #absensi-app .bv2 .bv-detail{position:relative;background:#fff;width:100%;max-width:820px;border-top:3px solid var(--emas)}
+  #absensi-app .bv2 .bv-detail .gambar{background:var(--navy-tua);cursor:zoom-in}
+  #absensi-app .bv2 .bv-detail .gambar img{width:100%;max-height:72vh;object-fit:contain;display:block;margin:0 auto}
+  #absensi-app .bv2 .bv-detail .ikon-besar{height:180px;display:grid;place-items:center;font-size:64px;background:var(--navy-tua)}
+  #absensi-app .bv2 .bv-detail .badan{padding:24px 26px 28px}
+  #absensi-app .bv2 .bv-detail h3{font-size:clamp(22px,4vw,30px);font-weight:800;margin:0 0 12px;line-height:1.2;color:var(--tinta)}
+  #absensi-app .bv2 .bv-detail p{margin:0;color:var(--redup);font-size:15px;line-height:1.75;white-space:pre-line}
+  #absensi-app .bv2 .bv-detail .tutup{position:absolute;top:-1px;right:-1px;z-index:2;width:46px;height:46px;margin:0;padding:0;border:0;border-radius:0;background:var(--emas);color:var(--navy-tua);font-size:28px;line-height:1;cursor:pointer;display:grid;place-items:center}
+  #absensi-app .bv2 .bv-detail .tutup:hover{background:#ffd23f}
 </style>
 
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyHNErHyTB-6cRIDyq06IlmTzjDNRjWpIv_CVRXpY1pBKCg2PFLxRRtY1yMUNjPY4U/exec";
+  var WEBAPP_URL = "PASTE_URL_WEBAPP_ANDA_DI_SINI";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -917,7 +1012,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.10.11-f';
+  var VERSI_APP = '2026.10.11-h';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -2548,7 +2643,204 @@
     return true;
   }
 
+  // ---- Beranda v2: galeri berbentuk album, penampil foto, detail program ----
+  // Album galeri = foto-foto Galeri yang JUDUL-nya sama (Judul = nama album/kegiatan,
+  // Deskripsi = keterangan per foto). Tidak ada kolom/sheet baru: data lama tetap terbaca,
+  // foto lama yang judulnya berbeda-beda otomatis menjadi album masing-masing.
+  function kelompokAlbumGaleri(galeri){
+    var peta = {}, urut = [];
+    galeri.forEach(function(g){
+      var nama = String(g.judul||'').trim() || 'Lainnya';
+      var kunci = nama.toLowerCase();
+      if (!peta[kunci]) { peta[kunci] = {judul:nama, foto:[]}; urut.push(peta[kunci]); }
+      peta[kunci].foto.push(g);
+    });
+    return urut;
+  }
+  function wadahBeranda(){ return document.querySelector('#absensi-app .bv2'); }
+  // Lapisan layar penuh: kunci gulir halaman di belakangnya, tutup dengan tombol X / Esc.
+  var _lapisanBeranda = [];
+  function pasangLapisanBeranda(el){
+    var wadah = wadahBeranda(); if (!wadah) return null;
+    wadah.appendChild(el);
+    _lapisanBeranda.push(el);
+    document.body.style.overflow = 'hidden';
+    document.body.classList.add('bv-lapis-buka');
+    return el;
+  }
+  function lepasLapisanBeranda(el){
+    if (el && el.parentNode) el.parentNode.removeChild(el);
+    _lapisanBeranda = _lapisanBeranda.filter(function(x){ return x !== el && document.body.contains(x); });
+    if (!_lapisanBeranda.length) { document.body.style.overflow = ''; document.body.classList.remove('bv-lapis-buka'); }
+  }
+  document.addEventListener('keydown', function(e){
+    if (!_lapisanBeranda.length) return;
+    var atas = _lapisanBeranda[_lapisanBeranda.length - 1];
+    if (!document.body.contains(atas)) { lepasLapisanBeranda(atas); return; }
+    if (e.key === 'Escape') { var t = atas.querySelector('[data-tutup]'); if (t) t.click(); }
+    else if (e.key === 'ArrowLeft' && atas._geser) atas._geser(-1);
+    else if (e.key === 'ArrowRight' && atas._geser) atas._geser(1);
+  });
+  function pasangUsap(el, fungsi){
+    var x0 = null;
+    el.addEventListener('touchstart', function(e){ x0 = e.touches[0].clientX; }, {passive:true});
+    el.addEventListener('touchend', function(e){
+      if (x0 === null) return;
+      var dx = e.changedTouches[0].clientX - x0; x0 = null;
+      if (Math.abs(dx) > 45) fungsi(dx < 0 ? 1 : -1);
+    }, {passive:true});
+  }
+
+  // Foto layar penuh, bisa digeser kiri/kanan, tombol X untuk keluar.
+  function bukaPenampilFoto(daftar, indeks, namaAlbum){
+    var el = document.createElement('div');
+    el.className = 'bv-penampil';
+    el.setAttribute('role','dialog');
+    var i = indeks || 0;
+    function gambar(){
+      var f = daftar[i];
+      el.innerHTML = '<span class="hitung">'+(i+1)+' / '+daftar.length+'</span>' +
+        '<button class="tutup" type="button" data-tutup aria-label="Tutup">&times;</button>' +
+        (daftar.length > 1 ? '<button class="panah kiri" type="button" aria-label="Sebelumnya">&#8249;</button><button class="panah kanan" type="button" aria-label="Berikutnya">&#8250;</button>' : '') +
+        '<img src="'+esc(f.gambar)+'" alt="'+esc(f.judul||'')+'">' +
+        '<div class="teks"><b>'+esc(namaAlbum || f.judul || '')+'</b>'+(f.deskripsi ? '<span>'+esc(f.deskripsi)+'</span>' : '')+'</div>';
+      el.querySelector('.tutup').onclick = function(){ lepasLapisanBeranda(el); };
+      var kiri = el.querySelector('.panah.kiri'), kanan = el.querySelector('.panah.kanan');
+      if (kiri) kiri.onclick = function(e){ e.stopPropagation(); geser(-1); };
+      if (kanan) kanan.onclick = function(e){ e.stopPropagation(); geser(1); };
+      // pramuat foto berikutnya supaya geser terasa cepat
+      if (daftar.length > 1) { var pre = new Image(); pre.src = daftar[(i+1) % daftar.length].gambar; }
+    }
+    function geser(arah){ if (daftar.length < 2) return; i = (i + arah + daftar.length) % daftar.length; gambar(); }
+    el._geser = geser;
+    el.onclick = function(e){ if (e.target === el) lepasLapisanBeranda(el); };
+    pasangUsap(el, geser);
+    gambar();
+    pasangLapisanBeranda(el);
+  }
+
+  // Halaman album: daftar folder -> isi folder (grid foto) -> foto layar penuh.
+  function bukaHalamanAlbum(albumList, albumAwal){
+    var el = document.createElement('div');
+    el.className = 'bv-lapis';
+    el.setAttribute('role','dialog');
+    var totalFoto = albumList.reduce(function(n, a){ return n + a.foto.length; }, 0);
+    function kepala(judul, sub, adaKembali){
+      return '<div class="bv-lapis-kepala"><div class="bv-isi">' +
+        (adaKembali ? '<button class="bv-tombol-ikon" type="button" data-kembali aria-label="Kembali ke daftar album">&#8592;</button>' : '') +
+        '<div class="judul"><b>'+esc(judul)+'</b><small>'+esc(sub)+'</small></div>' +
+        '<button class="bv-tombol-ikon" type="button" data-tutup aria-label="Tutup">&times;</button>' +
+      '</div></div>';
+    }
+    function ikatTutup(){
+      el.querySelector('[data-tutup]').onclick = function(){ lepasLapisanBeranda(el); };
+      var k = el.querySelector('[data-kembali]');
+      if (k) k.onclick = function(){ daftarAlbum(); };
+    }
+    function daftarAlbum(){
+      el.innerHTML = kepala('Galeri Kegiatan', albumList.length+' album · '+totalFoto+' foto', false) +
+        '<div class="bv-isi bv-lapis-isi"><div class="bv-album-grid">' +
+        albumList.map(function(a, ai){
+          return '<div class="bv-album" data-a="'+ai+'" role="button" tabindex="0"><div class="sampul"><img src="'+esc(a.foto[0].gambar)+'" alt="" loading="lazy"><span class="jumlah">'+a.foto.length+' foto</span></div>' +
+            '<div class="nama"><b>'+esc(a.judul)+'</b></div></div>';
+        }).join('') + '</div></div>';
+      ikatTutup();
+      el.querySelectorAll('.bv-album').forEach(function(k){
+        k.onclick = function(){ isiAlbum(albumList[Number(k.dataset.a)]); };
+        k.onkeydown = function(e){ if (e.key === 'Enter') k.click(); };
+      });
+      el.scrollTop = 0;
+    }
+    function isiAlbum(a){
+      el.innerHTML = kepala(a.judul, a.foto.length+' foto', albumList.length > 1) +
+        '<div class="bv-isi bv-lapis-isi"><div class="bv-foto-grid">' +
+        a.foto.map(function(f, fi){ return '<div class="bv-foto" data-f="'+fi+'"><img src="'+esc(f.gambar)+'" alt="'+esc(f.deskripsi||a.judul)+'" loading="lazy"></div>'; }).join('') +
+        '</div></div>';
+      ikatTutup();
+      el.querySelectorAll('.bv-foto').forEach(function(k){
+        k.onclick = function(){ bukaPenampilFoto(a.foto, Number(k.dataset.f), a.judul); };
+      });
+      el.scrollTop = 0;
+    }
+    if (albumAwal && albumList.length > 1) isiAlbum(albumAwal);
+    else if (albumList.length === 1) isiAlbum(albumList[0]);
+    else daftarAlbum();
+    pasangLapisanBeranda(el);
+  }
+
+  // Detail Program Unggulan / Fasilitas: gambar besar, lalu judul & deskripsi di bawahnya.
+  function bukaDetailFiturBeranda(f){
+    var el = document.createElement('div');
+    el.className = 'bv-detail-bg';
+    el.innerHTML = '<div class="bv-detail" role="dialog" aria-label="'+esc(f.judul)+'">' +
+      '<button class="tutup" type="button" data-tutup aria-label="Tutup">&times;</button>' +
+      (f.gambar ? '<div class="gambar"><img src="'+esc(f.gambar)+'" alt="'+esc(f.judul)+'"></div>'
+                : '<div class="ikon-besar">'+(f.kategori === 'Fasilitas' ? '&#127968;' : '&#128214;')+'</div>') +
+      '<div class="badan"><h3>'+esc(f.judul)+'</h3>'+(f.deskripsi ? '<p>'+esc(f.deskripsi)+'</p>' : '')+'</div>' +
+    '</div>';
+    el.querySelector('.tutup').onclick = function(){ lepasLapisanBeranda(el); };
+    el.onclick = function(e){ if (e.target === el) lepasLapisanBeranda(el); };
+    var gb = el.querySelector('.gambar');
+    if (gb) gb.onclick = function(){ bukaPenampilFoto([f], 0, f.judul); };
+    pasangLapisanBeranda(el);
+  }
+
+  // Slide otomatis galeri di halaman depan (ganti tiap 4 detik, berhenti sendiri bila
+  // halaman depan sudah ditinggalkan). Hanya foto aktif & berikutnya yang dimuat dulu.
+  var _timerSlideGaleri = null;
+  function pasangSlideGaleri(wrap, galeri, albumList){
+    if (_timerSlideGaleri) { clearInterval(_timerSlideGaleri); _timerSlideGaleri = null; }
+    var albumDari = function(g){ var k = (String(g.judul||'').trim() || 'Lainnya').toLowerCase(); return albumList.find(function(a){ return a.judul.toLowerCase() === k; }); };
+    wrap.innerHTML =
+      '<div class="bv-slide reveal" id="bvSlide" role="button" tabindex="0" aria-label="Buka galeri">' +
+        '<div class="bv-slide-layar">' + galeri.map(function(g, i){
+          return '<img '+(i < 2 ? 'src' : 'data-src')+'="'+esc(g.gambar)+'" alt="'+esc(g.judul||'')+'"'+(i===0?' class="aktif"':'')+'>';
+        }).join('') + '</div>' +
+        '<div class="bv-slide-info"><span class="album"></span><span class="ket"></span></div>' +
+        '<span class="bv-slide-hitung"></span>' +
+        (galeri.length > 1 ? '<button class="bv-slide-panah kiri" type="button" aria-label="Sebelumnya">&#8249;</button><button class="bv-slide-panah kanan" type="button" aria-label="Berikutnya">&#8250;</button>' : '') +
+      '</div>' +
+      '<div class="bv-galeri-aksi reveal"><button class="bv-cta" type="button" id="bvBukaAlbum">&#128193; Lihat Semua Album</button>' +
+        '<small>'+albumList.length+' album · '+galeri.length+' foto</small></div>';
+    var slide = wrap.querySelector('#bvSlide');
+    var imgs = slide.querySelectorAll('.bv-slide-layar img');
+    var i = 0;
+    function tampil(n){
+      imgs[i].classList.remove('aktif');
+      i = (n + imgs.length) % imgs.length;
+      var img = imgs[i];
+      if (img.dataset.src) { img.src = img.dataset.src; img.removeAttribute('data-src'); }
+      var lanjut = imgs[(i+1) % imgs.length];
+      if (lanjut.dataset.src) { lanjut.src = lanjut.dataset.src; lanjut.removeAttribute('data-src'); }
+      img.classList.add('aktif');
+      var g = galeri[i];
+      slide.querySelector('.album').textContent = g.judul || '';
+      slide.querySelector('.ket').textContent = g.deskripsi || '';
+      slide.querySelector('.bv-slide-hitung').textContent = (i+1) + ' / ' + imgs.length;
+    }
+    function mulai(){
+      if (_timerSlideGaleri) clearInterval(_timerSlideGaleri);
+      if (imgs.length < 2) return;
+      _timerSlideGaleri = setInterval(function(){
+        if (!document.body.contains(slide)) { clearInterval(_timerSlideGaleri); _timerSlideGaleri = null; return; }
+        if (document.hidden || _lapisanBeranda.length) return; // jeda saat tab tersembunyi / galeri dibuka
+        tampil(i + 1);
+      }, 4000);
+    }
+    tampil(0); mulai();
+    var kiri = slide.querySelector('.bv-slide-panah.kiri'), kanan = slide.querySelector('.bv-slide-panah.kanan');
+    if (kiri) kiri.onclick = function(e){ e.stopPropagation(); tampil(i - 1); mulai(); };
+    if (kanan) kanan.onclick = function(e){ e.stopPropagation(); tampil(i + 1); mulai(); };
+    pasangUsap(slide, function(arah){ tampil(i + arah); mulai(); });
+    // Klik slide -> buka halaman album, langsung ke album foto yang sedang tampil
+    slide.onclick = function(){ bukaHalamanAlbum(albumList, albumDari(galeri[i])); };
+    slide.onkeydown = function(e){ if (e.key === 'Enter') slide.click(); };
+    wrap.querySelector('#bvBukaAlbum').onclick = function(){ bukaHalamanAlbum(albumList); };
+  }
+
   function showBeranda(bukaLoginOtomatis, errMsg){
+    // pastikan sisa lapisan galeri/detail sebelumnya tidak mengunci gulir halaman
+    _lapisanBeranda = []; try { document.body.style.overflow = ''; document.body.classList.remove('bv-lapis-buka'); } catch(e){}
     muatFontBeranda();
     var logo = logoSrc();
     var p = STATE.pengaturan;
@@ -2566,6 +2858,23 @@
     var pitaNama = esc(String(p.NamaPesantren||'').toUpperCase());
     var pita = Array(12).fill(pitaNama).join('<i>&#9679;</i>');
     var jamLayanan = String(p.JamLayananInfo||'').trim();
+    var aksiHero = '<div class="bv-aksi">' +
+      '<button class="bv-cta" id="btnHeroCta" type="button">Jelajahi Lebih Lanjut &#8595;</button>' +
+      (p.LinkPPDBEksternal
+        ? '<a class="bv-cta garis" href="'+esc(p.LinkPPDBEksternal)+'" target="_blank" rel="noopener">Daftar Santri Baru</a>'
+        : '<button class="bv-cta garis" id="btnHeroPpdb" type="button">Daftar Santri Baru</button>') +
+      '</div>';
+    // Menu ibadah (tautan & ikon sama seperti sebelumnya)
+    var menuIbadah = [
+      {judul:'Jadwal Sholat', url:'https://salat.markazsunnah.com/', ikon:p.IkonJadwalSholat, cadangan:'&#128332;'},
+      {judul:'Al-Quran', url:'https://quran.ksu.edu.sa/index.php?ui=1&l=en#aya=1_1&m=hafs&qaree=husary&trans=id_indonesian', ikon:p.IkonAlQuran, cadangan:'&#128214;'},
+      {judul:'Dzikir', url:'https://salat.markazsunnah.com/dzikir', ikon:p.IkonDzikir, cadangan:'&#128255;'}
+    ];
+    var tautanIbadah = function(kelas){
+      return menuIbadah.map(function(m){
+        return '<a'+(kelas?' class="'+kelas+'"':'')+' href="'+esc(m.url)+'" target="_blank" rel="noopener"><span class="ik">'+(m.ikon?('<img src="'+esc(m.ikon)+'" alt="">'):m.cadangan)+'</span>'+esc(m.judul)+'</a>';
+      }).join('');
+    };
     var pesanWA = function(topik){
       return wa + '?text=' + encodeURIComponent('Assalamu\'alaikum, saya ingin bertanya tentang ' + topik + ' di ' + (p.NamaPesantren||'pesantren') + '.');
     };
@@ -2593,13 +2902,10 @@
         '<h1>'+(nm.atas ? esc(nm.atas)+' <em>'+esc(nm.inti)+'</em>' : '<em>'+esc(nm.inti)+'</em>')+'</h1>' +
         '<div class="bv-garis-emas"></div>' +
         (p.DeskripsiSingkat ? '<p>'+esc(p.DeskripsiSingkat)+'</p>' : '') +
-        '<div class="bv-aksi">' +
-          '<button class="bv-cta" id="btnHeroCta" type="button">Jelajahi Lebih Lanjut &#8595;</button>' +
-          (p.LinkPPDBEksternal
-            ? '<a class="bv-cta garis" href="'+esc(p.LinkPPDBEksternal)+'" target="_blank" rel="noopener">Daftar Santri Baru</a>'
-            : '<button class="bv-cta garis" id="btnHeroPpdb" type="button">Daftar Santri Baru</button>') +
-        '</div>' +
+        (p.HeroImageURL ? '' : aksiHero) +
       '</div></header>' +
+      // Ada foto sampul: tombol diletakkan di pita putih di bawah foto supaya foto tidak tertutup.
+      (p.HeroImageURL ? '<div class="bv-aksi-bar"><div class="bv-isi">'+aksiHero+'</div></div>' : '') +
 
       (statistik.length ? ('<div class="bv-stat"><div class="bv-isi bv-stat-grid">' +
         statistik.map(function(s){ return '<div class="bv-stat-item reveal"><div class="angka">'+esc(s.angka)+'</div><div class="ket">'+esc(s.ket)+'</div></div>'; }).join('') +
@@ -2614,15 +2920,16 @@
         '</div>' +
       '</div></section>') : '') +
 
-      (videoHtml ? ('<section class="bv-sec alt" id="sec-video"><div class="bv-isi">' +
-        '<div class="bv-head reveal"><span class="bv-label">Video Profil</span><h2>'+esc(p.JudulVideo || 'Mengenal Lebih Dekat')+'</h2></div>' +
-        '<div class="bv-video reveal"><div class="layar">'+videoHtml+'</div></div>' +
-      '</div></section>') : '') +
-
       '<section class="bv-sec" id="sec-berita"><div class="bv-isi">' +
         '<div class="bv-head reveal"><span class="bv-label">Informasi</span><h2>Berita &amp; Artikel Terbaru</h2><p>Kegiatan, pengumuman, dan kabar terbaru dari pesantren.</p></div>' +
         '<div id="berandaArtikelWrap" class="bv-artikel-grid"><p class="bv-kosong">Memuat...</p></div>' +
       '</div></section>' +
+
+      // Video Profil tepat di bawah bagian Informasi (Berita)
+      (videoHtml ? ('<section class="bv-sec alt" id="sec-video"><div class="bv-isi">' +
+        '<div class="bv-head reveal"><span class="bv-label">Video Profil</span><h2>'+esc(p.JudulVideo || 'Mengenal Lebih Dekat')+'</h2></div>' +
+        '<div class="bv-video reveal"><div class="layar">'+videoHtml+'</div></div>' +
+      '</div></section>') : '') +
 
       '<section class="bv-sec bv-gelap" id="sec-tentang"><div class="bv-isi">' +
         '<div class="bv-head reveal"><span class="bv-label">Keunggulan</span><h2>Program Unggulan</h2></div>' +
@@ -2640,7 +2947,7 @@
 
       '<section class="bv-sec" id="sec-galeri" style="display:none"><div class="bv-isi">' +
         '<div class="bv-head reveal"><span class="bv-label">Dokumentasi</span><h2>Galeri Kegiatan</h2><p>Potret keseharian santri di lingkungan pesantren.</p></div>' +
-        '<div class="bv-galeri-grid" id="berandaGaleriWrap"></div>' +
+        '<div id="berandaGaleriWrap"></div>' +
       '</div></section>' +
 
       '<div class="bv-pita"><div class="bv-pita-track">' + pita + '<i>&#9679;</i>' + pita + '<i>&#9679;</i></div></div>' +
@@ -2677,12 +2984,15 @@
         '<b>'+esc(p.NamaPesantren)+'</b>' +
         (p.AlamatPesantren ? esc(p.AlamatPesantren)+'<br>' : '') +
         (p.NoTeleponPesantren?('Telp: '+esc(p.NoTeleponPesantren)+' &nbsp; '):'') + (p.EmailPesantren?('Email: '+esc(p.EmailPesantren)):'') +
+        '<div class="bv-ibadah-baris">'+tautanIbadah('')+'</div>' +
       '</div></footer>' +
 
-      '<div class="bv-ibadah">' +
-        '<a href="'+esc('https://salat.markazsunnah.com/')+'" target="_blank" rel="noopener" aria-label="Jadwal Sholat"><span class="tip">Jadwal Sholat</span>'+(p.IkonJadwalSholat?('<img src="'+esc(p.IkonJadwalSholat)+'" alt="">'):'&#128332;')+'</a>' +
-        '<a href="'+esc('https://quran.ksu.edu.sa/index.php?ui=1&l=en#aya=1_1&m=hafs&qaree=husary&trans=id_indonesian')+'" target="_blank" rel="noopener" aria-label="Al-Quran"><span class="tip">Al-Quran</span>'+(p.IkonAlQuran?('<img src="'+esc(p.IkonAlQuran)+'" alt="">'):'&#128214;')+'</a>' +
-        '<a href="'+esc('https://salat.markazsunnah.com/dzikir')+'" target="_blank" rel="noopener" aria-label="Dzikir"><span class="tip">Dzikir</span>'+(p.IkonDzikir?('<img src="'+esc(p.IkonDzikir)+'" alt="">'):'&#128255;')+'</a>' +
+      '<div class="bv-ibadah" id="bvIbadah">' +
+        '<div class="bv-ibadah-daftar">'+tautanIbadah('bv-ibadah-item')+'</div>' +
+        '<button class="bv-ibadah-toggle" id="bvIbadahToggle" type="button" aria-label="Menu ibadah" aria-expanded="false">' +
+          '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2c.6 1.6 2.2 2.7 3.8 3.3C17.6 6 19 7.6 19 9.6V11H5V9.6C5 7.6 6.4 6 8.2 5.3 9.8 4.7 11.4 3.6 12 2zM4 12h16v2H4zm1 3h2v6H5zm4 0h2v6H9zm4 0h2v6h-2zm4 0h2v6h-2zM3 21h18v1.5H3z"/></svg>' +
+          '<span class="x">&times;</span>' +
+        '</button>' +
       '</div>' +
 
       // Tombol WA melayang: membuka jendela "Layanan Informasi"; dari situ pengunjung
@@ -2736,6 +3046,12 @@
     document.getElementById('navBerita').onclick = function(){ gulirKe('sec-berita'); };
     document.getElementById('navKontak').onclick = function(){ gulirKe('sec-kontak'); };
     document.getElementById('btnHeroCta').onclick = function(){ gulirKe('sec-berita'); };
+    var ibadah = document.getElementById('bvIbadah'), ibadahBtn = document.getElementById('bvIbadahToggle');
+    ibadahBtn.onclick = function(e){ e.stopPropagation(); var b = ibadah.classList.toggle('buka'); ibadahBtn.setAttribute('aria-expanded', b ? 'true' : 'false'); };
+    // Ketuk di luar menu -> menu ibadah tertutup lagi
+    document.getElementById('bvNav').parentNode.addEventListener('click', function(e){
+      if (ibadah.classList.contains('buka') && !ibadah.contains(e.target)) { ibadah.classList.remove('buka'); ibadahBtn.setAttribute('aria-expanded','false'); }
+    });
     var btnHeroPpdb = document.getElementById('btnHeroPpdb');
     if (btnHeroPpdb) btnHeroPpdb.onclick = function(){ gulirKe('sec-ppdb'); };
 
@@ -2806,15 +3122,24 @@
       var program = res.data.filter(function(f){ return f.kategori === 'Program'; });
       var fasilitas = res.data.filter(function(f){ return f.kategori === 'Fasilitas'; });
       var galeri = res.data.filter(function(f){ return f.kategori === 'Galeri' && f.gambar; });
-      if (wrapProgram) wrapProgram.innerHTML = program.length ? program.map(function(f){
-        return '<div class="bv-program reveal"><div class="bv-ikon">'+(f.gambar ? '<img src="'+esc(f.gambar)+'" alt="" loading="lazy">' : '&#128214;')+'</div>' +
-          '<div><h4>'+esc(f.judul)+'</h4>'+(f.deskripsi ? '<p>'+esc(f.deskripsi)+'</p>' : '')+'</div></div>';
+      // Ketuk gambar/judul kartu -> tampil gambar besar dengan judul & deskripsi di bawahnya
+      if (wrapProgram) wrapProgram.innerHTML = program.length ? program.map(function(f, i){
+        return '<div class="bv-program bv-bisa-klik reveal" data-i="'+i+'" role="button" tabindex="0"><div class="bv-ikon">'+(f.gambar ? '<img src="'+esc(f.gambar)+'" alt="" loading="lazy">' : '&#128214;')+'</div>' +
+          '<div><h4>'+esc(f.judul)+'</h4>'+(f.deskripsi ? '<p>'+esc(f.deskripsi)+'</p>' : '')+'<span class="lihat">Lihat &#8594;</span></div></div>';
       }).join('') : kosongGelap('Belum ada.');
-      if (wrapFasilitas) wrapFasilitas.innerHTML = fasilitas.length ? fasilitas.map(function(f){
-        return '<div class="bv-fasilitas reveal">' +
+      if (wrapProgram) wrapProgram.querySelectorAll('.bv-program').forEach(function(el){
+        el.onclick = function(){ bukaDetailFiturBeranda(program[Number(el.dataset.i)]); };
+        el.onkeydown = function(e){ if (e.key === 'Enter') el.click(); };
+      });
+      if (wrapFasilitas) wrapFasilitas.innerHTML = fasilitas.length ? fasilitas.map(function(f, i){
+        return '<div class="bv-fasilitas bv-bisa-klik reveal" data-i="'+i+'" role="button" tabindex="0">' +
           (f.gambar ? '<img class="foto" src="'+esc(f.gambar)+'" alt="" loading="lazy">' : '<div class="foto-kosong">&#127968;</div>') +
           '<div class="badan"><h4>'+esc(f.judul)+'</h4>'+(f.deskripsi ? '<p>'+esc(f.deskripsi)+'</p>' : '')+'</div></div>';
       }).join('') : '<p class="bv-kosong">Belum ada.</p>';
+      if (wrapFasilitas) wrapFasilitas.querySelectorAll('.bv-fasilitas').forEach(function(el){
+        el.onclick = function(){ bukaDetailFiturBeranda(fasilitas[Number(el.dataset.i)]); };
+        el.onkeydown = function(e){ if (e.key === 'Enter') el.click(); };
+      });
 
       // Galeri: seluruh bagian disembunyikan kalau Admin belum mengisi foto apa pun,
       // supaya halaman depan tidak menampilkan kotak kosong.
@@ -2823,13 +3148,8 @@
       if (secGaleri && wrapGaleri) {
         if (galeri.length) {
           secGaleri.style.display = '';
-          wrapGaleri.innerHTML = galeri.map(function(g, i){
-            return '<div class="bv-galeri reveal" data-i="'+i+'"><img src="'+esc(g.gambar)+'" alt="'+esc(g.judul)+'" loading="lazy">' +
-              (g.judul ? '<div class="cap">'+esc(g.judul)+'</div>' : '') + '</div>';
-          }).join('');
-          wrapGaleri.querySelectorAll('.bv-galeri').forEach(function(el){
-            el.onclick = function(){ var g = galeri[Number(el.dataset.i)]; bukaLightboxGaleri(g.gambar, g.judul); };
-          });
+          // Slide otomatis semua foto; diklik -> halaman album (folder per judul kegiatan)
+          pasangSlideGaleri(wrapGaleri, galeri, kelompokAlbumGaleri(galeri));
         } else {
           secGaleri.style.display = 'none';
         }
@@ -15972,16 +16292,17 @@
       '<h4 style="margin-top:16px">Program Unggulan</h4><div id="listFiturProgram">Memuat...</div>' +
       '<h4 style="margin-top:16px">Fasilitas</h4><div id="listFiturFasilitas">Memuat...</div>' +
       '<h4 style="margin-top:16px">Galeri Kegiatan</h4>' +
-      '<p class="muted" style="margin-top:-4px">Foto wajib diisi. Item galeri tanpa foto tidak akan tampil di halaman depan.</p>' +
-      '<button class="small" id="btnTambahGaleri">+ Tambah Foto Galeri</button>' +
+      '<p class="muted" style="margin-top:-4px">Foto wajib diisi. Di halaman depan, foto dengan <b>Judul yang sama</b> otomatis dikumpulkan menjadi satu <b>album</b> (contoh judul: &quot;Wisuda Tahfidz 2026&quot;). Deskripsi dipakai sebagai keterangan per foto.</p>' +
+      '<button class="small" id="btnUnggahAlbum">&#128193; Unggah Banyak Foto ke Album</button> ' +
+      '<button class="small secondary" id="btnTambahGaleri">+ Tambah 1 Foto Galeri</button>' +
       '<div id="listFiturGaleri" style="margin-top:8px">Memuat...</div></div>';
 
     function bukaFormFitur(existing, muatUlang, kategoriAwal){
       var previewAwal = existing && existing.gambar ? '<img src="'+esc(existing.gambar)+'" style="height:60px;border-radius:6px;margin-top:4px;display:block">' : '';
       var katDefault = existing ? existing.kategori : (kategoriAwal || 'Program');
       var fieldsHtml = fieldSelect('ffKategori','Kategori', ['Program','Fasilitas','Galeri'], katDefault) +
-        fieldText('ffJudul','Judul (untuk Galeri: dipakai sebagai keterangan foto)', existing?existing.judul:'') +
-        fieldText('ffDeskripsi','Deskripsi (opsional, untuk Fasilitas boleh dikosongkan)', existing?existing.deskripsi:'') +
+        fieldText('ffJudul','Judul (untuk Galeri: nama album/kegiatan -- foto berjudul sama jadi satu album)', existing?existing.judul:'') +
+        fieldText('ffDeskripsi','Deskripsi (opsional; untuk Galeri: keterangan foto ini)', existing?existing.deskripsi:'') +
         '<label>Foto</label><input type="file" id="ffFile" accept="image/*">' +
         '<p class="muted" style="margin-top:-6px">Pilih foto dari HP/komputer -- otomatis dikecilkan &amp; diunggah. <b>Tunggu sampai muncul tulisan &quot;Berhasil diunggah&quot;</b> sebelum menekan Simpan.</p>' +
         fieldText('ffGambar','URL Gambar (terisi otomatis setelah unggah, atau isi manual)', existing?existing.gambar:'') +
@@ -16038,6 +16359,47 @@
     document.getElementById('btnTambahFitur').onclick = function(){ bukaFormFitur(null, muatDaftarFitur); };
     document.getElementById('btnTambahGaleri').onclick = function(){ bukaFormFitur(null, muatDaftarFitur, 'Galeri'); };
 
+    // Unggah banyak foto sekaligus ke satu album. Memakai endpoint yang sudah ada
+    // (uploadSlideImage + saveFiturBeranda) satu per satu, jadi tidak ada perubahan server.
+    document.getElementById('btnUnggahAlbum').onclick = function(){
+      var albumAda = [];
+      (STATE._daftarFiturTerakhir || []).forEach(function(f){ if (f.kategori === 'Galeri' && albumAda.indexOf(f.judul) === -1) albumAda.push(f.judul); });
+      var html = '<label>Nama Album / Kegiatan</label><input id="uaNama" list="uaDaftarAlbum" placeholder="contoh: Wisuda Tahfidz 2026">' +
+        '<datalist id="uaDaftarAlbum">'+albumAda.map(function(a){ return '<option value="'+esc(a)+'">'; }).join('')+'</datalist>' +
+        '<p class="muted" style="margin-top:-6px;font-size:12px">Pilih nama album yang sudah ada untuk menambah foto ke album itu, atau ketik nama baru.</p>' +
+        '<label>Pilih Foto (boleh banyak sekaligus)</label><input type="file" id="uaFile" accept="image/*" multiple>' +
+        fieldText('uaUrutan','Urutan (angka kecil tampil duluan)', '0') +
+        '<div id="uaProgres" class="muted" style="font-size:13px;margin-top:6px"></div>';
+      openModal('Unggah Foto ke Album', html, function(m){
+        var nama = m.querySelector('#uaNama').value.trim();
+        var files = Array.prototype.slice.call(m.querySelector('#uaFile').files || []);
+        var urutan = m.querySelector('#uaUrutan').value.trim() || '0';
+        if (!nama) { alert('Nama album wajib diisi.'); return false; }
+        if (!files.length) { alert('Pilih minimal satu foto.'); return false; }
+        var prog = m.querySelector('#uaProgres');
+        var berhasil = 0, gagal = 0;
+        var rantai = Promise.resolve();
+        files.forEach(function(file, idx){
+          rantai = rantai.then(function(){
+            prog.innerHTML = 'Mengunggah foto '+(idx+1)+' dari '+files.length+'... jangan tutup halaman ini.';
+            return resizeImageFile(file, 1600, 0.82).then(function(hasil){
+              return api('uploadSlideImage', {base64:hasil.base64, mimeType:hasil.mimeType, fileName:file.name});
+            }).then(function(res){
+              if (!res || !res.ok) throw new Error((res && res.error) || 'gagal unggah');
+              return api('saveFiturBeranda', {rowIndex:0, kategori:'Galeri', judul:nama, deskripsi:'', gambar:res.url, urutan:urutan});
+            }).then(function(r){
+              if (!r || !r.ok) throw new Error((r && r.error) || 'gagal simpan');
+              berhasil++;
+            }).catch(function(){ gagal++; });
+          });
+        });
+        return rantai.then(function(){
+          muatDaftarFitur();
+          alert(berhasil+' foto masuk ke album "'+nama+'".'+(gagal ? '\n'+gagal+' foto gagal diunggah, silakan coba lagi untuk foto tersebut.' : ''));
+        });
+      });
+    };
+
     function muatDaftarFitur(){
       api('getFiturBerandaList', {}).then(function(res){
         if(!res.ok){ document.getElementById('listFiturProgram').innerHTML = errBox(res.error); return; }
@@ -16055,6 +16417,7 @@
         var program = res.data.filter(function(f){ return f.kategori==='Program'; });
         var fasilitas = res.data.filter(function(f){ return f.kategori==='Fasilitas'; });
         var galeri = res.data.filter(function(f){ return f.kategori==='Galeri'; });
+        STATE._daftarFiturTerakhir = res.data;
         renderGrup('listFiturProgram', program);
         renderGrup('listFiturFasilitas', fasilitas);
         renderGrup('listFiturGaleri', galeri);
