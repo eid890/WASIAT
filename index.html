@@ -37,6 +37,7 @@
   <div style="text-align:center;padding:60px 20px;font-family:'Segoe UI',Arial,sans-serif;color:#0f766e">Memuat aplikasi...</div>
 </div>
 
+<script src="/config.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <style>
@@ -233,6 +234,11 @@
   /* Animasi halus saat bagian halaman masuk ke layar -- memberi kesan modern tanpa
      library tambahan. Kalau JS gagal jalan, elemen tetap terlihat (kelas .tampil
      ditambahkan JS; default-nya sudah opacity 1 lewat aturan .no-anim di bawah). */
+  #absensi-app .rhb-putar{width:34px;height:34px;margin:0 auto;border:4px solid #e2e8f0;border-top-color:var(--tema);border-radius:50%;animation:rhbPutar .9s linear infinite}
+  @keyframes rhbPutar{to{transform:rotate(360deg)}}
+  #absensi-app table.rhb-tabel{display:table;white-space:normal}
+  #absensi-app table.rhb-tabel th,#absensi-app table.rhb-tabel td{white-space:normal}
+  @media(max-width:480px){ #absensi-app table.rhb-tabel{font-size:12.5px!important} #absensi-app table.rhb-tabel th,#absensi-app table.rhb-tabel td{padding:6px 4px!important} }
   #absensi-app .reveal{opacity:0;transform:translateY(24px);transition:opacity .6s ease,transform .6s ease}
   #absensi-app .reveal.tampil{opacity:1;transform:none}
   #absensi-app .no-anim .reveal{opacity:1;transform:none}
@@ -385,7 +391,7 @@
   @media (min-width:901px){ #absensi-app .bv2 .bv-brand b{white-space:normal;letter-spacing:.08em;font-size:14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical} }
   /* Laci login yang tersembunyi di luar layar tidak perlu bayangan (dulu tampak garis abu di tepi kanan) */
   #absensi-app .bv2 .login-drawer:not(.show){box-shadow:none}
-  #absensi-app .bv2 .bv-brand small{font-size:9.5px;letter-spacing:.32em;text-transform:uppercase;color:var(--redup);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #absensi-app .bv2 .bv-brand small{font-size:10px;font-weight:600;line-height:1.3;margin-bottom:2px;letter-spacing:.28em;text-transform:uppercase;color:var(--redup);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   #absensi-app .bv2 .bv-links{display:flex;align-items:center;gap:6px}
   #absensi-app .bv2 .bv-links a.bv-tautan{font-size:13px;font-weight:600;color:var(--tinta);text-decoration:none;padding:8px 10px;cursor:pointer}
   #absensi-app .bv2 .bv-links a.bv-tautan:hover{color:var(--navy)}
@@ -417,7 +423,10 @@
   /* Foto sampul dibiarkan terlihat: lapisan gelap hanya tipis di atas dan menebal di bawah
      tempat judul berada, supaya tulisan tetap terbaca tanpa menutupi foto. */
   #absensi-app .bv2 .bv-hero.ada-gambar::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(7,29,64,.15) 0%,rgba(7,29,64,.35) 45%,rgba(7,29,64,.85) 100%)}
-  #absensi-app .bv2 .bv-hero.ada-gambar>.bv-isi{padding-top:140px;padding-bottom:34px}
+  #absensi-app .bv2 .bv-hero.ada-gambar{min-height:clamp(240px,56vw,560px);display:flex;align-items:flex-end}
+  #absensi-app .bv2 .bv-hero.ada-gambar>.bv-isi{width:100%;padding-top:40px;padding-bottom:26px}
+  #absensi-app .bv2 .bv-hero.ada-gambar::before{background:linear-gradient(180deg,rgba(7,29,64,0) 0%,rgba(7,29,64,0) 55%,rgba(7,29,64,.65) 100%)}
+  #absensi-app .bv2 .bv-sr{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
   #absensi-app .bv2 .bv-hero.ada-gambar h1{text-shadow:0 2px 14px rgba(0,0,0,.35)}
   #absensi-app .bv2 .bv-hero.ada-gambar .bv-garis-emas{margin-bottom:0}
   #absensi-app .bv2 .bv-hero.ada-gambar p{margin:16px 0 0}
@@ -489,6 +498,9 @@
   #absensi-app .bv2 .bv-video{border:1px solid var(--garis);padding:10px;background:#fff;max-width:900px}
   #absensi-app .bv2 .bv-gelap .bv-video{border-color:rgba(255,255,255,.18);background:rgba(255,255,255,.04)}
   #absensi-app .bv2 .bv-video .layar{position:relative;width:100%;padding-top:56.25%;background:var(--navy-tua);overflow:hidden}
+  #absensi-app .bv2 .bv-suara{position:absolute;left:12px;bottom:12px;z-index:2;margin:0;padding:9px 14px;border:0;border-radius:2px;background:var(--emas);color:var(--navy-tua);font:700 12px var(--bv-font);letter-spacing:.06em;cursor:pointer;box-shadow:0 6px 16px rgba(0,0,0,.3)}
+  #absensi-app .bv2 .bv-suara:hover{background:#ffd23f}
+  #absensi-app .bv2 .bv-suara[hidden]{display:none}
   #absensi-app .bv2 .bv-video .layar iframe,#absensi-app .bv2 .bv-video .layar video{position:absolute;inset:0;width:100%;height:100%;border:0;display:block;object-fit:cover}
 
   /* Berita */
@@ -702,7 +714,8 @@
 <script>
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
-  var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbw4GOypJupB4hlMLAy6VNiqVDSYWu5wMLmZ-QRmKHHs40GY8c7Ut45pZb5ru6SUjePQ/exec";
+  // Alamat server dibaca dari config.js bila ada; bila tidak, memakai alamat di bawah ini.
+  var WEBAPP_URL = (window.WASIAT_CONFIG && window.WASIAT_CONFIG.webAppUrl) || "https://script.google.com/macros/s/AKfycbw4GOypJupB4hlMLAy6VNiqVDSYWu5wMLmZ-QRmKHHs40GY8c7Ut45pZb5ru6SUjePQ/exec";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -1012,7 +1025,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.10.11-h';
+  var VERSI_APP = '2026.10.13-a';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -2567,6 +2580,61 @@
   // Ubah link video (YouTube biasa/share/Shorts, Google Drive, atau file .mp4 langsung)
   // menjadi HTML pemutar yang siap ditanam. Mengembalikan '' kalau link tidak dikenali,
   // supaya bagian video otomatis tidak ditampilkan daripada menampilkan kotak rusak.
+  // Versi PUTAR OTOMATIS untuk Video Profil halaman depan. Browser (Chrome/Safari/HP)
+  // hanya mengizinkan video berputar sendiri bila SUARANYA DIBISUKAN, jadi video mulai
+  // tanpa suara dan ada tombol "Nyalakan Suara". Iframe baru dimuat saat bagian video
+  // terlihat di layar (hemat kuota & tidak memperlambat halaman), dijeda saat digulir
+  // menjauh, dan diputar lagi saat kembali terlihat. Video PPDB tidak ikut diubah.
+  function htmlPemutarVideoOtomatis(url){
+    var u = String(url||'').trim();
+    if (!u) return '';
+    var m = u.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/);
+    if (m) {
+      var id = esc(m[1]);
+      var src = 'https://www.youtube.com/embed/'+id+'?autoplay=1&mute=1&playsinline=1&loop=1&playlist='+id+'&rel=0&modestbranding=1&enablejsapi=1';
+      // referrerpolicy wajib ada: tanpa ini sebagian HP menampilkan "Error 153" dari YouTube
+      return '<iframe data-src="'+src+'" title="Video Profil" allow="autoplay;encrypted-media;picture-in-picture;fullscreen" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen data-yt="1"></iframe>' +
+        '<button type="button" class="bv-suara" hidden>&#128264; Nyalakan Suara</button>';
+    }
+    if (/\.(mp4|webm|ogg)(\?|$)/i.test(u)) {
+      return '<video data-src="'+esc(u)+'" muted loop playsinline preload="none" controls></video>' +
+        '<button type="button" class="bv-suara" hidden>&#128264; Nyalakan Suara</button>';
+    }
+    return htmlPemutarVideo(u); // Google Drive dll: tetap seperti sebelumnya
+  }
+  function pasangVideoOtomatis(layar){
+    if (!layar) return;
+    var iframe = layar.querySelector('iframe[data-src]'), video = layar.querySelector('video[data-src]');
+    var tombol = layar.querySelector('.bv-suara');
+    if (!iframe && !video) return;
+    var dimuat = false, bersuara = false;
+    function perintahYT(fungsi, args){
+      try { iframe.contentWindow.postMessage(JSON.stringify({event:'command', func:fungsi, args:args||[]}), '*'); } catch(e){}
+    }
+    function muat(){
+      if (dimuat) return; dimuat = true;
+      if (iframe) iframe.src = iframe.getAttribute('data-src');
+      if (video) { video.src = video.getAttribute('data-src'); var pr = video.play(); if (pr && pr.catch) pr.catch(function(){}); }
+      if (tombol) tombol.hidden = false;
+    }
+    function putar(){ if (iframe) perintahYT('playVideo'); if (video) { var pr = video.play(); if (pr && pr.catch) pr.catch(function(){}); } }
+    function jeda(){ if (iframe) perintahYT('pauseVideo'); if (video) video.pause(); }
+    if (tombol) tombol.onclick = function(){
+      bersuara = true; tombol.hidden = true;
+      if (iframe) { perintahYT('unMute'); perintahYT('setVolume', [100]); perintahYT('playVideo'); }
+      if (video) { video.muted = false; video.volume = 1; putar(); }
+    };
+    if (!('IntersectionObserver' in window)) { muat(); return; }
+    var pengamat = new IntersectionObserver(function(entri){
+      entri.forEach(function(e){
+        if (!document.body.contains(layar)) { pengamat.disconnect(); return; }
+        if (e.isIntersecting) { if (!dimuat) muat(); else putar(); }
+        else if (dimuat) jeda();
+      });
+    }, {threshold:0.35});
+    pengamat.observe(layar);
+  }
+
   function htmlPemutarVideo(url){
     var u = String(url||'').trim();
     if (!u) return '';
@@ -2847,7 +2915,7 @@
     var wa = waLinkPesantren();
     var nm = pecahNamaPesantren(p.NamaPesantren);
     var heroStyle = p.HeroImageURL ? (' style="background-image:url(\''+esc(p.HeroImageURL).replace(/'/g,"\\'")+'\')"') : '';
-    var videoHtml = htmlPemutarVideo(p.VideoProfilURL);
+    var videoHtml = htmlPemutarVideoOtomatis(p.VideoProfilURL);
     var videoPpdb = htmlPemutarVideo(p.VideoPPDBURL);
     // Statistik diisi Admin dengan format "Angka|Keterangan" satu per baris.
     var statistik = String(p.StatistikBeranda||'').split('\n').map(function(b){
@@ -2883,7 +2951,7 @@
       '<div class="bv2">' +
       '<nav class="bv-nav" id="bvNav"><div class="bv-isi">' +
         '<div class="bv-brand">' + logoHtml +
-          '<div class="bv-nama"><b>'+esc(nm.inti)+'</b>'+(nm.atas?'<small>'+esc(nm.atas)+'</small>':'')+'</div>' +
+          '<div class="bv-nama">'+(nm.atas?'<small>'+esc(nm.atas)+'</small>':'')+'<b>'+esc(nm.inti)+'</b></div>' +
         '</div>' +
         '<button class="bv-menu-btn" id="bvMenuBtn" type="button" aria-label="Buka menu" aria-expanded="false"><span></span><span></span><span></span></button>' +
         '<div class="bv-links">' +
@@ -2899,8 +2967,10 @@
 
       '<header class="bv-hero'+(p.HeroImageURL?' ada-gambar':'')+'"'+heroStyle+'><div class="bv-isi">' +
         (p.TaglineHero ? '<div class="bv-tagline">'+esc(p.TaglineHero)+'</div>' : '') +
-        '<h1>'+(nm.atas ? esc(nm.atas)+' <em>'+esc(nm.inti)+'</em>' : '<em>'+esc(nm.inti)+'</em>')+'</h1>' +
-        '<div class="bv-garis-emas"></div>' +
+        // Ada foto sampul: nama pesantren tidak ditulis di atas foto (sudah ada di menu atas);
+        // judul tetap ada untuk mesin pencari/pembaca layar tetapi tidak terlihat.
+        '<h1'+(p.HeroImageURL?' class="bv-sr"':'')+'>'+(nm.atas ? esc(nm.atas)+' <em>'+esc(nm.inti)+'</em>' : '<em>'+esc(nm.inti)+'</em>')+'</h1>' +
+        (p.HeroImageURL ? '' : '<div class="bv-garis-emas"></div>') +
         (p.DeskripsiSingkat ? '<p>'+esc(p.DeskripsiSingkat)+'</p>' : '') +
         (p.HeroImageURL ? '' : aksiHero) +
       '</div></header>' +
@@ -2928,7 +2998,7 @@
       // Video Profil tepat di bawah bagian Informasi (Berita)
       (videoHtml ? ('<section class="bv-sec alt" id="sec-video"><div class="bv-isi">' +
         '<div class="bv-head reveal"><span class="bv-label">Video Profil</span><h2>'+esc(p.JudulVideo || 'Mengenal Lebih Dekat')+'</h2></div>' +
-        '<div class="bv-video reveal"><div class="layar">'+videoHtml+'</div></div>' +
+        '<div class="bv-video reveal"><div class="layar" id="bvLayarVideoProfil">'+videoHtml+'</div></div>' +
       '</div></section>') : '') +
 
       '<section class="bv-sec bv-gelap" id="sec-tentang"><div class="bv-isi">' +
@@ -3089,6 +3159,7 @@
       }
     }
     aktifkanAnimasiScroll();
+    pasangVideoOtomatis(document.getElementById('bvLayarVideoProfil'));
 
     api('getArtikelList', {hanyaPublished:true}).then(function(res){
       var wrap = document.getElementById('berandaArtikelWrap');
@@ -3249,6 +3320,7 @@
       {key:'hafalan',         label:'Isi Hafalan',         icon:'&#128214;'},
       {key:'riwayathafalan',  label:'Riwayat Hafalan',     icon:'&#128337;'},
       {key:'progresshafalan', label:'Progress Hafalan',    icon:'&#128200;'},
+      {key:'rekaphafalanbulan', label:'Rekap Hafalan Bulanan', icon:'&#128202;'},
       {key:'flyertasmi',      label:"Flyer Tasmi'",        icon:'&#127912;'},
       {key:'riwayattasmi',    label:"Riwayat Tasmi'",      icon:'&#128218;'},
       {key:'inputnilai',      label:'Input Nilai',         icon:'&#9999;&#65039;'},
@@ -3343,7 +3415,7 @@
     var m = {
       // Guru
       jadwal:guruJadwal, jammengajar:guruJamMengajar, izinsaya:guruIzinSaya, riwayatabsen:guruRiwayat, rekapabsen:guruRekapAbsensi,
-      hafalan:guruIsiHafalan, riwayathafalan:guruRiwayatHafalan, progresshafalan:function(){ renderRekapProgressHafalan({pengampu:STATE.user.nama}); },
+      hafalan:guruIsiHafalan, riwayathafalan:guruRiwayatHafalan, progresshafalan:function(){ renderRekapProgressHafalan({pengampu:STATE.user.nama}); }, rekaphafalanbulan:halamanRekapHafalanBulanan,
       inputnilai:guruInputNilai, riwayatnilai:guruRiwayatNilai, rekapnilai:guruRekapNilaiRapor, rekapsantriguru:guruRekapPerSantri,
       raporkelassaya:guruRaporKelas,
       pelanggaran:guruCatatPelanggaran, santrisaya:guruSantriSaya, profilsaya:guruProfilSaya,
@@ -5474,6 +5546,7 @@
       {key:'hafalan', label:'Isi Hafalan', icon:'&#128214;'},
       {key:'riwayathafalan', label:'Riwayat Hafalan', icon:'&#128337;'},
       {key:'progresshafalan', label:'Progress Hafalan', icon:'&#128200;'},
+      {key:'rekaphafalanbulan', label:'Rekap Hafalan Bulanan', icon:'&#128202;'},
       {key:'inputnilai', label:'Input Nilai', icon:'&#9999;&#65039;'},
       {key:'riwayatnilai', label:'Riwayat Nilai', icon:'&#128202;'},
       {key:'rekapnilai', label:'Rekap Nilai Rapor', icon:'&#128196;'},
@@ -5487,7 +5560,7 @@
     ];
     var map = {
       jadwal:guruJadwal, jammengajar:guruJamMengajar, izinsaya:guruIzinSaya, riwayatabsen:guruRiwayat, rekapabsen:guruRekapAbsensi,
-      hafalan:guruIsiHafalan, riwayathafalan:guruRiwayatHafalan, progresshafalan:function(){ renderRekapProgressHafalan({pengampu:STATE.user.nama}); },
+      hafalan:guruIsiHafalan, riwayathafalan:guruRiwayatHafalan, progresshafalan:function(){ renderRekapProgressHafalan({pengampu:STATE.user.nama}); }, rekaphafalanbulan:halamanRekapHafalanBulanan,
       inputnilai:guruInputNilai, riwayatnilai:guruRiwayatNilai, rekapnilai:guruRekapNilaiRapor, rekapsantriguru:guruRekapPerSantri,
       pelanggaran:guruCatatPelanggaran, santrisaya:guruSantriSaya, profilsaya:guruProfilSaya,
       modulajar:guruModulAjar, riwayatjurnal:guruRiwayatJurnal, sop:guruSOP
@@ -8062,6 +8135,422 @@
   // ================= REKAP PER SANTRI (absensi + nilai, per mapel) =================
   // Guru memilih mapel-kelas (atau semua) dan santri (atau semua). Bisa diunduh Excel
   // dan dicetak / disimpan sebagai PDF.
+  // =====================================================================
+  // REKAP HAFALAN BULANAN -- format tabel pondok: Bulan | Capaian Target | Jumlah Hafalan
+  // Dipakai Admin/Mudir (menu sendiri), Guru/pengampu (menu sendiri) dan Wali santri
+  // (di tab Hafalan). Semua angka dihitung server dari catatan hafalan yang sudah ada.
+  // =====================================================================
+  function teksLembarKlien(h){
+    h = Math.max(0, Math.round(Number(h)||0)); if (!h) return '';
+    var l = Math.floor(h/2), s = h % 2;
+    return (l ? l+' Lembar' : '') + (l && s ? ' ' : '') + (s ? s+' Halaman' : '');
+  }
+  // Excel berwarna (kepala kuning, garis tabel) memakai pustaka xlsx-js-style yang dimuat
+  // hanya saat tombol Excel ditekan. Bila gagal dimuat, tetap diunduh tanpa warna.
+  var _xlsxGaya = null;
+  function muatXlsxGaya(){
+    if (_xlsxGaya) return Promise.resolve(_xlsxGaya);
+    return new Promise(function(resolve){
+      var lama = window.XLSX;
+      var s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
+      var selesai = function(ok){
+        var baru = window.XLSX;
+        if (ok && baru && baru !== lama) _xlsxGaya = baru;
+        if (lama) window.XLSX = lama; // XLSX bawaan aplikasi dikembalikan seperti semula
+        resolve(_xlsxGaya);
+      };
+      s.onload = function(){ selesai(true); };
+      s.onerror = function(){ selesai(false); };
+      setTimeout(function(){ selesai(false); }, 12000);
+      document.head.appendChild(s);
+    });
+  }
+
+  function renderRekapHafalanBulanan(containerId, opts){
+    opts = opts || {};
+    var wrap = document.getElementById(containerId); if (!wrap) return;
+    var P = 'rhb' + Math.floor(Math.random()*1e6) + '_';
+    var modeTetapSantri = !!opts.nisn;
+    var opsi = {santri:[], halaqoh:[], kelas:[], semua:false};
+    var hasil = null, semesterList = [], semesterAktifId = '', filterDari = '', filterSampai = '';
+    var $ = function(id){ return document.getElementById(P+id); };
+
+    wrap.innerHTML = '<div class="card">' +
+      '<h3 style="margin-bottom:4px">&#128202; Rekap Hafalan Bulanan</h3>' +
+      '<p class="muted" style="font-size:12.5px;margin:0 0 10px">Capaian hafalan baru (Sabaq) per bulan dalam lembar (1 lembar = 2 halaman). Bulan tanpa hafalan baru tetapi ada murojaah ditulis <b>Murojaah</b>. Jumlah Hafalan dihitung dari semua semester sejak santri masuk.</p>' +
+      '<div class="grid2">' +
+        '<div><label>Semester</label><select id="'+P+'sem"><option value="">Memuat...</option></select></div>' +
+        (modeTetapSantri ? '' : '<div><label>Tampilkan</label><select id="'+P+'mode"><option value="santri">Per Santri</option><option value="halaqoh">Per Halaqoh</option><option value="kelas">Per Kelas</option></select></div>') +
+      '</div>' +
+      (modeTetapSantri ? '' :
+        '<div id="'+P+'pilihSantri"><label>Nama Santri</label><input id="'+P+'cari" placeholder="Ketik untuk mencari nama..." style="margin-bottom:6px"><select id="'+P+'santri"></select></div>' +
+        '<div id="'+P+'pilihHalaqoh" style="display:none"><label>Halaqoh</label><select id="'+P+'halaqoh"></select></div>' +
+        '<div id="'+P+'pilihKelas" style="display:none"><label>Kelas</label><select id="'+P+'kelas"></select></div>') +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">' +
+        '<button id="'+P+'tampil">Tampilkan</button>' +
+        '<button class="secondary" id="'+P+'excel">&#128196; Unduh Excel</button>' +
+        '<button class="secondary" id="'+P+'cetak">&#128424; Cetak / PDF</button>' +
+        (opts.wali ? '' : '<button class="secondary" id="'+P+'target" style="display:none">&#127919; Atur Target Halaqoh</button>') +
+      '</div></div>' +
+      '<div id="'+P+'hasil"></div>';
+
+    function semesterDipilih(){ var s = $('sem'); return s ? s.value : ''; }
+    function modeDipilih(){ return modeTetapSantri ? 'santri' : $('mode').value; }
+    function namaSemester(){ var id = semesterDipilih(); var t = semesterList.find(function(x){ return String(x.id) === String(id); }); return t ? t.nama : ''; }
+
+    function isiSantri(filter){
+      var sel = $('santri'); if (!sel) return;
+      var q = String(filter||'').toLowerCase();
+      var daftar = opsi.santri.filter(function(s){ return !q || s.nama.toLowerCase().indexOf(q) !== -1 || String(s.nisn).indexOf(q) !== -1; });
+      var lama = sel.value;
+      sel.innerHTML = daftar.length ? daftar.map(function(s){
+        return '<option value="'+esc(s.nisn)+'"'+(s.nisn===lama?' selected':'')+'>'+esc(s.nama)+(s.kelas?' - '+esc(s.kelas):'')+(s.halaqoh?' ('+esc(s.halaqoh)+')':'')+'</option>';
+      }).join('') : '<option value="">Tidak ada santri</option>';
+    }
+    function aturTampilanMode(){
+      if (modeTetapSantri) return;
+      var m = modeDipilih();
+      $('pilihSantri').style.display = m === 'santri' ? '' : 'none';
+      $('pilihHalaqoh').style.display = m === 'halaqoh' ? '' : 'none';
+      $('pilihKelas').style.display = m === 'kelas' ? '' : 'none';
+      aturTombolTarget();
+    }
+    function halaqohUntukTarget(){
+      if (modeTetapSantri) return '';
+      var m = modeDipilih();
+      if (m === 'halaqoh') return $('halaqoh').value;
+      if (m === 'santri') {
+        var s = opsi.santri.find(function(x){ return x.nisn === $('santri').value; });
+        var h = s && s.halaqoh ? s.halaqoh.split(', ')[0] : '';
+        return opsi.halaqoh.some(function(x){ return x.nama === h; }) ? h : '';
+      }
+      return '';
+    }
+    function aturTombolTarget(){
+      var b = $('target'); if (!b) return;
+      b.style.display = halaqohUntukTarget() ? '' : 'none';
+    }
+
+    function muatOpsi(){
+      if (modeTetapSantri) return Promise.resolve();
+      return api('getOpsiRekapHafalanBulanan', {oleh: STATE.user.nama, tahunAjaranId: semesterDipilih()}).then(function(res){
+        if (!res || !res.ok) { $('hasil').innerHTML = errBox((res && res.error) || 'Gagal memuat pilihan.'); return; }
+        opsi = res;
+        isiSantri($('cari').value);
+        $('halaqoh').innerHTML = opsi.halaqoh.length ? opsi.halaqoh.map(function(h){ return '<option value="'+esc(h.nama)+'">'+esc(h.nama)+(h.waktu?' - '+esc(h.waktu):'')+(h.pengampu?' ('+esc(h.pengampu)+')':'')+'</option>'; }).join('') : '<option value="">Tidak ada halaqoh</option>';
+        $('kelas').innerHTML = opsi.kelas.length ? opsi.kelas.map(function(k){ return '<option value="'+esc(k)+'">'+esc(k)+'</option>'; }).join('') : '<option value="">Tidak ada kelas</option>';
+        // Pilihan mode yang tidak punya isi disembunyikan supaya tidak membingungkan
+        var selMode = $('mode');
+        Array.prototype.forEach.call(selMode.options, function(o){
+          o.hidden = (o.value === 'halaqoh' && !opsi.halaqoh.length) || (o.value === 'kelas' && !opsi.kelas.length);
+        });
+        if (selMode.selectedOptions[0] && selMode.selectedOptions[0].hidden) selMode.value = 'santri';
+        if (!opsi.santri.length) $('hasil').innerHTML = '<div class="card">'+warnBox('Belum ada santri yang bisa Anda lihat rekapnya di semester ini. Rekap tersedia untuk santri di halaqoh yang Anda ampu atau kelas yang Anda walikan.')+'</div>';
+        aturTampilanMode();
+      });
+    }
+
+    function muat(){
+      var m = modeDipilih();
+      var p = {mode: m, oleh: STATE.user.nama, tahunAjaranId: semesterDipilih()};
+      if (modeTetapSantri) p.nisn = opts.nisn;
+      else if (m === 'santri') p.nisn = $('santri').value;
+      else if (m === 'halaqoh') p.halaqoh = $('halaqoh').value;
+      else p.kelas = $('kelas').value;
+      if ((m === 'santri' && !p.nisn) || (m === 'halaqoh' && !p.halaqoh) || (m === 'kelas' && !p.kelas)) { $('hasil').innerHTML = '<div class="card">'+warnBox('Pilih '+(m==='santri'?'santri':m)+' dulu.')+'</div>'; return; }
+      var jmlSem = Math.max(1, semesterList.findIndex(function(t){ return String(t.id) === String(p.tahunAjaranId); }) + 1);
+      $('hasil').innerHTML = '<div class="card" style="text-align:center;padding:26px 16px">' +
+        '<div class="rhb-putar"></div>' +
+        '<p style="margin:12px 0 4px;font-weight:700">Sedang memproses data hafalan...</p>' +
+        '<p class="muted" style="font-size:12.5px;margin:0">Membaca catatan dari '+jmlSem+' semester untuk menghitung Jumlah Hafalan. ' +
+        (m === 'santri' ? 'Biasanya beberapa detik.' : 'Untuk satu '+m+' bisa memakan waktu hingga &plusmn;30 detik.') + ' Mohon tunggu, jangan tutup halaman ini.</p></div>';
+      var tombol = $('tampil'); tombol.disabled = true;
+      api('getRekapHafalanBulanan', p).then(function(res){
+        tombol.disabled = false;
+        if (!$('hasil')) return;
+        if (!res || !res.ok) { $('hasil').innerHTML = errBox((res && res.error) || 'Gagal memuat rekap.'); return; }
+        hasil = res; hasil._mode = m;
+        hasil._label = m === 'halaqoh' ? ('Halaqoh ' + p.halaqoh) : m === 'kelas' ? ('Kelas ' + p.kelas) : '';
+        tampilkan();
+      }).catch(function(){ tombol.disabled = false; $('hasil').innerHTML = errBox('Gagal menghubungi server. Periksa koneksi lalu coba lagi.'); });
+    }
+
+    // Filter bulan (di atas nama santri) -- tanpa memuat ulang dari server
+    function bulanTerpilih(){
+      if (!hasil) return [];
+      var dari = filterDari, sampai = filterSampai;
+      return hasil.bulanList.filter(function(b){ return (!dari || b.kunci >= dari) && (!sampai || b.kunci <= sampai); });
+    }
+    function barisSantri(s){
+      var kunci = bulanTerpilih().map(function(b){ return b.kunci; });
+      var bulan = s.bulan.filter(function(b){ return kunci.indexOf(b.kunci) !== -1; });
+      var akhir = bulan[bulan.length-1];
+      var total = bulan.reduce(function(a,b){ return a + (b.halaman||0); }, 0);
+      return {bulan: bulan, jumlah: akhir ? akhir.jumlah : s.jumlah, total: total, totalTeks: teksLembarKlien(total) || '–'};
+    }
+    function adaTarget(){ return hasil && hasil.santri.some(function(s){ return s.targetAktif; }); }
+    function teksKet(b){ return b.tercapai === true ? 'Tercapai' : b.tercapai === false ? 'Belum tercapai' : ''; }
+
+    function tabelSantriHtml(s){
+      var r = barisSantri(s);
+      var pakaiTarget = s.targetAktif;
+      var th = 'style="background:#ffff00;color:#000;font-weight:700;text-align:center;border:1px solid #000;padding:8px"';
+      var td = 'style="border:1px solid #000;padding:7px 10px;text-align:center"';
+      var html = '<table class="rhb-tabel" style="border-collapse:collapse;width:100%;max-width:720px;background:#fff;font-size:14px"><tr><th '+th+'>Bulan</th>' +
+        (pakaiTarget ? '<th '+th+'>Target</th><th '+th+'>Capaian</th><th '+th+'>Keterangan</th>' : '<th '+th+'>Capaian Target</th>') + '</tr>';
+      r.bulan.forEach(function(b){
+        var warnaKet = b.tercapai === true ? '#15803d' : b.tercapai === false ? '#b91c1c' : '#64748b';
+        html += '<tr><td '+td+'>'+esc(b.label)+'</td>' +
+          (pakaiTarget ? '<td '+td+'>'+esc(b.target ? b.target.teks : '–')+'</td>' : '') +
+          '<td '+td+'>'+esc(b.teks)+(b.sabaqTanpaHalaman ? ' <span title="Ada setoran Sabaq tanpa keterangan surah/halaman yang tidak bisa dihitung" style="color:#b45309">*</span>' : '')+'</td>' +
+          (pakaiTarget ? '<td '+td+'><span style="color:'+warnaKet+';font-weight:600">'+esc(teksKet(b) || '–')+'</span></td>' : '') + '</tr>';
+      });
+      if (!r.bulan.length) html += '<tr><td '+td+' colspan="'+(pakaiTarget?4:2)+'"><span class="muted">Belum ada catatan pada rentang bulan ini.</span></td></tr>';
+      html += '<tr><td '+td+'><b>Hafalan Baru Periode Ini</b></td><td '+td+(pakaiTarget?' colspan="3"':'')+'>'+esc(r.totalTeks)+'</td></tr>';
+      html += '<tr><td '+td+'><b>Jumlah Hafalan</b></td><td '+td+(pakaiTarget?' colspan="3"':'')+'><b>'+esc(r.jumlah)+'</b></td></tr></table>';
+      if (r.bulan.some(function(b){ return b.sabaqTanpaHalaman; })) html += '<p class="muted" style="font-size:11.5px;margin:6px 0 0">* Ada setoran Sabaq tanpa keterangan surah/ayat/halaman, sehingga tidak bisa dihitung jumlah lembarnya.</p>';
+      return html;
+    }
+    function identitasHtml(s){
+      return '<div style="margin-bottom:10px"><div style="font-size:17px;font-weight:800;color:#0f172a">'+esc(s.nama || s.nisn)+'</div>' +
+        '<div class="muted" style="font-size:12.5px">NISN '+esc(s.nisn)+(s.kelas?' &middot; Kelas '+esc(s.kelas):'')+(s.halaqoh?' &middot; Halaqoh '+esc(s.halaqoh):'')+(s.pengampu?' &middot; Pengampu '+esc(s.pengampu):'')+'</div></div>';
+    }
+
+    function tampilkan(){
+      var el = $('hasil'); if (!el || !hasil) return;
+      if (!hasil.santri.length) { el.innerHTML = '<div class="card"><p class="muted">Tidak ada santri pada pilihan ini.</p></div>'; return; }
+      if (!hasil.bulanList.length) { el.innerHTML = '<div class="card"><p class="muted">Belum ada catatan hafalan pada semester '+esc(hasil.semester||'')+'.</p></div>'; return; }
+      var opsiBulan = function(pilih){ return hasil.bulanList.map(function(b){ return '<option value="'+b.kunci+'"'+(b.kunci===pilih?' selected':'')+'>'+esc(b.labelPanjang)+'</option>'; }).join(''); };
+      var ada = function(k){ return hasil.bulanList.some(function(b){ return b.kunci === k; }); };
+      if (!ada(filterDari)) filterDari = hasil.bulanList[0].kunci;
+      if (!ada(filterSampai)) filterSampai = hasil.bulanList[hasil.bulanList.length-1].kunci;
+      var dariLama = filterDari, sampaiLama = filterSampai;
+      var filter = '<div class="card" style="padding:12px 16px"><div class="grid2">' +
+        '<div><label>Dari bulan</label><select id="'+P+'bDari">'+opsiBulan(dariLama)+'</select></div>' +
+        '<div><label>Sampai bulan</label><select id="'+P+'bSampai">'+opsiBulan(sampaiLama)+'</select></div></div>' +
+        '<p class="muted" style="font-size:12px;margin:4px 0 0">Semester: <b>'+esc(hasil.semester||'-')+'</b>'+(hasil._label?' &middot; '+esc(hasil._label):'')+' &middot; '+hasil.santri.length+' santri</p></div>';
+      var isi = '';
+      if (hasil.santri.length === 1) {
+        var s = hasil.santri[0];
+        isi = '<div class="card">'+identitasHtml(s)+'<div style="overflow-x:auto">'+tabelSantriHtml(s)+'</div></div>';
+      } else {
+        var bl = bulanTerpilih();
+        var th = 'style="background:#ffff00;color:#000;border:1px solid #000;padding:6px;text-align:center;white-space:nowrap"';
+        var td = 'style="border:1px solid #94a3b8;padding:6px;text-align:center;white-space:nowrap"';
+        isi = '<div class="card"><h4 style="margin-top:0">Ringkasan</h4><p class="muted" style="font-size:12px;margin-top:-4px">Ketuk nama santri untuk melihat tabel lengkapnya.</p><div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:13px"><tr><th '+th+'>No</th><th '+th+'>Nama Santri</th>' +
+          bl.map(function(b){ return '<th '+th+'>'+esc(b.label)+'</th>'; }).join('') + '<th '+th+'>Jumlah Hafalan</th></tr>' +
+          hasil.santri.map(function(s, i){
+            var r = barisSantri(s);
+            return '<tr><td '+td+'>'+(i+1)+'</td><td style="border:1px solid #94a3b8;padding:6px;text-align:left"><a href="#" class="'+P+'nama" data-i="'+i+'" style="font-weight:600">'+esc(s.nama||s.nisn)+'</a></td>' +
+              r.bulan.map(function(b){
+                var warna = b.tercapai === true ? 'background:#dcfce7' : b.tercapai === false ? 'background:#fee2e2' : '';
+                return '<td '+td.replace('"', '"'+warna+';')+'>'+esc(b.teks)+'</td>';
+              }).join('') + '<td style="border:1px solid #94a3b8;padding:6px;font-weight:600">'+esc(r.jumlah)+'</td></tr>' +
+              '<tr id="'+P+'det'+i+'" style="display:none"><td colspan="'+(bl.length+3)+'" style="padding:12px;background:#f8fafc">'+identitasHtml(s)+tabelSantriHtml(s)+'</td></tr>';
+          }).join('') + '</table></div>' +
+          (adaTarget() ? '<p class="muted" style="font-size:11.5px;margin:6px 0 0">Hijau = target tercapai, merah = belum tercapai.</p>' : '') + '</div>';
+      }
+      el.innerHTML = filter + isi;
+      $('bDari').onchange = function(){ filterDari = this.value; if (filterSampai < filterDari) filterSampai = filterDari; tampilkan(); };
+      $('bSampai').onchange = function(){ filterSampai = this.value; if (filterDari > filterSampai) filterDari = filterSampai; tampilkan(); };
+      el.querySelectorAll('.'+P+'nama').forEach(function(a){
+        a.onclick = function(e){ e.preventDefault(); var d = $('det'+a.dataset.i); if (d) d.style.display = d.style.display === 'none' ? '' : 'none'; };
+      });
+    }
+
+    function judulFile(){
+      if (!hasil) return 'Rekap Hafalan';
+      var dasar = hasil.santri.length === 1 ? (hasil.santri[0].nama || hasil.santri[0].nisn) : (hasil._label || 'Santri');
+      return ('Rekap Hafalan Bulanan - ' + dasar + ' - ' + (hasil.semester||'')).replace(/[\\\/:*?"<>|]/g, '');
+    }
+    function periodeTeks(){
+      var bl = bulanTerpilih(); if (!bl.length) return '';
+      return bl.length === 1 ? bl[0].labelPanjang : bl[0].labelPanjang + ' s.d. ' + bl[bl.length-1].labelPanjang;
+    }
+
+    // ---- Cetak / PDF: satu santri satu halaman, mengikuti format tabel pondok ----
+    function cetak(){
+      if (!hasil || !hasil.santri.length) { alert('Tampilkan rekapnya dulu.'); return; }
+      var namaPondok = (STATE.pengaturan && STATE.pengaturan.NamaPesantren) || 'Pondok Pesantren';
+      var logo = logoSrc();
+      var halaman = hasil.santri.map(function(s){
+        var r = barisSantri(s), pakaiTarget = s.targetAktif;
+        var baris = '';
+        r.bulan.forEach(function(b, i){
+          if (i > 0) baris += '<tr class="sela"><td></td><td></td>'+(pakaiTarget?'<td></td><td></td>':'')+'</tr>';
+          baris += '<tr><td>'+esc(b.label)+'</td>'+(pakaiTarget?'<td>'+esc(b.target?b.target.teks:'–')+'</td>':'')+'<td>'+esc(b.teks)+'</td>'+(pakaiTarget?'<td>'+esc(teksKet(b)||'–')+'</td>':'')+'</tr>';
+        });
+        baris += '<tr class="sela"><td></td><td></td>'+(pakaiTarget?'<td></td><td></td>':'')+'</tr>';
+        baris += '<tr><td>Jumlah Hafalan</td><td'+(pakaiTarget?' colspan="3"':'')+'>'+esc(r.jumlah)+'</td></tr>';
+        return '<section class="hal">' +
+          '<div class="kop">'+(logo?'<img src="'+esc(logo)+'">':'')+'<div><b>'+esc(namaPondok)+'</b><br>REKAP CAPAIAN HAFALAN AL-QUR\'AN</div></div>' +
+          '<table class="id"><tr><td>Nama Santri</td><td>: <b>'+esc(s.nama||'')+'</b></td></tr><tr><td>NISN</td><td>: '+esc(s.nisn)+'</td></tr>' +
+          '<tr><td>Kelas</td><td>: '+esc(s.kelas||'-')+'</td></tr><tr><td>Halaqoh</td><td>: '+esc(s.halaqoh||'-')+'</td></tr>' +
+          '<tr><td>Semester</td><td>: '+esc(hasil.semester||'-')+'</td></tr><tr><td>Periode</td><td>: '+esc(periodeTeks())+'</td></tr></table>' +
+          '<table class="rekap"><tr><th>Bulan</th>'+(pakaiTarget?'<th>Target</th><th>Capaian</th><th>Keterangan</th>':'<th>Capaian Target</th>')+'</tr>'+baris+'</table>' +
+          '<div class="ttd"><div>Pengampu Halaqoh,<br><br><br><br><b>'+esc(s.pengampu||'....................................')+'</b></div></div>' +
+        '</section>';
+      }).join('');
+      var win = window.open('', '_blank');
+      if (!win) { alert('Jendela cetak diblokir browser. Izinkan pop-up untuk aplikasi ini lalu coba lagi.'); return; }
+      win.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+esc(judulFile())+'</title><style>' +
+        'body{font-family:"Times New Roman",Times,serif;margin:0;color:#000}' +
+        '.hal{padding:16mm 16mm 10mm;page-break-after:always}.hal:last-child{page-break-after:auto}' +
+        '.kop{display:flex;align-items:center;gap:12px;border-bottom:3px double #000;padding-bottom:8px;margin-bottom:14px;font-size:16px;line-height:1.35}.kop img{width:56px;height:56px;object-fit:contain}' +
+        'table.id{border-collapse:collapse;margin-bottom:14px;font-size:14px}table.id td{padding:2px 8px 2px 0}' +
+        'table.rekap{border-collapse:collapse;width:100%;font-size:15px}table.rekap th{background:#ffff00;border:1.5px solid #000;padding:8px;font-weight:700;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+        'table.rekap td{border:1.5px solid #000;padding:7px;text-align:center;height:20px}table.rekap tr.sela td{height:18px;padding:0}' +
+        '.ttd{display:flex;justify-content:flex-end;margin-top:30px;font-size:14px;text-align:center}' +
+        '.noprint{background:#fef9c3;border:1px solid #fde68a;padding:8px;margin:10px;border-radius:6px;font-family:Arial,sans-serif;font-size:13px}' +
+        '@media print{.noprint{display:none}@page{size:A4 portrait;margin:0}}</style></head><body>' +
+        '<div class="noprint">Untuk menyimpan sebagai PDF: pilih <b>Simpan sebagai PDF</b> / <b>Save as PDF</b> pada tujuan printer. Satu santri dicetak satu halaman. <button onclick="window.print()">Cetak</button></div>' +
+        halaman + '<script>setTimeout(function(){window.print();},600);<\/script></body></html>');
+      win.document.close();
+    }
+
+    // ---- Excel: lembar per santri dengan format tabel pondok (+ Ringkasan bila banyak santri) ----
+    function unduhExcel(){
+      if (!hasil || !hasil.santri.length) { alert('Tampilkan rekapnya dulu.'); return; }
+      var tombol = $('excel'); tombol.disabled = true; var teksAsli = tombol.innerHTML; tombol.innerHTML = 'Menyiapkan Excel...';
+      muatXlsxGaya().then(function(XG){
+        tombol.disabled = false; tombol.innerHTML = teksAsli;
+        var X = XG || window.XLSX;
+        if (!X) { alert('Modul Excel belum termuat. Periksa koneksi lalu muat ulang halaman.'); return; }
+        var garis = {top:{style:'thin',color:{rgb:'000000'}},bottom:{style:'thin',color:{rgb:'000000'}},left:{style:'thin',color:{rgb:'000000'}},right:{style:'thin',color:{rgb:'000000'}}};
+        var gKepala = {font:{bold:true,name:'Times New Roman',sz:12},fill:{patternType:'solid',fgColor:{rgb:'FFFF00'}},alignment:{horizontal:'center',vertical:'center'},border:garis};
+        var gIsi = {font:{name:'Times New Roman',sz:12},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:garis};
+        var gJudul = {font:{bold:true,name:'Times New Roman',sz:13}};
+        var namaPondok = (STATE.pengaturan && STATE.pengaturan.NamaPesantren) || 'Pondok Pesantren';
+        var wb = X.utils.book_new(), dipakai = {};
+        function namaLembar(n){ n = String(n||'Santri').replace(/[\\\/\?\*\[\]:]/g,'').slice(0,28) || 'Santri'; var a = n, i = 2; while (dipakai[a.toLowerCase()]) { a = n.slice(0,25)+' '+i; i++; } dipakai[a.toLowerCase()] = 1; return a; }
+        function gaya(ws, alamat, g){ if (XG && ws[alamat]) ws[alamat].s = g; }
+        if (hasil.santri.length > 1) {
+          var bl = bulanTerpilih();
+          var aoa = [[namaPondok],['REKAP HAFALAN BULANAN - ' + (hasil._label||'')],['Semester: ' + (hasil.semester||'') + ' | Periode: ' + periodeTeks()],[],
+            ['No','NISN','Nama Santri','Kelas','Halaqoh'].concat(bl.map(function(b){ return b.label; })).concat(['Hafalan Baru Periode Ini','Jumlah Hafalan'])];
+          hasil.santri.forEach(function(s, i){ var r = barisSantri(s); aoa.push([i+1, s.nisn, s.nama, s.kelas, s.halaqoh].concat(r.bulan.map(function(b){ return b.teks; })).concat([r.totalTeks, r.jumlah])); });
+          var wsR = X.utils.aoa_to_sheet(aoa);
+          wsR['!cols'] = [{wch:4},{wch:13},{wch:26},{wch:8},{wch:16}].concat(bl.map(function(){ return {wch:18}; })).concat([{wch:20},{wch:30}]);
+          var lebar = aoa[4].length;
+          for (var rr = 4; rr < aoa.length; rr++) for (var cc = 0; cc < lebar; cc++) gaya(wsR, X.utils.encode_cell({r:rr,c:cc}), rr === 4 ? gKepala : gIsi);
+          gaya(wsR, 'A1', gJudul); gaya(wsR, 'A2', gJudul);
+          X.utils.book_append_sheet(wb, wsR, namaLembar('Ringkasan'));
+        }
+        hasil.santri.forEach(function(s){
+          var r = barisSantri(s), pakaiTarget = s.targetAktif;
+          var aoa = [[namaPondok],['REKAP CAPAIAN HAFALAN AL-QUR\'AN'],['Nama Santri', s.nama],['NISN', s.nisn],['Kelas', s.kelas||'-'],['Halaqoh', s.halaqoh||'-'],['Semester', hasil.semester||'-'],['Periode', periodeTeks()],[]];
+          var awalTabel = aoa.length;
+          aoa.push(pakaiTarget ? ['Bulan','Target','Capaian','Keterangan'] : ['Bulan','Capaian Target']);
+          var barisIsi = [];
+          r.bulan.forEach(function(b, i){
+            if (i > 0) { aoa.push(pakaiTarget ? ['','','',''] : ['','']); barisIsi.push(aoa.length-1); }
+            aoa.push(pakaiTarget ? [b.label, b.target?b.target.teks:'–', b.teks, teksKet(b)||'–'] : [b.label, b.teks]); barisIsi.push(aoa.length-1);
+          });
+          aoa.push(pakaiTarget ? ['','','',''] : ['','']); barisIsi.push(aoa.length-1);
+          aoa.push(pakaiTarget ? ['Jumlah Hafalan', r.jumlah, '', ''] : ['Jumlah Hafalan', r.jumlah]); barisIsi.push(aoa.length-1);
+          var ws = X.utils.aoa_to_sheet(aoa);
+          var kol = pakaiTarget ? 4 : 2;
+          ws['!cols'] = pakaiTarget ? [{wch:22},{wch:22},{wch:24},{wch:18}] : [{wch:26},{wch:46}];
+          if (pakaiTarget) ws['!merges'] = [{s:{r:aoa.length-1,c:1},e:{r:aoa.length-1,c:3}}];
+          for (var c2 = 0; c2 < kol; c2++) gaya(ws, X.utils.encode_cell({r:awalTabel,c:c2}), gKepala);
+          barisIsi.forEach(function(rr){ for (var c3 = 0; c3 < kol; c3++) { if (!ws[X.utils.encode_cell({r:rr,c:c3})]) ws[X.utils.encode_cell({r:rr,c:c3})] = {t:'s', v:''}; gaya(ws, X.utils.encode_cell({r:rr,c:c3}), gIsi); } });
+          gaya(ws, 'A1', gJudul); gaya(ws, 'A2', gJudul);
+          X.utils.book_append_sheet(wb, ws, namaLembar(s.nama || s.nisn));
+        });
+        X.writeFile(wb, judulFile() + '.xlsx');
+      });
+    }
+
+    // ---- Atur target (pengampu / Admin), berlaku untuk semester aktif ----
+    function bukaAturTarget(){
+      var halaqoh = halaqohUntukTarget(); if (!halaqoh) return;
+      var semAktif = semesterList.find(function(t){ return t.aktif; });
+      if (semAktif && String(semesterDipilih()) !== String(semAktif.id)) { alert('Target hanya bisa diatur untuk semester aktif ('+semAktif.nama+'). Pilih semester aktif dulu.'); return; }
+      api('getTargetHafalan', {halaqoh: halaqoh}).then(function(res){
+        var t = (res && res.ok && res.data) || {aktif:false, targetHalaman:0, khusus:{}};
+        var khusus = t.khusus || {};
+        var barisKhusus = function(bulan, nilai){
+          var mur = nilai === 'M';
+          var hal = mur ? 0 : Number(nilai)||0;
+          return '<div class="tgtBaris" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px">' +
+            '<input type="month" class="tgtBulan" value="'+esc(bulan||'')+'" style="width:auto;margin:0">' +
+            '<select class="tgtJenis" style="width:auto;margin:0"><option value="angka"'+(mur?'':' selected')+'>Target</option><option value="M"'+(mur?' selected':'')+'>Murojaah</option></select>' +
+            '<input type="number" min="0" class="tgtL" value="'+(mur?'':Math.floor(hal/2))+'" placeholder="lembar" style="width:80px;margin:0"'+(mur?' disabled':'')+'><span>lembar</span>' +
+            '<input type="number" min="0" max="1" class="tgtH" value="'+(mur?'':hal%2)+'" placeholder="hal" style="width:64px;margin:0"'+(mur?' disabled':'')+'><span>halaman</span>' +
+            '<button type="button" class="small danger tgtHapus" style="margin:0">&times;</button></div>';
+        };
+        var html = '<p class="muted" style="margin-top:-4px">Halaqoh <b>'+esc(halaqoh)+'</b> &middot; berlaku untuk semester aktif. Target tampil di rekap sebagai kolom Target dan Keterangan.</p>' +
+          '<label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" id="tgtAktif" style="width:auto;margin:0"'+(t.aktif?' checked':'')+'> Aktifkan target hafalan untuk halaqoh ini</label>' +
+          '<label style="margin-top:10px">Target hafalan baru setiap bulan</label>' +
+          '<div style="display:flex;gap:6px;align-items:center"><input type="number" min="0" id="tgtL" value="'+Math.floor((t.targetHalaman||0)/2)+'" style="width:90px;margin:0"><span>lembar</span>' +
+          '<input type="number" min="0" max="1" id="tgtH" value="'+((t.targetHalaman||0)%2)+'" style="width:70px;margin:0"><span>halaman</span></div>' +
+          '<label style="margin-top:12px">Target khusus bulan tertentu (opsional)</label>' +
+          '<p class="muted" style="font-size:12px;margin:-2px 0 6px">Misalnya bulan Ramadhan/ujian diisi <b>Murojaah</b>, atau target berbeda dari biasanya.</p>' +
+          '<div id="tgtDaftar">'+Object.keys(khusus).sort().map(function(k){ return barisKhusus(k, khusus[k]); }).join('')+'</div>' +
+          '<button type="button" class="small secondary" id="tgtTambah">+ Tambah bulan khusus</button>';
+        var modal = openModal('Atur Target Hafalan', html, function(m){
+          var aktif = m.querySelector('#tgtAktif').checked;
+          var targetHalaman = (Number(m.querySelector('#tgtL').value)||0)*2 + (Number(m.querySelector('#tgtH').value)||0);
+          var kh = {}, salah = '';
+          m.querySelectorAll('.tgtBaris').forEach(function(b){
+            var bln = b.querySelector('.tgtBulan').value; if (!bln) return;
+            if (b.querySelector('.tgtJenis').value === 'M') kh[bln] = 'M';
+            else {
+              var h = (Number(b.querySelector('.tgtL').value)||0)*2 + (Number(b.querySelector('.tgtH').value)||0);
+              if (h < 0) salah = 'Target tidak boleh negatif.'; kh[bln] = h;
+            }
+          });
+          if (salah) { alert(salah); return false; }
+          if (aktif && !targetHalaman && !Object.keys(kh).length) { alert('Isi target per bulan (minimal 1 halaman) atau tambahkan target khusus bulan.'); return false; }
+          return api('simpanTargetHafalan', {halaqoh: halaqoh, aktif: aktif, targetHalaman: targetHalaman, khusus: kh, oleh: STATE.user.nama}).then(function(r){
+            if (!r.ok) { alert(r.error); throw new Error(r.error); }
+            if (hasil) muat();
+          });
+        });
+        var ikat = function(){
+          modal.querySelectorAll('.tgtHapus').forEach(function(b){ b.onclick = function(){ b.parentNode.remove(); }; });
+          modal.querySelectorAll('.tgtJenis').forEach(function(s){ s.onchange = function(){ var mur = s.value === 'M'; s.parentNode.querySelectorAll('.tgtL,.tgtH').forEach(function(i){ i.disabled = mur; if (mur) i.value = ''; }); }; });
+        };
+        modal.querySelector('#tgtTambah').onclick = function(){
+          var d = document.createElement('div'); d.innerHTML = barisKhusus('', '');
+          modal.querySelector('#tgtDaftar').appendChild(d.firstChild); ikat();
+        };
+        ikat();
+      });
+    }
+
+    // ---- Mulai ----
+    api('getTahunAjaranList', {}).then(function(res){
+      if (!$('sem')) return;
+      semesterList = (res && res.ok) ? res.data : [];
+      var aktif = semesterList.find(function(t){ return t.aktif === true || String(t.aktif).toUpperCase() === 'TRUE'; });
+      semesterList.forEach(function(t){ t.aktif = (t === aktif); });
+      semesterAktifId = aktif ? aktif.id : '';
+      $('sem').innerHTML = semesterList.length ? semesterList.slice().reverse().map(function(t){
+        return '<option value="'+esc(t.id)+'"'+(t===aktif?' selected':'')+'>'+esc(t.nama)+(t===aktif?' (aktif)':'')+'</option>';
+      }).join('') : '<option value="">Semester aktif</option>';
+      $('sem').onchange = function(){ hasil = null; filterDari = ''; filterSampai = ''; $('hasil').innerHTML = ''; muatOpsi(); };
+      if (!modeTetapSantri) {
+        $('mode').onchange = function(){ aturTampilanMode(); };
+        $('cari').oninput = function(){ isiSantri(this.value); aturTombolTarget(); };
+        $('santri').onchange = aturTombolTarget;
+        $('halaqoh').onchange = aturTombolTarget;
+      }
+      $('tampil').onclick = muat;
+      $('excel').onclick = unduhExcel;
+      $('cetak').onclick = cetak;
+      if ($('target')) $('target').onclick = bukaAturTarget;
+      muatOpsi().then(function(){ if (modeTetapSantri) muat(); });
+    });
+  }
+
+  function halamanRekapHafalanBulanan(){
+    var c = getContentEl();
+    c.innerHTML = '<div id="rhbWadah"></div>';
+    renderRekapHafalanBulanan('rhbWadah', {});
+  }
+
   function guruRekapPerSantri(){
     var c = getContentEl();
     var daftarSantri = [], mapelList = [], lastRes = null, lastLabel = {};
@@ -12918,6 +13407,8 @@
       '<div style="padding:16px">' +
       // Progress hafalan
       '<div id="hwProgress"><p class="muted">Memuat progres...</p></div>' +
+      // Rekap capaian hafalan per bulan (format tabel pondok)
+      '<div id="hwRekapBulanan"></div>' +
 
       // Filter bulan
       '<div class="card"><h3>&#128218; Riwayat Hafalan Bulanan</h3>' +
@@ -12932,6 +13423,8 @@
       '<button class="small secondary" id="btnHwPdf">&#11015; Download PDF</button>' +
       '</div></div>' +
       '<div id="hwTabel"></div></div>';
+
+    renderRekapHafalanBulanan('hwRekapBulanan', {nisn: nisn, wali: true});
 
     // Muat progress
     api('getProgressHafalan', {nisn:nisn}).then(function(res){
@@ -13103,6 +13596,7 @@
       {key:'pengganti', label:'Guru Pengganti', icon:'&#128101;'},
       {key:'rekapguru', label:'Rekap Guru', icon:'&#128104;&#8205;&#127979;'},
       {key:'rekapsantri', label:'Rekap Santri', icon:'&#127891;'},
+      {key:'rekaphafalanbulan', label:'Rekap Hafalan Bulanan', icon:'&#128202;'},
       {key:'rapor', label:'Nilai & Rapor', icon:'&#128196;'},
       {key:'catatpelanggaran', label:'Catat Pelanggaran', icon:'&#9888;&#65039;'},
       {key:'pelanggaran', label:'Kelola Pelanggaran', icon:'&#128220;'},
@@ -13138,7 +13632,7 @@
       {key:'diagnostikdata', label:'Diagnostik Ukuran Data', icon:'&#128202;'}
     ];
     var map = {ringkasan:adminRingkasan, tahun:adminTahunAjaran, rombel:adminRombel, halaqoh:adminHalaqoh, santri:adminDataSantri, mutasi:adminMutasiSantri, pengaturankasir:adminPengaturanKasir,
-      data:adminDataMaster, pengganti:adminPenggantian, rekapguru:adminRekapGuru, rekapsantri:adminRekapSantri, rapor:adminRaporSantri,
+      data:adminDataMaster, pengganti:adminPenggantian, rekapguru:adminRekapGuru, rekapsantri:adminRekapSantri, rekaphafalanbulan:halamanRekapHafalanBulanan, rapor:adminRaporSantri,
       catatpelanggaran:function(){ renderFormCatatPelanggaran('da-content'); }, pelanggaran:adminKelolaPelanggaran,
       slide:adminSlide, websitebuilder:adminWebsiteBuilder, notifpush:adminNotifikasiPush,
       templateflyer:adminTemplateFlyer, flyertasmi:halamanFlyerTasmi, riwayattasmi:halamanRiwayatTasmi, artikel:adminArtikel, fiturberanda:adminFiturBeranda, barangkantin:adminBarangKantin,

@@ -473,6 +473,10 @@ function route(action, p) {
     case 'getRekapHafalanSantri': return {ok:true, data: getRekapHafalanSantri(p.nisn, p.tahunAjaranId)};
     case 'getRekapKehadiranHalaqoh': return {ok:true, data: getRekapKehadiranHalaqoh(p.nisn, p.tahunAjaranId)};
     case 'getGrafikHafalanSantri': return {ok:true, data: getGrafikHafalanSantri(p.nisn, p.tanggalMulai, p.tanggalAkhir, p.tahunAjaranId)};
+    case 'getOpsiRekapHafalanBulanan': return apiGetOpsiRekapHafalanBulanan(p);
+    case 'getRekapHafalanBulanan': return apiGetRekapHafalanBulanan(p);
+    case 'getTargetHafalan': return apiGetTargetHafalan(p);
+    case 'simpanTargetHafalan': return apiSimpanTargetHafalan(p);
 
     // ---- NILAI (UTS/UAS/Tugas/Keterampilan) & RAPOR ----
     case 'getMapelGuru': return {ok:true, data: getMapelGuru(p.pengampu)};
@@ -3752,7 +3756,7 @@ function kolomSpp_(sh) {
 
 // Versi kode server -- dipakai aplikasi untuk memastikan Code.gs terbaru sudah di-deploy
 // sebelum menjalankan perubahan struktur (mis. menambah kolom Nama Santri).
-const VERSI_SERVER = '2026.10.11-e';
+const VERSI_SERVER = '2026.10.12-c';
 function apiVersiServer() { return {ok:true, versi: VERSI_SERVER}; }
 
 function apiStatusKolomNamaSpp(p) {
@@ -13614,4 +13618,485 @@ function riwayatGantiNisn_() {
 function apiGetRiwayatGantiNisn(p) {
   if (!adminAtauMudir(p.oleh)) return {ok:false, error:'Tidak berwenang.'};
   return {ok:true, data: riwayatGantiNisn_().reverse().slice(0, 50)};
+}
+
+// ======================================================================
+// REKAP HAFALAN BULANAN (per santri / per halaqoh / per kelas)
+//
+// Format laporan mengikuti tabel pondok:  Bulan | Capaian Target  ... | Jumlah Hafalan
+//  - Capaian per bulan = halaman BARU dari setoran "Sabaq" di bulan itu, ditulis dalam
+//    lembar (1 lembar = 2 halaman), mis. "3 Lembar 1 Halaman". Halaman yang sama yang
+//    disetor ulang hanya dihitung sekali (di bulan pertama kali disetor).
+//  - Bulan tanpa Sabaq tetapi ada Sabqi/Manzil/Murojaah/Tasmi' -> "Murojaah".
+//  - Jumlah Hafalan = juz yang sudah tuntas dari SEMUA semester sejak santri masuk
+//    (dari setoran Sabaq/Sabqi/Manzil/Murojaah/Tasmi'), mis. "2 Juz (29-30)".
+//  - Target (opsional) ditetapkan pengampu per halaqoh per semester di sheet
+//    TargetHafalan pada spreadsheet semester. Bila tidak diaktifkan, tidak ditampilkan.
+// Hanya MEMBACA sheet Hafalan -- tidak ada data hafalan yang diubah.
+// ======================================================================
+const SHEET_TARGET_HAFALAN = 'TargetHafalan';
+const HEADER_TARGET_HAFALAN_ = ['Halaqoh','Aktif','Target Per Bulan (Halaman)','Target Khusus Bulan','Diubah Oleh','Waktu Ubah'];
+const NAMA_SURAH_MUSHAF_ = ["Al-Fatihah", "Al-Baqarah", "Ali 'Imran", "An-Nisa", "Al-Ma'idah", "Al-An'am", "Al-A'raf", "Al-Anfal", "At-Taubah", "Yunus", "Hud", "Yusuf", "Ar-Ra'd", "Ibrahim", "Al-Hijr", "An-Nahl", "Al-Isra", "Al-Kahf", "Maryam", "Ta-Ha", "Al-Anbiya", "Al-Hajj", "Al-Mu'minun", "An-Nur", "Al-Furqan", "Asy-Syu'ara", "An-Naml", "Al-Qasas", "Al-'Ankabut", "Ar-Rum", "Luqman", "As-Sajdah", "Al-Ahzab", "Saba'", "Fatir", "Ya-Sin", "As-Saffat", "Sad", "Az-Zumar", "Gafir", "Fussilat", "Asy-Syura", "Az-Zukhruf", "Ad-Dukhan", "Al-Jasiyah", "Al-Ahqaf", "Muhammad", "Al-Fath", "Al-Hujurat", "Qaf", "Az-Zariyat", "At-Tur", "An-Najm", "Al-Qamar", "Ar-Rahman", "Al-Waqi'ah", "Al-Hadid", "Al-Mujadilah", "Al-Hasyr", "Al-Mumtahanah", "As-Saf", "Al-Jumu'ah", "Al-Munafiqun", "At-Tagabun", "At-Talaq", "At-Tahrim", "Al-Mulk", "Al-Qalam", "Al-Haqqah", "Al-Ma'arij", "Nuh", "Al-Jinn", "Al-Muzzammil", "Al-Muddassir", "Al-Qiyamah", "Al-Insan", "Al-Mursalat", "An-Naba", "An-Nazi'at", "'Abasa", "At-Takwir", "Al-Infitar", "Al-Mutaffifin", "Al-Insyiqaq", "Al-Buruj", "At-Tariq", "Al-A'la", "Al-Gasyiyah", "Al-Fajr", "Al-Balad", "Asy-Syams", "Al-Lail", "Ad-Duha", "Al-Insyirah", "At-Tin", "Al-'Alaq", "Al-Qadr", "Al-Bayyinah", "Az-Zalzalah", "Al-'Adiyat", "Al-Qari'ah", "At-Takasur", "Al-'Asr", "Al-Humazah", "Al-Fil", "Quraisy", "Al-Ma'un", "Al-Kausar", "Al-Kafirun", "An-Nasr", "Al-Masad", "Al-Ikhlas", "Al-Falaq", "An-Nas"];
+const JUMLAH_AYAT_SURAH_ = [7, 286, 200, 176, 120, 165, 206, 75, 129, 109, 123, 111, 43, 52, 99, 128, 111, 110, 98, 135, 112, 78, 118, 64, 77, 227, 93, 88, 69, 60, 34, 30, 73, 54, 45, 83, 182, 88, 75, 85, 54, 53, 89, 59, 37, 35, 38, 29, 18, 45, 60, 49, 62, 55, 78, 96, 29, 22, 24, 13, 14, 11, 11, 18, 12, 12, 30, 52, 52, 44, 28, 28, 20, 56, 40, 31, 50, 40, 46, 42, 29, 19, 36, 25, 22, 17, 19, 26, 30, 20, 15, 21, 11, 8, 8, 19, 5, 8, 8, 11, 11, 8, 3, 9, 5, 4, 7, 3, 6, 3, 5, 4, 5, 6];
+const JUZ_AWAL_HALAMAN_ = [1, 22, 42, 62, 82, 102, 121, 142, 162, 182, 201, 222, 242, 262, 282, 302, 322, 342, 362, 382, 402, 422, 442, 462, 482, 502, 522, 542, 562, 582];
+// Peta Mushaf Madinah 604 halaman: "halaman.noSurah.ayatMulai" (dari file Peta_Halaman_Quran_Madinah_604)
+const PETA_HALAMAN_AYAT_TEKS_ = "1.1.1;2.2.1;3.2.6;4.2.17;5.2.25;6.2.30;7.2.38;8.2.49;9.2.58;10.2.62;11.2.70;12.2.77;13.2.84;14.2.89;15.2.94;16.2.102;17.2.106;18.2.113;19.2.120;20.2.127;21.2.135;22.2.142;23.2.146;24.2.154;25.2.164;26.2.170;27.2.177;28.2.182;29.2.187;30.2.191;31.2.197;32.2.203;33.2.211;34.2.216;35.2.220;36.2.225;37.2.231;38.2.234;39.2.238;40.2.246;41.2.249;42.2.253;43.2.257;44.2.260;45.2.265;46.2.270;47.2.275;48.2.282;49.2.283;50.3.1;51.3.10;52.3.16;53.3.23;54.3.30;55.3.38;56.3.46;57.3.53;58.3.62;59.3.71;60.3.78;61.3.84;62.3.92;63.3.101;64.3.109;65.3.116;66.3.122;67.3.133;68.3.141;69.3.149;70.3.154;71.3.158;72.3.166;73.3.174;74.3.181;75.3.187;76.3.195;77.4.1;78.4.7;79.4.12;80.4.15;81.4.20;82.4.24;83.4.27;84.4.34;85.4.38;86.4.45;87.4.52;88.4.60;89.4.66;90.4.75;91.4.80;92.4.87;93.4.92;94.4.95;95.4.102;96.4.106;97.4.114;98.4.122;99.4.128;100.4.135;101.4.141;102.4.148;103.4.155;104.4.163;105.4.171;106.4.176;106.5.1;107.5.3;108.5.6;109.5.10;110.5.14;111.5.18;112.5.24;113.5.32;114.5.37;115.5.42;116.5.46;117.5.51;118.5.58;119.5.65;120.5.71;121.5.77;122.5.83;123.5.90;124.5.96;125.5.104;126.5.109;127.5.114;128.6.1;129.6.9;130.6.19;131.6.28;132.6.36;133.6.45;134.6.53;135.6.60;136.6.69;137.6.74;138.6.82;139.6.91;140.6.95;141.6.102;142.6.111;143.6.119;144.6.125;145.6.132;146.6.138;147.6.143;148.6.147;149.6.152;150.6.158;151.7.1;152.7.12;153.7.23;154.7.31;155.7.38;156.7.44;157.7.52;158.7.58;159.7.68;160.7.74;161.7.82;162.7.88;163.7.96;164.7.105;165.7.121;166.7.131;167.7.138;168.7.144;169.7.150;170.7.156;171.7.160;172.7.164;173.7.171;174.7.179;175.7.188;176.7.196;177.8.1;178.8.9;179.8.17;180.8.26;181.8.34;182.8.41;183.8.46;184.8.53;185.8.62;186.8.70;187.9.1;188.9.7;189.9.14;190.9.21;191.9.27;192.9.32;193.9.37;194.9.41;195.9.48;196.9.55;197.9.62;198.9.69;199.9.73;200.9.80;201.9.87;202.9.94;203.9.100;204.9.107;205.9.112;206.9.118;207.9.123;208.10.1;209.10.7;210.10.15;211.10.21;212.10.26;213.10.34;214.10.43;215.10.54;216.10.62;217.10.71;218.10.79;219.10.89;220.10.98;221.10.107;221.11.1;222.11.6;223.11.13;224.11.20;225.11.29;226.11.38;227.11.46;228.11.54;229.11.63;230.11.72;231.11.82;232.11.89;233.11.98;234.11.109;235.11.118;235.12.1;236.12.5;237.12.15;238.12.23;239.12.31;240.12.38;241.12.44;242.12.53;243.12.64;244.12.70;245.12.79;246.12.87;247.12.96;248.12.104;249.13.1;250.13.6;251.13.14;252.13.19;253.13.29;254.13.35;255.13.43;255.14.1;256.14.6;257.14.11;258.14.19;259.14.25;260.14.34;261.14.43;262.15.1;263.15.16;264.15.32;265.15.52;266.15.71;267.15.91;267.16.1;268.16.7;269.16.15;270.16.27;271.16.35;272.16.43;273.16.55;274.16.65;275.16.73;276.16.80;277.16.88;278.16.94;279.16.103;280.16.111;281.16.119;282.17.1;283.17.8;284.17.18;285.17.28;286.17.39;287.17.50;288.17.59;289.17.67;290.17.76;291.17.87;292.17.97;293.17.105;293.18.1;294.18.5;295.18.16;296.18.21;297.18.28;298.18.35;299.18.46;300.18.54;301.18.62;302.18.75;303.18.84;304.18.98;305.19.1;306.19.12;307.19.26;308.19.39;309.19.52;310.19.65;311.19.77;312.19.96;312.20.1;313.20.13;314.20.38;315.20.52;316.20.65;317.20.77;318.20.88;319.20.99;320.20.114;321.20.126;322.21.1;323.21.11;324.21.25;325.21.36;326.21.45;327.21.58;328.21.73;329.21.82;330.21.91;331.21.102;332.22.1;333.22.6;334.22.16;335.22.24;336.22.31;337.22.39;338.22.47;339.22.56;340.22.65;341.22.73;342.23.1;343.23.18;344.23.28;345.23.43;346.23.60;347.23.75;348.23.90;349.23.105;350.24.1;351.24.11;352.24.21;353.24.28;354.24.32;355.24.37;356.24.44;357.24.54;358.24.59;359.24.62;359.25.1;360.25.3;361.25.12;362.25.21;363.25.33;364.25.44;365.25.56;366.25.68;367.26.1;368.26.20;369.26.40;370.26.61;371.26.84;372.26.112;373.26.137;374.26.160;375.26.184;376.26.207;377.27.1;378.27.14;379.27.23;380.27.36;381.27.45;382.27.56;383.27.64;384.27.77;385.27.89;385.28.1;386.28.6;387.28.14;388.28.22;389.28.29;390.28.36;391.28.44;392.28.51;393.28.60;394.28.71;395.28.78;396.28.85;396.29.1;397.29.7;398.29.15;399.29.24;400.29.31;401.29.39;402.29.46;403.29.53;404.29.64;404.30.1;405.30.6;406.30.16;407.30.25;408.30.33;409.30.42;410.30.51;411.31.1;412.31.12;413.31.20;414.31.29;415.32.1;416.32.12;417.32.21;418.33.1;419.33.7;420.33.16;421.33.23;422.33.31;423.33.36;424.33.44;425.33.51;426.33.55;427.33.63;428.34.1;429.34.8;430.34.15;431.34.23;432.34.32;433.34.40;434.34.49;434.35.1;435.35.4;436.35.12;437.35.19;438.35.31;439.35.39;440.35.45;440.36.1;441.36.13;442.36.28;443.36.41;444.36.55;445.36.71;446.37.1;447.37.25;448.37.52;449.37.77;450.37.103;451.37.127;452.37.154;453.38.1;454.38.17;455.38.27;456.38.43;457.38.62;458.38.84;458.39.1;459.39.6;460.39.11;461.39.22;462.39.32;463.39.41;464.39.48;465.39.57;466.39.68;467.39.75;467.40.1;468.40.8;469.40.17;470.40.26;471.40.34;472.40.41;473.40.50;474.40.59;475.40.67;476.40.78;477.41.1;478.41.12;479.41.21;480.41.30;481.41.39;482.41.47;483.42.1;484.42.11;485.42.16;486.42.23;487.42.32;488.42.45;489.42.52;489.43.1;490.43.11;491.43.23;492.43.34;493.43.48;494.43.61;495.43.74;496.44.1;497.44.19;498.44.40;499.45.1;500.45.14;501.45.23;502.45.33;502.46.1;503.46.6;504.46.15;505.46.21;506.46.29;507.47.1;508.47.12;509.47.20;510.47.30;511.48.1;512.48.10;513.48.16;514.48.24;515.48.29;515.49.1;516.49.5;517.49.12;518.50.1;519.50.16;520.50.36;520.51.1;521.51.7;522.51.31;523.51.52;523.52.1;524.52.15;525.52.32;526.53.1;527.53.27;528.53.45;528.54.1;529.54.7;530.54.28;531.54.50;531.55.1;532.55.17;533.55.41;534.55.68;534.56.1;535.56.17;536.56.51;537.56.77;537.57.1;538.57.4;539.57.12;540.57.19;541.57.25;542.58.1;543.58.7;544.58.12;545.58.22;545.59.1;546.59.4;547.59.10;548.59.17;549.60.1;550.60.6;551.60.12;551.61.1;552.61.6;553.62.1;554.62.9;554.63.1;555.63.5;556.64.1;557.64.10;558.65.1;559.65.6;560.66.1;561.66.8;562.67.1;563.67.13;564.67.27;564.68.1;565.68.16;566.68.43;566.69.1;567.69.9;568.69.35;568.70.1;569.70.11;570.70.40;570.71.1;571.71.11;572.72.1;573.72.14;574.73.1;575.73.20;575.74.1;576.74.18;577.74.48;577.75.1;578.75.20;578.76.1;579.76.6;580.76.26;580.77.1;581.77.20;582.78.1;583.78.31;583.79.1;584.79.16;585.80.1;586.81.1;587.82.1;587.83.1;588.83.7;589.83.35;589.84.1;590.85.1;591.86.1;591.87.1;592.87.16;592.88.1;593.89.1;594.89.24;594.90.1;595.91.1;595.92.1;596.92.15;596.93.1;596.94.1;597.95.1;597.96.1;598.97.1;598.98.1;599.98.8;599.99.1;599.100.1;600.100.10;600.101.1;600.102.1;601.103.1;601.104.1;601.105.1;602.106.1;602.107.1;602.108.1;603.109.1;603.110.1;603.111.1;604.112.1;604.113.1;604.114.1";
+const JENIS_HAFALAN_TERHAFAL_ = ['Sabaq','Sabqi','Manzil','Murojaah',"Tasmi'"];
+const JENIS_HAFALAN_MUROJAAH_ = ['Sabqi','Manzil','Murojaah',"Tasmi'"];
+const NAMA_BULAN_ID_ = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+
+let _petaHalamanAyat_ = null;
+function petaHalamanAyat_() {
+  if (_petaHalamanAyat_) return _petaHalamanAyat_;
+  const per = {}; // noSurah -> [[ayatMulai, halaman], ...] urut
+  PETA_HALAMAN_AYAT_TEKS_.split(';').forEach(function(t){
+    const a = t.split('.'); const hal = Number(a[0]), s = Number(a[1]), ay = Number(a[2]);
+    (per[s] = per[s] || []).push([ay, hal]);
+  });
+  _petaHalamanAyat_ = per;
+  return per;
+}
+function kunciNamaSurah_(s) {
+  return String(s || '').toLowerCase().replace(/^(surah|surat|qs\.?)\s+/, '')
+    .replace(/[^a-z]/g, '').replace(/^(asy|ash|ats|al|an|at|as|az|ad|ar)(?=[a-z]{3,})/, '');
+}
+let _indeksSurah_ = null;
+function noSurahDariNama_(nama) {
+  if (!nama) return 0;
+  if (/^\d+$/.test(String(nama).trim())) { const n = Number(nama); return n >= 1 && n <= 114 ? n : 0; }
+  if (!_indeksSurah_) {
+    _indeksSurah_ = {};
+    NAMA_SURAH_MUSHAF_.forEach(function(n, i){ _indeksSurah_[kunciNamaSurah_(n)] = i + 1; });
+    // ejaan lain yang sering dipakai
+    const alias = {yasin:36, yaasin:36, taha:20, thaha:20, sad:38, shad:38, qaf:50, nun:68, qalam:68,
+      insyirah:94, syarh:94, alamnasyrah:94, kautsar:108, kausar:108, takatsur:102, takasur:102,
+      ikhlas:112, falaq:113, nas:114, naas:114, mulk:67, naba:78, ghasyiyah:88, gasyiyah:88, alaq:96,
+      fatihah:1, baqarah:2, imran:3, aliimran:3, maidah:5, anam:6, araf:7, anfal:8, taubah:9, kahfi:18,
+      rahman:55, waqiah:56, mujadilah:58, mumtahanah:60, munafiqun:63, tagabun:64, taghabun:64,
+      mutaffifin:83, muthaffifin:83, insyiqaq:84, buruj:85, tariq:86, thariq:86, ala:87, fajr:89,
+      balad:90, syams:91, lail:92, dhuha:93, duha:93, tin:95, qadr:97, bayyinah:98, zalzalah:99,
+      adiyat:100, qariah:101, asr:103, ashr:103, humazah:104, fil:105, quraisy:106, quraisyh:106,
+      maun:107, kafirun:109, nasr:110, nashr:110, masad:111, lahab:111, muzzammil:73, muddassir:74,
+      muddatstsir:74, qiyamah:75, insan:76, mursalat:77, naziat:79, abasa:80, takwir:81, infitar:82, infithar:82,
+      jinn:72, jin:72, nuh:71, maarij:70, haqqah:69, tahrim:66, talaq:65, thalaq:65, jumuah:62, saff:61, shaff:61};
+    Object.keys(alias).forEach(function(k){ if (!_indeksSurah_[k]) _indeksSurah_[k] = alias[k]; });
+  }
+  const k = kunciNamaSurah_(nama);
+  if (_indeksSurah_[k]) return _indeksSurah_[k];
+  // awalan cocok (mis. "Al-Baqarah 1-5" sudah dipisah sebelumnya, tapi jaga-jaga)
+  const kunci = Object.keys(_indeksSurah_);
+  for (let i = 0; i < kunci.length; i++) if (k.length >= 4 && kunci[i].indexOf(k) === 0) return _indeksSurah_[kunci[i]];
+  return 0;
+}
+function halamanAyat_(noSurah, ayat) {
+  const daftar = petaHalamanAyat_()[noSurah];
+  if (!daftar) return 0;
+  let hal = daftar[0][1];
+  for (let i = 0; i < daftar.length; i++) { if (daftar[i][0] <= ayat) hal = daftar[i][1]; else break; }
+  return hal;
+}
+function juzDariHalaman_(hal) {
+  for (let j = 30; j >= 1; j--) if (hal >= JUZ_AWAL_HALAMAN_[j - 1]) return j;
+  return 0;
+}
+function rentangJuz_(j) { return {awal: JUZ_AWAL_HALAMAN_[j - 1], akhir: j < 30 ? JUZ_AWAL_HALAMAN_[j] - 1 : 604}; }
+function tambahRentang_(hasil, a, b) {
+  a = Math.round(a); b = Math.round(b);
+  if (!(a >= 1) || !(b >= 1)) return;
+  if (b < a) { const t = a; a = b; b = t; }
+  if (a > 604) return; if (b > 604) b = 604;
+  if (b - a > 640) return;
+  for (let h = a; h <= b; h++) hasil.push(h);
+}
+
+// Daftar halaman mushaf (1-604) yang tercakup oleh satu catatan hafalan.
+// Urutan sumber: kolom "Halaman Ke" -> Surah + Ayat -> Surah utuh (mode multi-surah).
+function halamanCatatanHafalan_(surah, ayat, juz, halamanKe) {
+  const mentah = halamanCatatanHafalanMentah_(surah, ayat, juz, halamanKe);
+  const ada = {}, unik = [];
+  mentah.forEach(function(x){ if (!ada[x]) { ada[x] = 1; unik.push(x); } });
+  return unik.sort(function(a,b){ return a - b; });
+}
+function halamanCatatanHafalanMentah_(surah, ayat, juz, halamanKe) {
+  const hasil = [];
+  const teksHal = String(halamanKe == null ? '' : halamanKe).trim();
+  if (teksHal) {
+    const kelompok = teksHal.split(/[,;]/).map(function(x){ return x.trim(); }).filter(Boolean);
+    const juzTunggal = /^\d+$/.test(String(juz == null ? '' : juz).trim()) ? Number(juz) : 0;
+    kelompok.forEach(function(g){
+      const angka = g.split(/\s*-\s*/).map(Number).filter(function(n){ return !isNaN(n) && n > 0; });
+      if (!angka.length) return;
+      let a = angka[0], b = angka[angka.length - 1];
+      // Data lama: nomor halaman DI DALAM juz (1-22). Diubah ke halaman mushaf.
+      if (juzTunggal > 1 && b <= 22 && a < JUZ_AWAL_HALAMAN_[juzTunggal - 1]) {
+        const r = rentangJuz_(juzTunggal);
+        a = r.awal + a - 1; b = Math.min(r.akhir, r.awal + b - 1);
+      }
+      tambahRentang_(hasil, a, b);
+    });
+    if (hasil.length) return hasil;
+  }
+  const teksSurah = String(surah || '').trim();
+  if (!teksSurah) return hasil;
+  // Mode Juz Utuh tanpa halaman: "Juz 29, Juz 30"
+  const juzUtuh = teksSurah.match(/^juz\s*\d+(\s*,\s*juz\s*\d+)*$/i);
+  if (juzUtuh) {
+    (teksSurah.match(/\d+/g) || []).forEach(function(j){ j = Number(j); if (j >= 1 && j <= 30) { const r = rentangJuz_(j); tambahRentang_(hasil, r.awal, r.akhir); } });
+    return hasil;
+  }
+  const bagianSurah = teksSurah.split(/\s*\+\s*/);
+  const teksAyat = String(ayat == null ? '' : ayat).trim();
+  bagianSurah.forEach(function(nm){
+    const no = noSurahDariNama_(nm);
+    if (!no) return;
+    const jml = JUMLAH_AYAT_SURAH_[no - 1];
+    let aw = 1, ak = jml;
+    if (bagianSurah.length === 1 && teksAyat) {
+      const ang = teksAyat.split(/\s*-\s*/).map(Number).filter(function(n){ return !isNaN(n) && n > 0; });
+      if (ang.length) { aw = Math.min(ang[0], jml); ak = Math.min(ang[ang.length - 1], jml); }
+    }
+    tambahRentang_(hasil, halamanAyat_(no, aw), halamanAyat_(no, ak));
+  });
+  return hasil;
+}
+
+// "7" -> "3 Lembar 1 Halaman"
+function teksLembar_(halaman) {
+  halaman = Math.max(0, Math.round(Number(halaman) || 0));
+  if (!halaman) return '';
+  const l = Math.floor(halaman / 2), h = halaman % 2;
+  return (l ? l + ' Lembar' : '') + (l && h ? ' ' : '') + (h ? h + ' Halaman' : '');
+}
+// [26,27,29,30] -> "26-27, 29-30"
+function teksDaftarJuz_(list) {
+  const x = list.slice().sort(function(a,b){ return a - b; });
+  const out = []; let i = 0;
+  while (i < x.length) { let j = i; while (j + 1 < x.length && x[j + 1] === x[j] + 1) j++; out.push(i === j ? String(x[i]) : x[i] + '-' + x[j]); i = j + 1; }
+  return out.join(', ');
+}
+// Ringkasan "Jumlah Hafalan" dari kumpulan halaman yang sudah dihafal
+function ringkasJumlahHafalan_(setHal) {
+  const perJuz = {};
+  Object.keys(setHal).forEach(function(h){ const j = juzDariHalaman_(Number(h)); if (j) perJuz[j] = (perJuz[j] || 0) + 1; });
+  const selesai = [], proses = [];
+  Object.keys(perJuz).forEach(function(j){
+    j = Number(j); const r = rentangJuz_(j); const total = r.akhir - r.awal + 1;
+    if (perJuz[j] >= total) selesai.push(j); else proses.push({juz: j, halaman: perJuz[j]});
+  });
+  selesai.sort(function(a,b){ return a - b; });
+  proses.sort(function(a,b){ return b.halaman - a.halaman || b.juz - a.juz; });
+  let teks = selesai.length ? (selesai.length + ' Juz (' + teksDaftarJuz_(selesai) + ')') : '';
+  const tambahan = proses.map(function(p){ return teksLembar_(p.halaman) + ' Juz ' + p.juz; });
+  if (tambahan.length) teks = teks ? teks + ' + ' + tambahan.join(' + ') : tambahan.join(' + ');
+  return {juzSelesai: selesai, juzProses: proses, totalHalaman: Object.keys(setHal).length, teks: teks || '–'};
+}
+
+// Baca kolom penting sheet Hafalan satu semester (catatan ganda: yang terbaru dipakai)
+function bacaHafalanRingkas_(ss) {
+  const sh = ss.getSheetByName(SHEET_HAFALAN);
+  if (!sh || sh.getLastRow() < 2) return [];
+  const v = nilaiCatatanUnik_(sh);
+  const tz = Session.getScriptTimeZone();
+  const hasil = [];
+  for (let i = 1; i < v.length; i++) {
+    const r = v[i];
+    const nisn = norm(r[4]); if (!nisn || !r[0]) continue;
+    const tgl = tglKunciCatatan_(r[0], tz); if (!tgl) continue;
+    hasil.push({tgl: tgl, nisn: nisn, nama: norm(r[5]), halaqoh: norm(r[2]), jenis: norm(r[6]),
+      surah: r[7], ayat: r[8], juz: r[9], halamanKe: r[10]});
+  }
+  return hasil;
+}
+function rentangKeTeks_(arr) { // [1,2,3,7] -> "1-3,7" (hemat ruang cache)
+  const x = arr.slice().sort(function(a,b){ return a - b; }); const out = []; let i = 0;
+  while (i < x.length) { let j = i; while (j + 1 < x.length && x[j + 1] === x[j] + 1) j++; out.push(i === j ? '' + x[i] : x[i] + '-' + x[j]); i = j + 1; }
+  return out.join(',');
+}
+function teksKeRentang_(t) {
+  const hasil = [];
+  String(t || '').split(',').forEach(function(g){ if (!g) return; const a = g.split('-').map(Number); tambahRentang_(hasil, a[0], a[a.length - 1]); });
+  return hasil;
+}
+// Halaman yang sudah dihafal per NISN pada satu semester LAMA (bukan semester yang sedang
+// dilaporkan). Disimpan di cache 6 jam; kuncinya ikut jumlah baris sheet, jadi bila ada
+// catatan baru di semester itu cache otomatis tidak terpakai.
+function halamanTerhafalSemester_(idSS) {
+  let ss; try { ss = bukaSS_(idSS); } catch (e) { return {}; }
+  const sh = ss.getSheetByName(SHEET_HAFALAN);
+  if (!sh || sh.getLastRow() < 2) return {};
+  const kunci = 'hfKum2_' + idSS + '_' + sh.getLastRow();
+  const c = cacheAmbil(kunci);
+  if (c) { const peta = {}; Object.keys(c).forEach(function(n){ peta[n] = teksKeRentang_(c[n]); }); return peta; }
+  const kumpul = {};
+  bacaHafalanRingkas_(ss).forEach(function(r){
+    if (JENIS_HAFALAN_TERHAFAL_.indexOf(r.jenis) === -1) return;
+    const hal = halamanCatatanHafalan_(r.surah, r.ayat, r.juz, r.halamanKe);
+    if (!hal.length) return;
+    const s = kumpul[r.nisn] = kumpul[r.nisn] || {};
+    hal.forEach(function(h){ s[h] = 1; });
+  });
+  const peta = {}, simpan = {};
+  Object.keys(kumpul).forEach(function(n){ const arr = Object.keys(kumpul[n]).map(Number); peta[n] = arr; simpan[n] = rentangKeTeks_(arr); });
+  try { const teks = JSON.stringify(simpan); if (teks.length < 95000) cacheSimpan(kunci, simpan, 21600); } catch (e) {}
+  return peta;
+}
+
+// ---- Target hafalan per halaqoh (per semester) ----
+function bacaTargetHafalan_(ss) {
+  const sh = ss.getSheetByName(SHEET_TARGET_HAFALAN);
+  const peta = {};
+  if (!sh || sh.getLastRow() < 2) return peta;
+  sh.getDataRange().getValues().slice(1).forEach(function(r){
+    const h = norm(r[0]); if (!h) return;
+    let khusus = {};
+    try { khusus = JSON.parse(norm(r[3]) || '{}') || {}; } catch (e) { khusus = {}; }
+    peta[normNama(h)] = {halaqoh: h, aktif: r[1] === true || String(r[1]).toUpperCase() === 'TRUE' || String(r[1]) === 'Ya',
+      targetHalaman: Number(r[2]) || 0, khusus: khusus, oleh: norm(r[4]), waktu: r[5] ? String(r[5]) : ''};
+  });
+  return peta;
+}
+function targetBulanHafalan_(cfg, kunciBulan) {
+  if (!cfg || !cfg.aktif) return null;
+  const k = cfg.khusus && Object.prototype.hasOwnProperty.call(cfg.khusus, kunciBulan) ? cfg.khusus[kunciBulan] : null;
+  if (k === 'M' || k === 'm') return {murojaah: true, halaman: 0, teks: 'Murojaah'};
+  const hal = k != null && k !== '' ? Number(k) : cfg.targetHalaman;
+  if (!(hal > 0)) return null;
+  return {murojaah: false, halaman: hal, teks: teksLembar_(hal)};
+}
+
+// Siapa boleh melihat apa: Admin/Mudir semua; pengampu -> halaqohnya; wali kelas -> kelasnya;
+// wali santri -> anaknya sendiri.
+function aksesRekapHafalan_(oleh, ss) {
+  const a = {semua: false, halaqoh: [], kelas: [], nisnAnak: []};
+  oleh = norm(oleh);
+  if (!oleh) return a;
+  try {
+    const rows = getAktifSS().getSheetByName(SHEET_ROLE).getDataRange().getValues().slice(1);
+    const r = rows.find(function(x){ return normNama(norm(x[0])) === normNama(oleh); });
+    if (r) {
+      const lv = norm(r[3]);
+      if (lv.indexOf('Admin') !== -1 || lv.indexOf('Mudir') !== -1) a.semua = true;
+      a.nisnAnak = norm(r[4]).split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+    }
+  } catch (e) {}
+  try {
+    const shH = ss.getSheetByName(SHEET_HALAQOH);
+    if (shH) shH.getDataRange().getValues().slice(1).forEach(function(x){
+      if (x[0] && pengampuCocok(daftarPengampu(x[1]), oleh)) a.halaqoh.push(norm(x[0]));
+    });
+  } catch (e) {}
+  try {
+    const shG = getAktifSS().getSheetByName(SHEET_GURU);
+    if (shG) {
+      const g = shG.getDataRange().getValues(); const iW = g[0].indexOf('WaliKelas');
+      if (iW > -1) g.slice(1).forEach(function(x){ if (normNama(norm(x[0])) === normNama(oleh) && norm(x[iW])) a.kelas.push(norm(x[iW])); });
+    }
+  } catch (e) {}
+  return a;
+}
+// Data santri, kelas & halaqoh pada spreadsheet semester tertentu
+function dataSantriSemesterHafalan_(ss) {
+  const santri = {}, kelasList = [], halaqohList = [];
+  try { const sh = ss.getSheetByName(SHEET_SANTRI); if (sh) sh.getDataRange().getValues().slice(1).forEach(function(r){ const n = norm(r[0]); if (n) santri[n] = {nisn: n, nama: norm(r[1]), kelas: '', halaqoh: [], gender: norm(r[3])}; }); } catch (e) {}
+  try {
+    const sh = ss.getSheetByName(SHEET_ROMBEL);
+    if (sh) sh.getDataRange().getValues().slice(1).forEach(function(r){
+      const n = norm(r[0]), k = norm(r[2]); if (!n) return;
+      if (!santri[n]) santri[n] = {nisn: n, nama: norm(r[1]), kelas: '', halaqoh: []};
+      if (k) { santri[n].kelas = k; if (kelasList.indexOf(k) === -1) kelasList.push(k); }
+    });
+  } catch (e) {}
+  const pengampuHalaqoh = {};
+  try {
+    const sh = ss.getSheetByName(SHEET_HALAQOH);
+    if (sh) sh.getDataRange().getValues().slice(1).forEach(function(r){
+      const h = norm(r[0]); if (!h) return;
+      halaqohList.push({nama: h, pengampu: daftarPengampu(r[1])[0] || norm(r[1]), waktu: norm(r[2])});
+      pengampuHalaqoh[h] = daftarPengampu(r[1])[0] || norm(r[1]);
+    });
+  } catch (e) {}
+  try {
+    const sh = ss.getSheetByName(SHEET_HALAQOH_ANGGOTA);
+    if (sh) sh.getDataRange().getValues().slice(1).forEach(function(r){
+      const n = norm(r[0]), h = norm(r[2]); if (!n || !h) return;
+      if (!santri[n]) santri[n] = {nisn: n, nama: norm(r[1]), kelas: '', halaqoh: []};
+      if (santri[n].halaqoh.indexOf(h) === -1) santri[n].halaqoh.push(h);
+    });
+  } catch (e) {}
+  kelasList.sort(function(a,b){ return a.localeCompare(b, 'id', {numeric:true}); });
+  return {santri: santri, kelasList: kelasList, halaqohList: halaqohList, pengampuHalaqoh: pengampuHalaqoh};
+}
+function infoSemesterHafalan_(tahunAjaranId) {
+  const list = getTahunAjaranList();
+  let idx = tahunAjaranId ? list.findIndex(function(t){ return norm(t.id) === norm(tahunAjaranId); }) : -1;
+  if (idx === -1) idx = list.findIndex(function(t){ return t.aktif === true || String(t.aktif).toUpperCase() === 'TRUE'; });
+  return {list: list, idx: idx, nama: idx > -1 ? norm(list[idx].nama) : '', id: idx > -1 ? norm(list[idx].id) : norm(tahunAjaranId)};
+}
+
+// Pilihan untuk layar rekap: santri/halaqoh/kelas yang boleh dilihat pengguna ini
+function apiGetOpsiRekapHafalanBulanan(p) {
+  const ss = getSSTarget(p.tahunAjaranId);
+  const ak = aksesRekapHafalan_(p.oleh, ss);
+  const d = dataSantriSemesterHafalan_(ss);
+  let halaqoh = d.halaqohList, kelas = d.kelasList;
+  if (!ak.semua) {
+    halaqoh = halaqoh.filter(function(h){ return ak.halaqoh.some(function(x){ return normNama(x) === normNama(h.nama); }); });
+    kelas = kelas.filter(function(k){ return ak.kelas.some(function(x){ return normNama(x) === normNama(k); }); });
+  }
+  const namaHal = halaqoh.map(function(h){ return normNama(h.nama); });
+  const santri = Object.keys(d.santri).map(function(n){ return d.santri[n]; }).filter(function(s){
+    if (ak.semua) return true;
+    if (ak.nisnAnak.indexOf(s.nisn) !== -1) return true;
+    if (s.halaqoh.some(function(h){ return namaHal.indexOf(normNama(h)) !== -1; })) return true;
+    return kelas.indexOf(s.kelas) !== -1;
+  }).map(function(s){ return {nisn: s.nisn, nama: s.nama, kelas: s.kelas, halaqoh: s.halaqoh.join(', ')}; })
+    .sort(function(a,b){ return a.nama.localeCompare(b.nama); });
+  const target = bacaTargetHafalan_(ss);
+  return {ok: true, semua: ak.semua, santri: santri, kelas: kelas,
+    halaqoh: halaqoh.map(function(h){ const t = target[normNama(h.nama)]; return {nama: h.nama, pengampu: h.pengampu, waktu: h.waktu, targetAktif: !!(t && t.aktif)}; })};
+}
+
+// p: {mode:'santri'|'halaqoh'|'kelas', nisn, halaqoh, kelas, tahunAjaranId, oleh}
+function apiGetRekapHafalanBulanan(p) {
+  const mode = norm(p.mode) || 'santri';
+  const sem = infoSemesterHafalan_(p.tahunAjaranId);
+  const ss = getSSTarget(sem.id || p.tahunAjaranId);
+  const ak = aksesRekapHafalan_(p.oleh, ss);
+  const d = dataSantriSemesterHafalan_(ss);
+  const bolehHalaqoh = function(h){ return ak.semua || ak.halaqoh.some(function(x){ return normNama(x) === normNama(h); }); };
+  const bolehKelas = function(k){ return ak.semua || ak.kelas.some(function(x){ return normNama(x) === normNama(k); }); };
+
+  // 1. Santri yang dilaporkan
+  let daftar = [];
+  if (mode === 'halaqoh') {
+    if (!norm(p.halaqoh)) return {ok:false, error:'Pilih halaqoh dulu.'};
+    if (!bolehHalaqoh(p.halaqoh)) return {ok:false, error:'Anda tidak memiliki akses ke halaqoh ini.'};
+    daftar = Object.keys(d.santri).map(function(n){ return d.santri[n]; }).filter(function(s){ return s.halaqoh.some(function(h){ return normNama(h) === normNama(p.halaqoh); }); });
+  } else if (mode === 'kelas') {
+    if (!norm(p.kelas)) return {ok:false, error:'Pilih kelas dulu.'};
+    if (!bolehKelas(p.kelas)) return {ok:false, error:'Anda tidak memiliki akses ke kelas ini.'};
+    daftar = Object.keys(d.santri).map(function(n){ return d.santri[n]; }).filter(function(s){ return normNama(s.kelas) === normNama(p.kelas); });
+  } else {
+    const nisn = norm(p.nisn);
+    if (!nisn) return {ok:false, error:'Pilih santri dulu.'};
+    const s = d.santri[nisn] || {nisn: nisn, nama: '', kelas: '', halaqoh: []};
+    const boleh = ak.semua || ak.nisnAnak.indexOf(nisn) !== -1 || s.halaqoh.some(bolehHalaqoh) || (s.kelas && ak.kelas.some(function(x){ return normNama(x) === normNama(s.kelas); }));
+    if (!boleh) return {ok:false, error:'Anda tidak memiliki akses ke rekap santri ini.'};
+    daftar = [s];
+  }
+  daftar.sort(function(a,b){ return String(a.nama).localeCompare(String(b.nama)); });
+  const setNisn = {}; daftar.forEach(function(s){ setNisn[s.nisn] = true; });
+
+  // 2. Catatan semester yang dilaporkan
+  const catatan = bacaHafalanRingkas_(ss);
+  let tglMin = '', tglMax = '';
+  catatan.forEach(function(r){ if (!tglMin || r.tgl < tglMin) tglMin = r.tgl; if (!tglMax || r.tgl > tglMax) tglMax = r.tgl; });
+  const bulanList = [];
+  if (tglMin) {
+    let y = Number(tglMin.slice(0,4)), m = Number(tglMin.slice(5,7));
+    const yA = Number(tglMax.slice(0,4)), mA = Number(tglMax.slice(5,7));
+    while (y < yA || (y === yA && m <= mA)) {
+      bulanList.push({kunci: y + '-' + (m < 10 ? '0' : '') + m, label: NAMA_BULAN_ID_[m - 1], labelPanjang: NAMA_BULAN_ID_[m - 1] + ' ' + y});
+      m++; if (m > 12) { m = 1; y++; }
+      if (bulanList.length > 24) break;
+    }
+  }
+  const perSantri = {};
+  daftar.forEach(function(s){ perSantri[s.nisn] = {sabaq: {}, murojaah: {}, tanpaHalaman: {}, terhafal: [], namaCatatan: ''}; });
+  catatan.sort(function(a,b){ return a.tgl < b.tgl ? -1 : a.tgl > b.tgl ? 1 : 0; });
+  catatan.forEach(function(r){
+    const st = perSantri[r.nisn]; if (!st) return;
+    if (!st.namaCatatan && r.nama) st.namaCatatan = r.nama;
+    const kb = r.tgl.slice(0,7);
+    if (r.jenis === 'Sabaq') {
+      const hal = halamanCatatanHafalan_(r.surah, r.ayat, r.juz, r.halamanKe);
+      if (!hal.length) { st.tanpaHalaman[kb] = (st.tanpaHalaman[kb] || 0) + 1; return; }
+      (st.sabaq[kb] = st.sabaq[kb] || []).push(hal);
+      st.terhafal.push({kb: kb, hal: hal});
+    } else if (JENIS_HAFALAN_MUROJAAH_.indexOf(r.jenis) !== -1) {
+      st.murojaah[kb] = true;
+      const hal = halamanCatatanHafalan_(r.surah, r.ayat, r.juz, r.halamanKe);
+      if (hal.length) st.terhafal.push({kb: kb, hal: hal});
+    }
+  });
+
+  // 3. Hafalan dari semester-semester SEBELUMNYA (untuk Jumlah Hafalan)
+  const sebelumnya = {}; // nisn -> {halaman:1}
+  daftar.forEach(function(s){ sebelumnya[s.nisn] = {}; });
+  const idSekarang = norm(ss.getId());
+  for (let i = 0; i < sem.list.length && (sem.idx === -1 || i < sem.idx); i++) {
+    const id = norm(sem.list[i].id);
+    if (!id || id === idSekarang) continue;
+    const peta = halamanTerhafalSemester_(id);
+    Object.keys(setNisn).forEach(function(n){ (peta[n] || []).forEach(function(h){ sebelumnya[n][h] = 1; }); });
+  }
+
+  // 4. Susun laporan
+  const target = bacaTargetHafalan_(ss);
+  const hasil = daftar.map(function(s){
+    const st = perSantri[s.nisn];
+    const halaqohUtama = s.halaqoh[0] || '';
+    const cfg = target[normNama(halaqohUtama)] || null;
+    const sudah = {}; Object.keys(sebelumnya[s.nisn]).forEach(function(h){ sudah[h] = 1; });
+    const baru = {}; // halaman sabaq yang sudah dihitung di semester ini
+    let totalSemester = 0;
+    const bulan = bulanList.map(function(b){
+      let hBaru = 0;
+      (st.sabaq[b.kunci] || []).forEach(function(hal){ hal.forEach(function(h){ if (!baru[h]) { baru[h] = 1; hBaru++; } }); });
+      totalSemester += hBaru;
+      // kumpulan hafalan s.d. akhir bulan ini
+      st.terhafal.forEach(function(x){ if (x.kb === b.kunci) x.hal.forEach(function(h){ sudah[h] = 1; }); });
+      const status = hBaru ? 'setor' : (st.murojaah[b.kunci] ? 'murojaah' : 'kosong');
+      const tg = targetBulanHafalan_(cfg, b.kunci);
+      let tercapai = null;
+      if (tg) tercapai = tg.murojaah ? (status !== 'kosong') : hBaru >= tg.halaman;
+      return {kunci: b.kunci, label: b.label, labelPanjang: b.labelPanjang, halaman: hBaru,
+        teks: hBaru ? teksLembar_(hBaru) : (status === 'murojaah' ? 'Murojaah' : '–'), status: status,
+        sabaqTanpaHalaman: st.tanpaHalaman[b.kunci] || 0,
+        target: tg, tercapai: tercapai, jumlah: ringkasJumlahHafalan_(sudah).teks};
+    });
+    // catatan di luar rentang bulan (tidak mungkin, tapi jaga-jaga) tetap masuk jumlah akhir
+    st.terhafal.forEach(function(x){ x.hal.forEach(function(h){ sudah[h] = 1; }); });
+    const jumlah = ringkasJumlahHafalan_(sudah);
+    return {nisn: s.nisn, nama: s.nama || st.namaCatatan, kelas: s.kelas, halaqoh: s.halaqoh.join(', '),
+      pengampu: d.pengampuHalaqoh[halaqohUtama] || '', bulan: bulan,
+      jumlah: jumlah.teks, juzSelesai: jumlah.juzSelesai, totalSemester: totalSemester, totalSemesterTeks: teksLembar_(totalSemester) || '–',
+      targetAktif: !!(cfg && cfg.aktif)};
+  });
+  return {ok: true, semester: sem.nama, bulanList: bulanList, santri: hasil,
+    jumlahSemesterDibaca: sem.idx > -1 ? sem.idx + 1 : 1};
+}
+
+function apiGetTargetHafalan(p) {
+  const ss = getSSTarget(p.tahunAjaranId);
+  const cfg = bacaTargetHafalan_(ss)[normNama(norm(p.halaqoh))] || null;
+  return {ok: true, data: cfg || {halaqoh: norm(p.halaqoh), aktif: false, targetHalaman: 0, khusus: {}}};
+}
+// Target hanya untuk semester AKTIF (pengampu menetapkan target tiap semester)
+function apiSimpanTargetHafalan(p) {
+  const halaqoh = norm(p.halaqoh);
+  if (!halaqoh) return {ok:false, error:'Halaqoh wajib dipilih.'};
+  const ss = getAktifSS();
+  const ak = aksesRekapHafalan_(p.oleh, ss);
+  if (!ak.semua && !ak.halaqoh.some(function(x){ return normNama(x) === normNama(halaqoh); }))
+    return {ok:false, error:'Hanya pengampu halaqoh ini atau Admin/Mudir yang bisa mengatur targetnya.'};
+  const targetHalaman = Math.max(0, Math.round(Number(p.targetHalaman) || 0));
+  const khusus = {};
+  Object.keys(p.khusus || {}).forEach(function(k){
+    if (!/^\d{4}-\d{2}$/.test(k)) return;
+    const v = p.khusus[k];
+    if (v === 'M' || v === 'm') khusus[k] = 'M';
+    else if (v !== '' && v != null && !isNaN(Number(v)) && Number(v) >= 0) khusus[k] = Math.round(Number(v));
+  });
+  const aktif = p.aktif === true || p.aktif === 'true';
+  if (aktif && !targetHalaman && !Object.keys(khusus).length) return {ok:false, error:'Isi target per bulan (minimal 1 halaman) atau target khusus bulan tertentu.'};
+  let sh = ss.getSheetByName(SHEET_TARGET_HAFALAN);
+  if (!sh) { sh = ss.insertSheet(SHEET_TARGET_HAFALAN); sh.appendRow(HEADER_TARGET_HAFALAN_); sh.setFrozenRows(1); }
+  const baris = [halaqoh, aktif, targetHalaman, JSON.stringify(khusus), norm(p.oleh), new Date()];
+  const rows = sh.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (normNama(norm(rows[i][0])) === normNama(halaqoh)) { sh.getRange(i + 1, 1, 1, baris.length).setValues([baris]); return {ok:true}; }
+  }
+  sh.appendRow(baris);
+  return {ok:true};
 }
