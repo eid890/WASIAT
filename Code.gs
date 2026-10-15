@@ -153,6 +153,8 @@ function doGet(e) {
       return ContentService.createTextOutput(JSON.stringify({ok:true,msg:'API Absensi & Hafalan Santri aktif'}))
         .setMimeType(ContentService.MimeType.JSON);
     }
+    // Aksi penting tidak boleh dipanggil lewat alamat GET tanpa token
+    if (typeof AMAN_ !== 'undefined') { const tolakGet = AMAN_.periksa(action, e.parameter, e.parameter.token); if (tolakGet) return jsonOut(tolakGet); }
     return jsonOut(safeRoute(action, e.parameter));
   } catch (err) {
     return jsonOut({ok:false, error: String(err)});
@@ -162,7 +164,37 @@ function doGet(e) {
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents || '{}');
-    return jsonOut(routeIdempoten_(body.action, body.payload || {}));
+    // Modul Persuratan (folder /surat/) memakai jalur sendiri -- fitur WASIAT lain tidak tersentuh
+    if (body.modul === 'surat') {
+      if (typeof SURAT_ === 'undefined') return jsonOut({ok:false, error:'Modul persuratan belum terpasang di server. Perbarui Code.gs.'});
+      return jsonOut(SURAT_.tangani(body));
+    }
+    // Fitur lanjutan (laporan bulanan, kondisi pondok, peringatan dini, jadwal, kartu, rapor, PPDB)
+    if (body.modul === 'premium') {
+      if (typeof PRM_ === 'undefined') return jsonOut({ok:false, error:'Fitur ini belum terpasang di server. Perbarui Code.gs.'});
+      const hasilPrm = PRM_.tangani(body);
+      if (typeof AMAN_ !== 'undefined') AMAN_.catat('premium', body.action, body.payload || {}, body.token, hasilPrm);
+      return jsonOut(hasilPrm);
+    }
+    // Modul Keuangan resmi (kwitansi ber-QR, pengajuan dana, laporan resmi) -- jalur sendiri
+    if (body.modul === 'keuangan') {
+      if (typeof KEU_ === 'undefined') return jsonOut({ok:false, error:'Modul keuangan belum terpasang di server. Perbarui Code.gs.'});
+      const hasilKeu = KEU_.tangani(body);
+      if (typeof AMAN_ !== 'undefined') AMAN_.catat('keuangan', body.action, body.payload || {}, body.token, hasilKeu);
+      return jsonOut(hasilKeu);
+    }
+    // Keamanan: aksi penting wajib token sesi (lihat AMAN_). Aksi harian tidak diubah.
+    const payloadUtama = body.payload || {};
+    if (typeof AMAN_ !== 'undefined') {
+      const tolak = AMAN_.periksa(body.action, payloadUtama, body.token);
+      if (tolak) return jsonOut(tolak);
+      if (body.action === 'cekSesiAktif') payloadUtama._token = String(body.token || '');
+    }
+    const hasilUtama = body.action === 'getLogAktivitas' && typeof AMAN_ !== 'undefined' ? AMAN_.apiLogAktivitas(payloadUtama) : routeIdempoten_(body.action, payloadUtama);
+    if (body.action === 'getMasterData' && typeof AMAN_ !== 'undefined') return jsonOut(AMAN_.saringMaster(payloadUtama.sheet, hasilUtama));
+    // Catatan aktivitas: hanya aksi penting yang berhasil (lihat AMAN_.catat)
+    if (typeof AMAN_ !== 'undefined') AMAN_.catat('', body.action, payloadUtama, body.token, hasilUtama);
+    return jsonOut(hasilUtama);
   } catch (err) {
     return jsonOut({ok:false, error: String(err)});
   }
@@ -780,9 +812,17 @@ function apiTambahTransaksiKas(p) {
   const sh = getMasterSS().getSheetByName(SHEET_KAS_UMUM);
   const tz = Session.getScriptTimeZone();
   const tanggal = norm(p.tanggal) || Utilities.formatDate(new Date(),tz,'yyyy-MM-dd');
+  // Bulan yang bukunya sudah ditutup (menunggu/sudah disahkan Mudir) tidak boleh diubah
+  if (typeof KEU_ !== 'undefined' && KEU_.bulanTerkunci(tanggal)) return {ok:false, error:'Buku kas bulan ini sudah ditutup (laporan bulan ini atau sesudahnya sudah diajukan/disahkan). Minta Mudir membuka kembali bila perlu koreksi.'};
+  // Uang belanja/saldo kantin santri = titipan wali, bukan kas pondok (yang masuk kas hanya keuntungannya)
+  if (typeof KEU_ !== 'undefined' && KEU_.uangTitipanSantri(p.kategori, p.uraian)) return {ok:false, error:KEU_.pesanTitipan()};
   // Buat nomor referensi otomatis: REF-YYYYMM-XXXX
+  // Urutan diambil dari nomor terbesar yang ada (bukan jumlah baris), supaya tidak
+  // pernah sama dengan nomor lama setelah ada transaksi yang dihapus.
   const lastRow = sh.getLastRow();
-  const urut = String(lastRow).padStart(4,'0');
+  let maxUrut = lastRow;
+  if (lastRow > 1) sh.getRange(2,1,lastRow-1,1).getValues().forEach(function(r){ const m = String(r[0]).match(/-(\d+)$/); if (m && Number(m[1]) > maxUrut) maxUrut = Number(m[1]); });
+  const urut = String(maxUrut + 1).padStart(4,'0');
   const noRef = norm(p.noRef) || ('REF-'+tanggal.substring(0,7).replace('-','')+'-'+urut);
   const noKwitansi = norm(p.noKwitansi) || ('KWT-'+noRef.replace('REF-',''));
 
@@ -793,7 +833,19 @@ function apiTambahTransaksiKas(p) {
 
 function apiHapusTransaksiKas(p) {
   if (!p.rowIndex) return {ok:false, error:'rowIndex wajib'};
-  getMasterSS().getSheetByName(SHEET_KAS_UMUM).deleteRow(Number(p.rowIndex));
+  const sh = getMasterSS().getSheetByName(SHEET_KAS_UMUM);
+  const baris = Number(p.rowIndex);
+  let noRef = '';
+  if (baris >= 2 && baris <= sh.getLastRow()) {
+    const v = sh.getRange(baris, 1, 1, 2).getValues()[0];
+    noRef = norm(v[0]);
+    // Pengaman: baris yang dimaksud harus sama dengan yang tampil di layar
+    if (p.noRef && noRef !== norm(p.noRef)) return {ok:false, error:'Data transaksi sudah berubah. Muat ulang daftar lalu coba lagi.'};
+    if (typeof KEU_ !== 'undefined' && KEU_.bulanTerkunci(v[1])) return {ok:false, error:'Buku kas bulan ini sudah ditutup. Minta Mudir membuka kembali bila perlu koreksi.'};
+  }
+  sh.deleteRow(baris);
+  // Kwitansi resmi untuk transaksi ini otomatis berstatus DIBATALKAN (QR ikut menunjukkannya)
+  if (noRef && typeof KEU_ !== 'undefined') KEU_.setelahHapusKas(noRef, p.oleh || '');
   return {ok:true};
 }
 
@@ -3512,7 +3564,13 @@ const JENIS_PESAN_WA = [
   {k:'izin_santri_pengajuan',grup:'Perizinan Santri', label:'Pengajuan izin pulang santri', ke:'Wali santri'},
   {k:'izin_santri_keputusan',grup:'Perizinan Santri', label:'Izin santri disetujui / ditolak', ke:'Wali santri'},
   {k:'izin_santri_kembali',  grup:'Perizinan Santri', label:'Konfirmasi santri sudah kembali', ke:'Wali santri'},
-  {k:'guru_kehadiran',       grup:'Kehadiran Guru', label:'Izin guru & Surat Peringatan (rincian di menu Kehadiran Guru & SP)', ke:'Guru, Mudir, Admin'}
+  {k:'guru_kehadiran',       grup:'Kehadiran Guru', label:'Izin guru & Surat Peringatan (rincian di menu Kehadiran Guru & SP)', ke:'Guru, Mudir, Admin'},
+  {k:'persuratan',           grup:'Persuratan', label:'Surat, persetujuan & disposisi dari aplikasi Persuratan', ke:'Wali santri, guru, pengurus, Mudir'},
+  {k:'kwitansi',             grup:'Keuangan', label:'Kwitansi resmi pembayaran', ke:'Wali santri'},
+  {k:'keuangan_pengajuan',   grup:'Keuangan', label:'Pengajuan dana & pengesahan laporan keuangan', ke:'Mudir, Bendahara, pengaju'},
+  {k:'konfirmasi_transfer',  grup:'Keuangan', label:'Konfirmasi transfer wali (masuk ke Bendahara, penolakan ke wali)', ke:'Bendahara, wali santri'},
+  {k:'laporan_bulanan',      grup:'Wali Santri', label:'Kabar laporan perkembangan bulanan sudah tersedia', ke:'Wali santri'},
+  {k:'ppdb',                 grup:'PPDB', label:'Status pendaftaran santri baru (PPDB online)', ke:'Calon wali santri'}
 ];
 function jenisWANonaktif_() {
   const s = norm(getPengaturan().WANonaktif);
@@ -3756,7 +3814,7 @@ function kolomSpp_(sh) {
 
 // Versi kode server -- dipakai aplikasi untuk memastikan Code.gs terbaru sudah di-deploy
 // sebelum menjalankan perubahan struktur (mis. menambah kolom Nama Santri).
-const VERSI_SERVER = '2026.10.12-c';
+const VERSI_SERVER = '2026.10.18-a';
 function apiVersiServer() { return {ok:true, versi: VERSI_SERVER}; }
 
 function apiStatusKolomNamaSpp(p) {
@@ -5220,12 +5278,20 @@ function isiDummyHafalan(ss) {
 }
 
 // ============ LOGIN ============
+// Token masuk otomatis ke Persuratan. Tidak pernah menggagalkan login WASIAT.
+function tokenSuratWasiat_(nama) {
+  try { return (typeof SURAT_ !== 'undefined' && nama) ? SURAT_.tokenUntukNama(nama) : ''; } catch (e) { return ''; }
+}
+
 function apiLogin(loginId, pin) {
   loginId = norm(loginId); pin = norm(pin);
   if (!loginId || !pin) return {ok:false, error:'Nama/No WA dan PIN wajib diisi'};
+  // Cegah tebak-tebakan PIN: 5 kali salah -> tunggu 10 menit
+  if (typeof AMAN_ !== 'undefined' && AMAN_.cekGagalLogin(loginId)) return {ok:false, error:'Terlalu banyak percobaan PIN salah. Silakan coba lagi 10 menit lagi.'};
   const sh = getAktifSS().getSheetByName(SHEET_ROLE);
   const rows = sh.getDataRange().getValues(); rows.shift();
   const found = rows.find(r => (norm(r[0]) === loginId || norm(r[1]) === loginId) && norm(r[2]) === pin);
+  if (typeof AMAN_ !== 'undefined') AMAN_.catatGagalLogin(loginId, !!found);
   if (!found) return {ok:false, error:'Nama/No WA atau PIN salah'};
 
   const roles = norm(found[3]).split(',').map(function(s){ return s.trim(); }).filter(Boolean);
@@ -5257,7 +5323,8 @@ function apiLogin(loginId, pin) {
     roles: roles, level: roles[0],
     nisnAnak: norm(found[4]),
     nisnAnakList: nisnAnakList,
-    waliKelas: waliKelas  // kelas yang ditangani sebagai Wali Kelas
+    waliKelas: waliKelas,  // kelas yang ditangani sebagai Wali Kelas
+    tokenSurat: tokenSuratWasiat_(norm(found[0]))  // masuk otomatis ke aplikasi Persuratan (/surat/)
   }};
 }
 
@@ -8321,7 +8388,14 @@ function apiCekSesiAktif(p) {
     }
   } catch(e) {}
   const nisnAnakListSesi = norm(found[4]).split(',').map(function(s){ return s.trim(); }).filter(Boolean);
-  return {ok:true, user:{nama:norm(found[0]), noWa:norm(found[1]), roles:roles, level:roles[0], nisnAnak:norm(found[4]), nisnAnakList:nisnAnakListSesi, waliKelas:waliKelas}};
+  // Token sesi hanya DIPERBARUI bila permintaan membawa token sah milik akun yang sama.
+  // (Sebelumnya cukup menyebut nama -- siapa pun bisa memperoleh token akun lain.)
+  let tokenBaru;
+  try {
+    const meSesi = (typeof AMAN_ !== 'undefined' && p._token) ? AMAN_.identitas(p._token) : null;
+    if (meSesi && normNama(meSesi.nama) === normNama(norm(found[0]))) tokenBaru = tokenSuratWasiat_(norm(found[0])) || undefined;
+  } catch (e) {}
+  return {ok:true, user:{nama:norm(found[0]), noWa:norm(found[1]), roles:roles, level:roles[0], nisnAnak:norm(found[4]), nisnAnakList:nisnAnakListSesi, waliKelas:waliKelas, tokenSurat: tokenBaru}};
 }
 
 // Kumpulkan semua spreadsheet yang dipakai sistem untuk ditampilkan ke Admin/Mudir
@@ -12434,6 +12508,9 @@ function aturanKehadiranGuru_() {
     batasKlarifikasi: angka(p.SPBatasKlarifikasi, 3),
     hitungHalaqoh: benar(p.SPHitungHalaqoh, true),
     hariHalaqoh: norm(p.SPHariHalaqoh) || "Senin,Selasa,Rabu,Kamis,Jum'at,Sabtu,Minggu",
+    // Jadwal halaqoh per kelompok WAKTU + PUTRA/PUTRI (JSON). Kosong = semua halaqoh
+    // memakai "hari halaqoh berjalan" di atas seperti sebelumnya.
+    jadwalHalaqoh: (function(){ try { const j = JSON.parse(norm(p.SPJadwalHalaqoh) || '{}'); return (j && typeof j === 'object') ? j : {}; } catch (e) { return {}; } })(),
     kodeSurat: norm(p.SPKodeSurat) || 'PPWU',
     penandatangan: norm(p.SPPenandatangan), jabatan: norm(p.SPJabatan) || 'Mudir',
     kota: norm(p.SPKotaSurat) || 'Poso',
@@ -12524,6 +12601,34 @@ function getSuratSPListAtur_() {
 
 // Inti perhitungan: status setiap sesi wajib per guru dalam satu bulan.
 // guruFilter (opsional) = hitung satu guru saja.
+// ---- Jadwal halaqoh per kelompok (waktu + putra/putri) ----
+// Status sebuah halaqoh pada suatu hari:
+//   'wajib'    -> dihitung; tidak diisi = belum tercatat / tanpa izin
+//   'opsional' -> "tidak rutin": bila diisi dihitung Hadir, bila tidak diisi TIDAK dihitung
+//                 (mis. halaqoh Subuh putra hari Sabtu yang kadang ada kadang tidak)
+//   'tidak'    -> tidak ada halaqoh, tidak dihitung sama sekali
+function kelompokGenderHalaqoh_(g) {
+  const x = normNama(g);
+  if (/^(l|lk|laki|lakilaki|putra|ikhwan|pria|banin)$/.test(x.replace(/\s/g,''))) return 'putra';
+  if (/^(p|pr|perempuan|putri|akhwat|wanita|banat)$/.test(x.replace(/\s/g,''))) return 'putri';
+  return 'umum';
+}
+function kelompokWaktuHalaqoh_(w) { return normNama(w).replace(/\s/g,'').replace(/^dhuha$/, 'duha'); }
+function kunciKelompokHalaqoh_(waktu, gender) { return kelompokWaktuHalaqoh_(waktu) + '|' + kelompokGenderHalaqoh_(gender); }
+function statusJadwalHalaqoh_(cfg, halaqoh, namaHari) {
+  const jadwal = cfg.jadwalHalaqoh || {};
+  const atur = jadwal[kunciKelompokHalaqoh_(halaqoh.waktu, halaqoh.gender)];
+  if (atur && typeof atur === 'object') {
+    const nh = normNama(namaHari);
+    let st = 'tidak';
+    Object.keys(atur).forEach(function(h){ if (normNama(h) === nh) st = String(atur[h]); });
+    return (st === 'wajib' || st === 'opsional') ? st : 'tidak';
+  }
+  // Kelompok yang belum diatur: aturan lama (hari halaqoh berjalan untuk semua)
+  const ada = String(cfg.hariHalaqoh || '').split(',').some(function(h){ return norm(h) && normNama(h) === normNama(namaHari); });
+  return ada ? 'wajib' : 'tidak';
+}
+
 function hitungKehadiranGuruAtur_(bulan, tahun, guruFilter, opsiHitung) {
   opsiHitung = opsiHitung || {};
   bulan = Number(bulan); tahun = Number(tahun);
@@ -12599,8 +12704,6 @@ function hitungKehadiranGuruAtur_(bulan, tahun, guruFilter, opsiHitung) {
     });
   }
   const halaqohList = cfg.hitungHalaqoh ? getHalaqohList() : [];
-  const hariHalaqoh = {};
-  cfg.hariHalaqoh.split(',').forEach(function(h){ if (norm(h)) hariHalaqoh[normNama(h)] = true; });
 
   const perGuru = {};
   function catat(guru, sesi) {
@@ -12631,11 +12734,24 @@ function hitungKehadiranGuruAtur_(bulan, tahun, guruFilter, opsiHitung) {
       catat(j.guru, Object.assign({tanggal:t, hari:namaHari, jenis:'Mapel', nama: j.mapel+' - '+j.kelas,
         mapel:j.mapel, kelas:j.kelas, jamKe:j.jamKe, hariJadwal:j.hari}, statusSesi(key, j.guru)));
     });
-    if (hariHalaqoh[nh]) {
+    {
       halaqohList.forEach(function(h){
+        const jadwal = statusJadwalHalaqoh_(cfg, h, namaHari);
+        if (jadwal === 'tidak') return;
         const key = 'H|'+t+'|'+normNama(h.namaHalaqoh)+'|'+normNama(h.waktu);
         const dasar = {tanggal:t, hari:namaHari, jenis:'Halaqoh', nama: h.namaHalaqoh+' ('+h.waktu+')', halaqoh: h.namaHalaqoh, waktu: h.waktu};
         const daftarG = h.pengampuList || [];
+        if (jadwal === 'opsional') {
+          // Halaqoh tidak rutin: hanya dihitung bila memang diisi (dan bukan hari libur).
+          // Tidak diisi = dianggap tidak ada sesi, jadi tidak pernah membuat guru tercatat
+          // tidak masuk. Bila yang mengisi guru pengganti, hanya pengganti yang tercatat.
+          if (!hadir[key] || libur[t] || !daftarG.length) return;
+          dasar.opsional = true;
+          const pengisiO = pengisiHalaqoh[key] || daftarG[0];
+          const siapa = daftarG.find(function(g){ return samaGuru_(g, pengisiO); }) || pengisiO;
+          catat(siapa, Object.assign({}, dasar, {status:'Hadir', ket:'halaqoh tidak rutin' + (samaGuru_(siapa, daftarG[0]) ? '' : ' · menggantikan ' + daftarG[0])}));
+          return;
+        }
         if (daftarG.length <= 1) {
           daftarG.forEach(function(g){ catat(g, Object.assign({}, dasar, statusSesi(key, g))); });
           return;
@@ -14100,3 +14216,4003 @@ function apiSimpanTargetHafalan(p) {
   sh.appendRow(baris);
   return {ok:true};
 }
+// ======================================================================
+// KEAMANAN SERVER (jalur WASIAT utama)
+//
+// Sebelumnya server menjalankan aksi apa pun yang dikirim ke alamat Web App, tanpa
+// memeriksa siapa pengirimnya. Siapa pun yang mengetahui alamat itu dapat, misalnya,
+// menghapus transaksi kas atau membaca PIN akun.
+//
+// Sekarang aksi-aksi PENTING wajib membawa token sesi (diberikan saat login, sama
+// dengan token Persuratan/Keuangan, berlaku 14 hari dan diperbarui otomatis setiap
+// aplikasi dibuka saat online). Aksi yang dipakai harian (absensi, hafalan, nilai,
+// jurnal, kasir kantin, halaman depan) TIDAK diubah sama sekali, supaya tetap cepat
+// dan antrian offline tetap aman.
+//
+// Hasil pemeriksaan token disimpan di cache 10 menit, sehingga tidak menambah
+// pembacaan sheet di setiap permintaan.
+// ======================================================================
+var AMAN_ = (function () {
+  const ADM = ['Admin', 'Mudir'];
+  const KEU = ['Admin', 'Mudir', 'Bendahara'];
+  const LOGIN = '*';
+
+  /** Aksi -> peran yang boleh. LOGIN = akun apa pun yang sudah masuk. */
+  const ATURAN = {};
+  function atur(peran, daftar) { daftar.split(/\s+/).filter(Boolean).forEach(function (a) { ATURAN[a] = peran; }); }
+
+  // Hanya Admin / Mudir: semester, pengaturan, akun, data master, data santri inti
+  atur(ADM, 'createTahunAjaran setTahunAjaranAktif migrasiSkemaLama simpanPengaturan simpanPengaturanBatch ' +
+    'pasangTriggerNotif kirimPushManual kirimWATes cekStatusWablas getInfoPengaturanWA ' +
+    'getDaftarSpreadsheet getDiagnostikUkuranData saveMasterRow deleteMasterRow importSantriMassal tambahSantriManual ' +
+    'gantiNisn prosesMutasiSantri batalkanMutasi ubahCatatanMutasi resetSemuaPoinSantri ' +
+    'perbaikiKategoriTransaksi saveSlide deleteSlide saveArtikel deleteArtikel saveFiturBeranda deleteFiturBeranda getLogAktivitas');
+
+  // Keuangan & saldo: Bendahara, Admin, Mudir
+  atur(KEU, 'tambahSaldoSantriManual tarikSaldoSantriBendahara setBiayaAdminTopup getRekapPendapatanPondok ' +
+    'getRiwayatMutasiSaldoAdmin getKasUmumList tambahTransaksiKas hapusTransaksiKas saveKategoriKas deleteKategoriKas ' +
+    'saveAnggaran deleteAnggaran saveTarif deleteTarif getLaporanBulanan getBKUBulanan kirimTagihanSppSatuSantri ' +
+    'kirimTagihanSppMassal tarikSaldoPemilikManual getDaftarSaldoPemilik setLimitHarianAdmin setBiayaSpp setBebasSpp ' +
+    'toggleSppBulan importSpp getSemuaPengajuanTarik getSemuaPengajuanTopUp setujuiPenarikan tolakPenarikan ' +
+    'setujuiTopUp tolakTopUp saveBarang deleteBarang siapkanKolomNamaSpp');
+
+  // Cukup sudah masuk (akun apa pun): data pribadi, perubahan & penghapusan data
+  atur(LOGIN, 'getMasterData getSemuaSantri deleteAbsensi deleteHafalan deleteNilai resetPoinSatuSantri ' +
+    'buatRombelBaru hapusRombel editWaliKelas tambahSantriKeRombel pindahSantriRombel hapusSantriDariRombel ' +
+    'buatHalaqohBaru editHalaqoh hapusHalaqoh tambahSantriKeHalaqoh pindahSantriHalaqoh hapusSantriDariHalaqoh ' +
+    'ubahIdentitasSantri ubahProfilGuru gantiPinTransaksiSantri setLimitHarianSantri terbitkanSP batalkanSP ' +
+    'prosesIzinGuru simpanLiburPondok hapusLiburPondok saveMasterPelPrestasi deleteMasterPelPrestasi ' +
+    'buatPelanggaranSSBaru setPelanggaranSSAktif hapusKasKelas saveSOP deleteSOP tambahPenggantian hapusPenggantian ' +
+    'getDashboardKeuangan getTunggakanSantri getSppList getRekapSPPBendahara uploadFileKeDrive getDashboardAdmin ' +
+    'getRaporSantriLengkap getSaldoSantri getAllTransaksiSantri getRiwayatMutasiSaldoSantri kirimPushUji');
+
+  const PENGATURAN_BERSAMA = ['BatasBeruntunHari'];
+
+  // Wali santri hanya boleh untuk anaknya sendiri
+  const MILIK_ANAK = { gantiPinTransaksiSantri: 'nisn', setLimitHarianSantri: 'nisn', getSaldoSantri: 'nisn',
+    getAllTransaksiSantri: 'nisn', getRiwayatMutasiSaldoSantri: 'nisn' };
+
+  function hash_(s) {
+    return Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(s))).slice(0, 40);
+  }
+
+  /** Identitas pemilik token ({nama, roles, terkait}) atau null. Hasil diingat 10 menit. */
+  function identitas(token) {
+    token = String(token || '');
+    if (token.length < 20 || typeof SURAT_ === 'undefined') return null;
+    const ck = 'aman_' + hash_(token);
+    let cache = null;
+    try { cache = CacheService.getScriptCache(); } catch (e) { }
+    if (cache) {
+      try { const ada = cache.get(ck); if (ada) return ada === '-' ? null : JSON.parse(ada); } catch (e) { }
+    }
+    let me = null;
+    try { me = SURAT_.identitasToken(token); } catch (e) { me = null; }
+    const out = me ? { nama: me.nama, roles: me.roles || [], terkait: (me.terkait || []).map(String) } : null;
+    if (cache) { try { cache.put(ck, out ? JSON.stringify(out) : '-', 600); } catch (e) { } }
+    return out;
+  }
+
+  function punya_(me, daftar) { return me.roles.some(function (r) { return daftar.indexOf(r) >= 0; }); }
+  function hanyaWali_(me) { return me.roles.length > 0 && me.roles.every(function (r) { return r === 'WaliSantri'; }); }
+
+  const PESAN_LOGIN = 'Demi keamanan data, silakan keluar lalu masuk kembali ke WASIAT (sesi Anda belum memakai pengaman terbaru atau sudah berakhir).';
+
+  /** null = boleh lanjut; selain itu objek jawaban penolakan. */
+  function periksa(action, p, token) {
+    let aturan = ATURAN[action];
+    // Sheet akun berisi PIN: hanya Admin/Mudir
+    if (action === 'getMasterData' && String(p && p.sheet) === 'RoleAkses') aturan = ADM;
+    // Pengaturan bersama yang memang diubah Pembina/Kabag dari widget mereka
+    if (action === 'simpanPengaturan' && PENGATURAN_BERSAMA.indexOf(String(p && p.key)) >= 0) aturan = LOGIN;
+    if (!aturan) return null;
+    const me = identitas(token);
+    if (!me) return { ok: false, perluLogin: true, error: PESAN_LOGIN };
+    if (aturan !== LOGIN && !punya_(me, aturan)) {
+      return { ok: false, error: 'Akun Anda (' + me.roles.join(', ') + ') tidak berhak menjalankan aksi ini.' };
+    }
+    const kolom = MILIK_ANAK[action];
+    if (kolom && hanyaWali_(me)) {
+      const nisn = String((p && p[kolom]) || '').replace(/^'/, '').trim();
+      if (nisn && me.terkait.indexOf(nisn) === -1) return { ok: false, error: 'Data santri ini bukan milik akun Anda.' };
+    }
+    return null;
+  }
+
+  /** Kolom PIN santri tidak pernah dikirim lewat getMasterData. */
+  function saringMaster(sheet, hasil) {
+    if (String(sheet) !== 'Santri' || !hasil || !hasil.ok || !hasil.data || !hasil.data.header) return hasil;
+    const buang = hasil.data.header.filter(function (h) { return /pin/i.test(String(h)); });
+    if (!buang.length) return hasil;
+    hasil.data.header = hasil.data.header.filter(function (h) { return buang.indexOf(h) === -1; });
+    hasil.data.data.forEach(function (r) { buang.forEach(function (h) { delete r[h]; }); });
+    return hasil;
+  }
+
+  /** Batas percobaan login salah: 5 kali per nama/no WA, lalu tunggu 10 menit. */
+  function cekGagalLogin(loginId) {
+    try { return Number(CacheService.getScriptCache().get('login_gagal_' + hash_(String(loginId).toLowerCase())) || 0) >= 5; } catch (e) { return false; }
+  }
+  function catatGagalLogin(loginId, berhasil) {
+    try {
+      const c = CacheService.getScriptCache(), k = 'login_gagal_' + hash_(String(loginId).toLowerCase());
+      if (berhasil) c.remove(k); else c.put(k, String(Number(c.get(k) || 0) + 1), 600);
+    } catch (e) { }
+  }
+
+
+  /* ================================================================
+   *  CATATAN AKTIVITAS (audit log)
+   *  Mencatat SIAPA mengubah APA untuk aksi penting (keuangan, saldo, akun, data
+   *  santri, pengaturan, penghapusan data). Aksi baca dan aksi harian (absensi,
+   *  hafalan, nilai baru, kasir) tidak dicatat, supaya tidak menambah beban.
+   *  Satu baris per aksi di sheet "LogAktivitas" (spreadsheet Master), otomatis
+   *  dirapikan bila melebihi 20.000 baris.
+   * ================================================================ */
+  const SH_LOG = 'LogAktivitas';
+  const HEAD_LOG = ['Waktu', 'Nama', 'Peran', 'Modul', 'Aksi', 'Keterangan', 'Rincian'];
+  const BATAS_LOG = 20000;
+  const LABEL = {
+    tambahTransaksiKas: 'Catat transaksi kas', hapusTransaksiKas: 'Hapus transaksi kas', tambahSaldoSantriManual: 'Tambah saldo santri',
+    tarikSaldoSantriBendahara: 'Tarik saldo santri', tarikSaldoPemilikManual: 'Tarik saldo pemilik barang', setujuiTopUp: 'Setujui top-up',
+    tolakTopUp: 'Tolak top-up', setujuiPenarikan: 'Setujui penarikan', tolakPenarikan: 'Tolak penarikan', setBiayaSpp: 'Atur biaya SPP',
+    setBebasSpp: 'Atur bebas SPP', toggleSppBulan: 'Ubah status bulan SPP', importSpp: 'Impor SPP', setBiayaAdminTopup: 'Atur biaya admin top-up',
+    saveKategoriKas: 'Simpan kategori kas', deleteKategoriKas: 'Hapus kategori kas', saveAnggaran: 'Simpan anggaran', deleteAnggaran: 'Hapus anggaran',
+    saveTarif: 'Simpan tarif', deleteTarif: 'Hapus tarif', saveMasterRow: 'Ubah data master', deleteMasterRow: 'Hapus data master',
+    simpanPengaturan: 'Ubah pengaturan', simpanPengaturanBatch: 'Ubah pengaturan', createTahunAjaran: 'Buat semester', setTahunAjaranAktif: 'Ganti semester aktif',
+    tambahSantriManual: 'Tambah santri', importSantriMassal: 'Impor santri', ubahIdentitasSantri: 'Ubah identitas santri', gantiNisn: 'Ganti NISN',
+    prosesMutasiSantri: 'Mutasi santri', batalkanMutasi: 'Batalkan mutasi', deleteAbsensi: 'Hapus absensi', deleteHafalan: 'Hapus hafalan', deleteNilai: 'Hapus nilai',
+    resetPoinSatuSantri: 'Reset poin santri', resetSemuaPoinSantri: 'Reset semua poin', gantiPinTransaksiSantri: 'Ganti PIN kantin santri',
+    setLimitHarianSantri: 'Atur limit jajan', setLimitHarianAdmin: 'Atur limit jajan', hapusRombel: 'Hapus rombel', hapusHalaqoh: 'Hapus halaqoh',
+    terbitkanSP: 'Terbitkan SP guru', batalkanSP: 'Batalkan SP guru', kirimPushManual: 'Kirim notifikasi massal',
+    terimaPembayaran: 'Terima pembayaran', terbitkanKwitansiKas: 'Terbitkan kwitansi', batalKwitansi: 'Batalkan kwitansi', kirimKwitansi: 'Kirim kwitansi',
+    ajukanDana: 'Ajukan dana', putuskanPengajuan: 'Putuskan pengajuan dana', batalPengajuan: 'Batalkan pengajuan dana', ajukanTutupBuku: 'Tutup buku',
+    kembalikanTutupBuku: 'Buka/kembalikan tutup buku', sahkanTutupBuku: 'Sahkan laporan keuangan', kirimTagihan: 'Kirim tagihan SPP', kirimTagihanMassal: 'Kirim tagihan massal',
+    kirimKonfirmasi: 'Kirim konfirmasi transfer', terimaKonfirmasi: 'Terima konfirmasi transfer', tolakKonfirmasi: 'Tolak konfirmasi transfer',
+    batalKonfirmasi: 'Batalkan konfirmasi transfer', simpanRekening: 'Ubah rekening pondok',
+    simpanJadwal: 'Ubah jadwal otomatis', terbitkanRapor: 'Terbitkan rapor resmi', batalRapor: 'Batalkan rapor resmi',
+    ppdbProses: 'Proses pendaftar PPDB', ppdbJadikanSantri: 'Masukkan pendaftar ke Data Santri', ppdbAtur: 'Ubah pengaturan PPDB'
+  };
+  const KEU_TULIS = ['terimaPembayaran', 'terbitkanKwitansiKas', 'batalKwitansi', 'kirimKwitansi', 'ajukanDana', 'putuskanPengajuan', 'batalPengajuan',
+    'ajukanTutupBuku', 'kembalikanTutupBuku', 'sahkanTutupBuku', 'kirimTagihan', 'kirimTagihanMassal', 'kirimKonfirmasi', 'terimaKonfirmasi',
+    'tolakKonfirmasi', 'batalKonfirmasi', 'simpanRekening'];
+  const PRM_TULIS = ['simpanJadwal', 'terbitkanRapor', 'batalRapor', 'ppdbProses', 'ppdbJadikanSantri', 'ppdbAtur'];
+  function aksiBaca_(a) { return /^(get|cek|status|list|info|file|bukti|peta|log|ringkas|kop|data|verifikasi|uji|diagnos)/i.test(a); }
+  function perluDicatat(modul, action) {
+    if (modul === 'keuangan') return KEU_TULIS.indexOf(action) >= 0;
+    if (modul === 'premium') return PRM_TULIS.indexOf(action) >= 0;
+    if (modul) return false;
+    return !!ATURAN[action] && !aksiBaca_(action);
+  }
+  /** Rincian ringkas: tanpa berkas/HTML, PIN disamarkan, maks 400 karakter. */
+  function rincian_(p) {
+    const o = {};
+    Object.keys(p || {}).forEach(function (k) {
+      if (k.charAt(0) === '_' || /^(html|bukti|nota|base64|data64|foto|gambar|file)$/i.test(k)) return;
+      let v = p[k];
+      if (/pin|token|password|sandi/i.test(k)) v = '***';
+      else if (v && typeof v === 'object') { try { v = JSON.stringify(v).slice(0, 160); } catch (e) { v = '[data]'; } }
+      else v = String(v).slice(0, 120);
+      o[k] = v;
+    });
+    let t = ''; try { t = JSON.stringify(o); } catch (e) { }
+    return t.length > 400 ? t.slice(0, 397) + '...' : t;
+  }
+  function keterangan_(action, p, hasil) {
+    const b = [];
+    if (p.nisn) b.push('NISN ' + p.nisn);
+    if (p.noRef) b.push(p.noRef);
+    if (p.nominal) b.push('Rp' + (Number(p.nominal) || 0).toLocaleString('id-ID'));
+    if (p.uraian) b.push(String(p.uraian).slice(0, 60));
+    if (p.sheet) b.push('sheet ' + p.sheet);
+    if (p.alasan) b.push('alasan: ' + String(p.alasan).slice(0, 60));
+    const d = hasil && hasil.data;
+    if (d && d.kwitansi && d.kwitansi.nomor) b.push(d.kwitansi.nomor);
+    if (d && d.nomor) b.push(d.nomor);
+    return b.join(' · ');
+  }
+  function shLog_() {
+    const ss = getMasterSS();
+    let sh = ss.getSheetByName(SH_LOG);
+    if (!sh) { sh = ss.insertSheet(SH_LOG); sh.getRange(1, 1, 1, HEAD_LOG.length).setValues([HEAD_LOG]); sh.setFrozenRows(1); }
+    return sh;
+  }
+  /** Dipanggil setelah aksi BERHASIL. Tidak pernah menggagalkan aksi. */
+  function catat(modul, action, p, token, hasil) {
+    try {
+      if (!hasil || hasil.ok === false || !perluDicatat(modul, action)) return;
+      const me = identitas(token) || { nama: String((p && (p.oleh || p.dicatatOleh || p.disetujuiOleh)) || '(tanpa sesi)'), roles: [] };
+      const sh = shLog_();
+      sh.appendRow([Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss'), me.nama, me.roles.join(','),
+        modul || 'wasiat', LABEL[action] || action, keterangan_(action, p || {}, hasil), rincian_(p)]);
+      const n = sh.getLastRow();
+      if (n > BATAS_LOG + 1) sh.deleteRows(2, n - 1 - BATAS_LOG + 2000);
+    } catch (e) { try { Logger.log('Gagal catat aktivitas: ' + e.message); } catch (e2) { } }
+  }
+  function apiLogAktivitas(p) {
+    const sh = getMasterSS().getSheetByName(SH_LOG);
+    if (!sh || sh.getLastRow() < 2) return { ok: true, data: [], total: 0 };
+    const n = sh.getLastRow() - 1;
+    const ambil = Math.min(n, 3000);
+    const v = sh.getRange(n - ambil + 2, 1, ambil, HEAD_LOG.length).getValues();
+    const q = String(p.q || '').toLowerCase(), dari = String(p.dari || ''), sampai = String(p.sampai || '');
+    const out = [];
+    for (let i = v.length - 1; i >= 0 && out.length < 300; i--) {
+      const r = v[i];
+      const w = r[0] instanceof Date ? Utilities.formatDate(r[0], Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss') : String(r[0]);
+      if (dari && w.slice(0, 10) < dari) continue;
+      if (sampai && w.slice(0, 10) > sampai) continue;
+      if (q && [r[1], r[2], r[4], r[5]].join(' ').toLowerCase().indexOf(q) < 0) continue;
+      out.push({ waktu: w, nama: String(r[1]), peran: String(r[2]), modul: String(r[3]), aksi: String(r[4]), ket: String(r[5]), rincian: String(r[6]) });
+    }
+    return { ok: true, data: out, total: n };
+  }
+
+  return { periksa: periksa, identitas: identitas, saringMaster: saringMaster, cekGagalLogin: cekGagalLogin,
+    catatGagalLogin: catatGagalLogin, aturan: function () { return ATURAN; }, catat: catat, apiLogAktivitas: apiLogAktivitas,
+    perluDicatat: perluDicatat };
+})();
+
+
+// ======================================================================
+// KEUANGAN RESMI (Bendahara) -- kwitansi ber-QR, pengajuan dana dengan persetujuan
+// Mudir, laporan bulanan resmi + tutup buku, dan tagihan SPP ke wali.
+//
+// Dibungkus dalam KEU_ (namespace sendiri) supaya tidak ada nama yang bertabrakan
+// dengan fungsi WASIAT lain. Data baru disimpan di sheet BARU di spreadsheet Master
+// (KwitansiResmi, PengajuanDana, TutupBuku, LogTagihan) dan berkas PDF di folder
+// Drive "KEUANGAN - ..." -- sheet lama (KasUmum, SPP, dst.) tetap dipakai apa adanya:
+// hanya DITAMBAH barisnya lewat jalur yang sama dengan menu Catat Transaksi.
+//
+// Setiap aksi wajib membawa token sesi WASIAT (tokenSurat yang sudah diberikan saat
+// login), sehingga peran pengirim diperiksa di server -- bukan hanya di tampilan.
+// Kunci yang dipakai kunci khusus keuangan, bukan kunci transaksi kantin, jadi kasir,
+// absensi, dan hafalan tidak ikut menunggu saat PDF kwitansi/laporan dibuat.
+// ======================================================================
+var KEU_ = (function () {
+  const SH_KWT = 'KwitansiResmi';
+  const SH_PD = 'PengajuanDana';
+  const SH_TB = 'TutupBuku';
+  const SH_LOG = 'LogTagihan';
+  const HEAD = {
+    KwitansiResmi: ['ID', 'No Kwitansi', 'Tanggal', 'Diterima Dari', 'NISN', 'Untuk Pembayaran', 'Kategori', 'Nominal', 'Terbilang',
+      'Metode', 'Diterima Oleh', 'Kode Verifikasi', 'File ID', 'Link PDF', 'Status', 'Ref Kas', 'Dibuat', 'Dibatalkan Pada', 'Alasan Batal', 'Dikirim'],
+    PengajuanDana: ['ID', 'No Pengajuan', 'Tanggal', 'Diajukan Oleh', 'Uraian', 'Kategori', 'Anggaran ID', 'Nama Anggaran', 'Nominal', 'Rincian',
+      'Nota File ID', 'Nota Link', 'Status', 'Diputus Oleh', 'Diputus Pada', 'Catatan Mudir', 'Ref Kas', 'Dibuat'],
+    TutupBuku: ['Periode', 'Bulan', 'Tahun', 'Saldo Awal', 'Pemasukan', 'Pengeluaran', 'Saldo Akhir', 'Jumlah Transaksi', 'Status',
+      'Diajukan Oleh', 'Diajukan Pada', 'Disahkan Oleh', 'Disahkan Pada', 'Catatan', 'Kode Verifikasi', 'File ID', 'Link PDF', 'Riwayat'],
+    LogTagihan: ['Waktu', 'NISN', 'Nama', 'Total', 'Jumlah Bulan', 'Kanal', 'Oleh'],
+  };
+  const ST_PD = { MENUNGGU: 'Menunggu', SETUJU: 'Disetujui', TOLAK: 'Ditolak', BATAL: 'Dibatalkan' };
+  const ST_TB = { MENUNGGU: 'Menunggu Pengesahan', SAH: 'Disahkan', KEMBALI: 'Dikembalikan', BUKA: 'Dibuka Kembali' };
+  const TERKUNCI_TB = [ST_TB.MENUNGGU, ST_TB.SAH];
+  const ROMAWI = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+  const BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+  const PREFIX_BATAL = '[DIBATALKAN] ';
+
+  /* ---------------- peran ---------------- */
+  const PENGAJU_DANA = ['Bendahara', 'Admin', 'Mudir', 'Sekretaris', 'KabagPutra', 'KabagPutri', 'Kabag'];
+  function punya_(me, list) { return me.roles.some(function (r) { return list.indexOf(r) >= 0; }); }
+  const isBendahara_ = function (me) { return punya_(me, ['Bendahara', 'Admin', 'Mudir']); };   // boleh mengelola kas
+  const isMudir_ = function (me) { return punya_(me, ['Mudir']); };
+  const isStaf_ = function (me) { return punya_(me, ['Bendahara', 'Admin', 'Mudir']); };
+  function wajib_(ok, pesan) { if (!ok) throw new Error(pesan || 'Akun Anda tidak memiliki akses untuk tindakan ini.'); }
+
+  /* ---------------- util ---------------- */
+  const tz_ = function () { return Session.getScriptTimeZone(); };
+  const ymd_ = function (d) { return Utilities.formatDate(d, tz_(), 'yyyy-MM-dd'); };
+  const stamp_ = function () { return Utilities.formatDate(new Date(), tz_(), 'yyyy-MM-dd HH:mm:ss'); };
+  const uid_ = function () { return Utilities.getUuid().split('-')[0] + Date.now().toString(36); };
+  const pad_ = function (n, d) { return String(n).padStart(d || 3, '0'); };
+  function tgl_(s) {
+    if (s instanceof Date) return s;
+    const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    return new Date();
+  }
+  function teksTgl_(v) { return v instanceof Date ? ymd_(v) : String(v || '').slice(0, 10); }
+  function rupiah_(n) { return 'Rp' + (Number(n) || 0).toLocaleString('id-ID'); }
+  function aman_(s) { return String(s == null ? '' : s).replace(/[\/\\:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 140); }
+  function kodeAcak_(awal) {
+    const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let s = awal;
+    while (s.length < 10) s += A.charAt(Math.floor(Math.random() * A.length));
+    return s;
+  }
+  function kodeBersih_(k) { return String(k || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+  function terbilang(n) {
+    n = Math.floor(Math.abs(Number(n) || 0));
+    const s = ['', 'satu', 'dua', 'tiga', 'empat', 'lima', 'enam', 'tujuh', 'delapan', 'sembilan', 'sepuluh', 'sebelas'];
+    function t(x) {
+      if (x < 12) return s[x];
+      if (x < 20) return t(x - 10) + ' belas';
+      if (x < 100) return t(Math.floor(x / 10)) + ' puluh' + (x % 10 ? ' ' + t(x % 10) : '');
+      if (x < 200) return 'seratus' + (x - 100 ? ' ' + t(x - 100) : '');
+      if (x < 1000) return t(Math.floor(x / 100)) + ' ratus' + (x % 100 ? ' ' + t(x % 100) : '');
+      if (x < 2000) return 'seribu' + (x - 1000 ? ' ' + t(x - 1000) : '');
+      if (x < 1e6) return t(Math.floor(x / 1000)) + ' ribu' + (x % 1000 ? ' ' + t(x % 1000) : '');
+      if (x < 1e9) return t(Math.floor(x / 1e6)) + ' juta' + (x % 1e6 ? ' ' + t(x % 1e6) : '');
+      if (x < 1e12) return t(Math.floor(x / 1e9)) + ' miliar' + (x % 1e9 ? ' ' + t(x % 1e9) : '');
+      return t(Math.floor(x / 1e12)) + ' triliun' + (x % 1e12 ? ' ' + t(x % 1e12) : '');
+    }
+    const h = n === 0 ? 'nol' : t(n);
+    return (h.charAt(0).toUpperCase() + h.slice(1) + ' rupiah').replace(/\s+/g, ' ');
+  }
+
+  /* ---------------- kunci khusus keuangan ---------------- */
+  function kunci_() {
+    let dipegang = false;
+    function coba() {
+      const l = LockService.getScriptLock();
+      if (!l.tryLock(10000)) return false;
+      try {
+        const c = CacheService.getScriptCache();
+        if (c.get('KEU_KUNCI')) return false;
+        c.put('KEU_KUNCI', '1', 120);
+        return true;
+      } finally { l.releaseLock(); }
+    }
+    return {
+      waitLock: function (ms) {
+        const batas = Date.now() + (ms || 30000);
+        while (!coba()) {
+          if (Date.now() > batas) throw new Error('Keuangan sedang memproses transaksi lain. Coba lagi sebentar.');
+          Utilities.sleep(400);
+        }
+        dipegang = true;
+      },
+      releaseLock: function () { if (dipegang) { try { CacheService.getScriptCache().remove('KEU_KUNCI'); } catch (e) { } dipegang = false; } },
+    };
+  }
+
+  /* ---------------- sheet ---------------- */
+  function sheet_(nama) {
+    const ss = getMasterSS();
+    let sh = ss.getSheetByName(nama);
+    if (!sh) {
+      sh = ss.insertSheet(nama);
+      sh.getRange(1, 1, 1, HEAD[nama].length).setValues([HEAD[nama]]).setFontWeight('bold');
+      sh.setFrozenRows(1);
+      // NISN & nomor disimpan sebagai teks (angka nol di depan tidak hilang)
+      ['NISN', 'No Kwitansi', 'No Pengajuan', 'Periode', 'Kode Verifikasi'].forEach(function (k) {
+        const c = HEAD[nama].indexOf(k);
+        if (c >= 0) { try { sh.getRange(1, c + 1, sh.getMaxRows(), 1).setNumberFormat('@'); } catch (e) { } }
+      });
+    }
+    return sh;
+  }
+  function rows_(nama) {
+    const ss = getMasterSS();
+    const sh = ss.getSheetByName(nama);
+    if (!sh || sh.getLastRow() < 2) return [];
+    const h = HEAD[nama];
+    return sh.getRange(2, 1, sh.getLastRow() - 1, h.length).getValues().map(function (r, i) {
+      const o = { _row: i + 2 };
+      h.forEach(function (k, j) { o[k] = r[j] instanceof Date ? (k === 'Tanggal' ? ymd_(r[j]) : Utilities.formatDate(r[j], tz_(), 'yyyy-MM-dd HH:mm:ss')) : r[j]; });
+      return o;
+    }).filter(function (o) { return o[h[0]] !== '' && o[h[0]] != null; });
+  }
+  function tulis_(nama, baris, obj) {
+    const sh = sheet_(nama);
+    const h = HEAD[nama];
+    const nilai = h.map(function (k) { return obj[k] == null ? '' : obj[k]; });
+    if (baris) sh.getRange(baris, 1, 1, h.length).setValues([nilai]);
+    else sh.appendRow(nilai);
+  }
+  function ubah_(nama, r, perubahan) {
+    const o = {}; HEAD[nama].forEach(function (k) { o[k] = k in perubahan ? perubahan[k] : r[k]; });
+    tulis_(nama, r._row, o);
+    return o;
+  }
+
+  /* ---------------- folder Drive ---------------- */
+  function props_() { return PropertiesService.getScriptProperties(); }
+  function root_() {
+    const id = props_().getProperty('KEU_ROOT_ID');
+    if (id) { try { return DriveApp.getFolderById(id); } catch (e) { } }
+    const nama = 'KEUANGAN - ' + (getPengaturan().NamaPesantren || 'Pondok Pesantren').toUpperCase();
+    const f = DriveApp.createFolder(nama);
+    props_().setProperty('KEU_ROOT_ID', f.getId());
+    return f;
+  }
+  function folder_(induk, nama) {
+    const it = induk.getFoldersByName(nama);
+    return it.hasNext() ? it.next() : induk.createFolder(nama);
+  }
+  function folderJalur_(bagian) { let f = root_(); bagian.forEach(function (b) { f = folder_(f, String(b)); }); return f; }
+  function simpanPdf_(html, nama, jalur) {
+    const pdf = Utilities.newBlob(String(html), 'text/html', nama + '.html').getAs('application/pdf').setName(nama + '.pdf');
+    const file = folderJalur_(jalur).createFile(pdf);
+    return { id: file.getId(), url: file.getUrl() };
+  }
+  function tandaiBatalFile_(fileId, batal) {
+    if (!fileId) return;
+    try {
+      const f = DriveApp.getFileById(fileId);
+      const nm = f.getName().replace(PREFIX_BATAL, '');
+      f.setName((batal ? PREFIX_BATAL : '') + nm);
+    } catch (e) { }
+  }
+
+  /* ---------------- tutup buku: bulan terkunci ---------------- */
+  // Awalan 'LK-' supaya Google Sheets tidak mengubahnya menjadi tanggal.
+  function periode_(bulan, tahun) { return 'LK-' + tahun + '-' + pad_(bulan, 2); }
+  function ym_(bulan, tahun) { return tahun + '-' + pad_(bulan, 2); }
+  function statusPeriode_(per) {
+    const r = rows_(SH_TB).filter(function (x) { return String(x.Periode) === per; });
+    return r.length ? r[r.length - 1] : null;
+  }
+  /** Periode terakhir yang bukunya ditutup (menunggu pengesahan / sudah disahkan), mis. 'LK-2026-10'.
+   *  Menutup sebuah bulan berarti semua bulan SEBELUMNYA ikut terkunci, supaya saldo awal
+   *  laporan yang sudah disahkan tidak bisa berubah diam-diam. */
+  function batasTutup_() {
+    const terakhir = {};
+    rows_(SH_TB).forEach(function (r) { terakhir[String(r.Periode)] = String(r.Status); });
+    let maks = '';
+    Object.keys(terakhir).forEach(function (k) { if (TERKUNCI_TB.indexOf(terakhir[k]) >= 0 && k > maks) maks = k; });
+    return maks;
+  }
+  function teksPeriode_(per) { const m = String(per).match(/^LK-(\d{4})-(\d{2})$/); return m ? BULAN[Number(m[2]) - 1] + ' ' + m[1] : per; }
+  /** Dipakai juga oleh menu Catat Transaksi: true bila bulan tanggal ini sudah termasuk buku yang ditutup. */
+  function bulanTerkunci(tanggal) {
+    try {
+      const d = tgl_(tanggal);
+      const batas = batasTutup_();
+      return !!batas && periode_(d.getMonth() + 1, d.getFullYear()) <= batas;
+    } catch (e) { return false; }
+  }
+  function cekTerkunci_(tanggal) {
+    if (bulanTerkunci(tanggal)) {
+      throw new Error('Buku kas sudah ditutup sampai ' + teksPeriode_(batasTutup_()) + '. Transaksi pada bulan tersebut atau sebelumnya tidak dapat diubah; minta Mudir membuka kembali bila perlu koreksi.');
+    }
+  }
+
+  /* ---------------- uang titipan santri BUKAN kas pondok ----------------
+   * Saldo kantin / uang belanja santri adalah titipan wali: disimpan di saldo santri
+   * (menu Kantin), tidak boleh dicatat sebagai pemasukan/pengeluaran kas pondok.
+   * Yang masuk kas hanya keuntungan pondok (potongan barang & biaya admin top-up),
+   * dan itu dicatat otomatis oleh sistem kantin. */
+  const POLA_TITIPAN = /(top[\s-]*up|isi[\s-]*saldo|saldo[\s-]*(kantin|santri|belanja|jajan)|uang[\s-]*(saku|jajan|belanja|titipan)|titipan[\s-]*santri|tabungan[\s-]*santri|tarik[\s-]*(saldo|tunai))/i;
+  const POLA_UNTUNG = /(biaya[\s-]*admin|potongan|keuntungan|laba|margin|komisi|bagi[\s-]*hasil)/i;
+  const PESAN_TITIPAN = 'Uang belanja / saldo kantin santri adalah dana TITIPAN wali, bukan kas pondok, jadi tidak dicatat di Buku Kas Umum. ' +
+    'Top-up dan penarikan saldo santri dilakukan di menu Kantin (Top Up / Tarik Saldo). Yang masuk kas pondok hanya keuntungannya ' +
+    '(potongan barang & biaya admin top-up), dan itu sudah tercatat otomatis sebagai "Pendapatan Kantin".';
+  function uangTitipanSantri(kategori, uraian) {
+    const t = norm(kategori) + ' ' + norm(uraian);
+    return POLA_TITIPAN.test(t) && !POLA_UNTUNG.test(t);
+  }
+  function pesanTitipan() { return PESAN_TITIPAN; }
+  function cekTitipan_(kategori, uraian) { if (uangTitipanSantri(kategori, uraian)) throw new Error(PESAN_TITIPAN); }
+  /** Baris BKU yang tampak seperti uang titipan santri (catatan otomatis kantin dikecualikan). */
+  function barisTitipan_(baris) {
+    return baris.filter(function (t) {
+      if (/^KANTIN-/.test(String(t.noRef)) || norm(t.dicatatOleh) === 'Sistem Kantin') return false;
+      return uangTitipanSantri(t.kategori, t.uraian);
+    }).map(function (t) { return { noRef: t.noRef, tanggal: t.tanggal, jenis: t.jenis, kategori: t.kategori, uraian: t.uraian, nominal: t.nominal }; });
+  }
+
+  /* ---------------- buku kas umum (tambah baris) ---------------- */
+  function noRefBaru_(sh, tanggal) {
+    const awal = 'REF-' + tanggal.substring(0, 7).replace('-', '') + '-';
+    let max = sh.getLastRow();
+    if (sh.getLastRow() > 1) {
+      sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues().forEach(function (r) {
+        const m = String(r[0]).match(/-(\d+)$/); if (m && Number(m[1]) > max) max = Number(m[1]);
+      });
+    }
+    return awal + pad_(max + 1, 4);
+  }
+  function tambahKas_(o) {
+    const sh = getMasterSS().getSheetByName(SHEET_KAS_UMUM);
+    if (!sh) throw new Error('Sheet Buku Kas Umum belum ada. Jalankan Migrasi Skema di menu Admin.');
+    const noRef = noRefBaru_(sh, o.tanggal);
+    sh.appendRow([noRef, tgl_(o.tanggal), o.jenis, o.kategori, o.uraian, Number(o.nominal) || 0, o.dicatatOleh, o.noKwitansi || '', o.kelas || '']);
+    return noRef;
+  }
+  function cariKas_(noRef) {
+    const sh = getMasterSS().getSheetByName(SHEET_KAS_UMUM);
+    if (!sh || sh.getLastRow() < 2) return null;
+    const v = sh.getRange(2, 1, sh.getLastRow() - 1, 9).getValues();
+    for (let i = 0; i < v.length; i++) if (String(v[i][0]) === String(noRef)) return { row: i + 2, v: v[i], sh: sh };
+    return null;
+  }
+
+  /* ---------------- data santri & akun ---------------- */
+  function santri_(nisn) {
+    nisn = norm(nisn);
+    if (!nisn) return null;
+    const rows = getAktifSS().getSheetByName(SHEET_SANTRI).getDataRange().getValues();
+    for (let i = 1; i < rows.length; i++) if (norm(rows[i][0]) === nisn) return { nisn: nisn, nama: norm(rows[i][1]), tahunMasuk: rows[i][2], noWa: norm(rows[i][4]) };
+    return null;
+  }
+  function akunPeran_(peran) {
+    const sh = getAktifSS().getSheetByName(SHEET_ROLE);
+    if (!sh) return [];
+    return sh.getDataRange().getValues().slice(1).filter(function (r) {
+      return norm(r[0]) && norm(r[3]).split(',').map(function (s) { return s.trim(); }).indexOf(peran) >= 0;
+    }).map(function (r) { return { nama: norm(r[0]), noWa: norm(r[1]) }; });
+  }
+  function kabarStaf_(peran, judul, isi, kategoriWa) {
+    const akun = akunPeran_(peran);
+    if (!akun.length) return;
+    try { kirimPushOneSignal(akun.map(function (a) { return a.nama; }), judul, isi, '', { jenis: 'keuangan' }); } catch (e) { }
+    if (kategoriWa) akun.forEach(function (a) { if (a.noWa) { try { kirimWAKategori_(kategoriWa, a.noWa, '*' + judul + '*\n\n' + isi); } catch (e) { } } });
+  }
+  function kabarNama_(nama, judul, isi, kategoriWa) {
+    if (!nama) return;
+    try { kirimPushOneSignal([nama], judul, isi, '', { jenis: 'keuangan' }); } catch (e) { }
+    if (!kategoriWa) return;
+    const sh = getAktifSS().getSheetByName(SHEET_ROLE);
+    if (!sh) return;
+    const r = sh.getDataRange().getValues().slice(1).find(function (x) { return normNama(x[0]) === normNama(nama); });
+    if (r && norm(r[1])) { try { kirimWAKategori_(kategoriWa, norm(r[1]), '*' + judul + '*\n\n' + isi); } catch (e) { } }
+  }
+
+  /* ================================================================
+   *  KWITANSI RESMI
+   * ================================================================ */
+  function noKwitansiBaru_(tahun, bulan) {
+    let max = 0;
+    rows_(SH_KWT).forEach(function (r) {
+      if (String(r.Tanggal).slice(0, 4) !== String(tahun)) return;
+      const m = String(r['No Kwitansi']).match(/^(\d+)/); if (m && Number(m[1]) > max) max = Number(m[1]);
+    });
+    return pad_(max + 1, 3) + '/KWT/PPS-WU/' + ROMAWI[bulan - 1] + '/' + tahun;
+  }
+  function kodeUnik_(awal, kode) {
+    kode = kodeBersih_(kode);
+    const ada = {};
+    rows_(SH_KWT).forEach(function (r) { ada[kodeBersih_(r['Kode Verifikasi'])] = 1; });
+    rows_(SH_TB).forEach(function (r) { ada[kodeBersih_(r['Kode Verifikasi'])] = 1; });
+    if (kode.length !== 10 || kode.charAt(0) !== awal || ada[kode]) {
+      do { kode = kodeAcak_(awal); } while (ada[kode]);
+    }
+    return kode;
+  }
+  function buatKwitansi_(o, html) {
+    const d = tgl_(o.tanggal);
+    const nomor = noKwitansiBaru_(d.getFullYear(), d.getMonth() + 1);
+    const kode = kodeUnik_('K', o.kode);
+    const isi = String(html || '').split('{{NOMOR}}').join(nomor).split('{{KODE}}').join(kode.replace(/^(.{4})(.{4})(.*)$/, '$1-$2-$3'));
+    let file = { id: '', url: '' };
+    if (html) file = simpanPdf_(isi, aman_(nomor.replace(/\//g, '-') + ' - ' + o.diterimaDari + ' - ' + o.untuk), ['Kwitansi', d.getFullYear(), pad_(d.getMonth() + 1, 2) + ' ' + BULAN[d.getMonth()]]);
+    const r = {
+      ID: uid_(), 'No Kwitansi': nomor, Tanggal: ymd_(d), 'Diterima Dari': o.diterimaDari, NISN: o.nisn || '', 'Untuk Pembayaran': o.untuk,
+      Kategori: o.kategori, Nominal: Number(o.nominal) || 0, Terbilang: terbilang(o.nominal), Metode: o.metode || 'Tunai',
+      'Diterima Oleh': o.penerima, 'Kode Verifikasi': kode, 'File ID': file.id, 'Link PDF': file.url, Status: 'Sah',
+      'Ref Kas': o.noRef || '', Dibuat: stamp_(), 'Dibatalkan Pada': '', 'Alasan Batal': '', Dikirim: '',
+    };
+    tulis_(SH_KWT, null, r);
+    return r;
+  }
+  function outKwt_(r) {
+    return { id: r.ID, nomor: r['No Kwitansi'], tanggal: teksTgl_(r.Tanggal), diterimaDari: r['Diterima Dari'], nisn: String(r.NISN || ''),
+      untuk: r['Untuk Pembayaran'], kategori: r.Kategori, nominal: Number(r.Nominal) || 0, terbilang: r.Terbilang, metode: r.Metode,
+      penerima: r['Diterima Oleh'], kode: r['Kode Verifikasi'], adaFile: !!r['File ID'], status: r.Status, noRef: r['Ref Kas'],
+      alasanBatal: r['Alasan Batal'], dikirim: r.Dikirim };
+  }
+  function kirimKwitansiKeWali_(k) {
+    if (!k.NISN) return { push: false, wa: '' };
+    const s = santri_(k.NISN);
+    const judul = '🧾 Kwitansi pembayaran ' + (s ? s.nama : '');
+    const isi = k['Untuk Pembayaran'] + ' sebesar ' + rupiah_(k.Nominal) + ' telah diterima (No. ' + k['No Kwitansi'] + '). Kwitansi dapat dilihat di menu SPP aplikasi WASIAT.';
+    let wa = '';
+    try { kirimPushKeWali(String(k.NISN), judul, isi); } catch (e) { }
+    if (s && s.noWa) {
+      try {
+        const h = kirimWA_(s.noWa, 'Assalamualaikum Wr. Wb.\n\nYth. Orang Tua/Wali Santri *' + s.nama + '*\n\nAlhamdulillah, pembayaran berikut telah kami terima:\n\n' +
+          '• ' + k['Untuk Pembayaran'] + '\n• Jumlah: *' + rupiah_(k.Nominal) + '*\n• No. Kwitansi: ' + k['No Kwitansi'] + '\n\nKwitansi resmi ber-QR dapat dilihat di aplikasi WASIAT (menu SPP).\n\nJazakumullah khairan.', 'kwitansi');
+        wa = h && h.ok ? 'terkirim' : (h && h.dilewati ? 'nonaktif' : 'gagal');
+      } catch (e) { wa = 'gagal'; }
+    } else wa = 'tanpa nomor';
+    return { push: true, wa: wa };
+  }
+
+  /** Terima pembayaran: catat ke Buku Kas Umum + (bila SPP) tandai bulan lunas + terbitkan kwitansi resmi. */
+  function api_terimaPembayaran(p, me) {
+    wajib_(isBendahara_(me), 'Hanya Bendahara, Admin, atau Mudir yang dapat menerima pembayaran.');
+    const tanggal = teksTgl_(p.tanggal) || ymd_(new Date());
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(tanggal)) throw new Error('Tanggal tidak valid.');
+    const kategori = norm(p.kategori);
+    if (!kategori) throw new Error('Pilih jenis pembayaran.');
+    cekTitipan_(kategori, p.uraian);
+    const s = p.nisn ? santri_(p.nisn) : null;
+    if (p.nisn && !s) throw new Error('Santri dengan NISN ' + p.nisn + ' tidak ditemukan.');
+    const diterimaDari = norm(p.diterimaDari) || (s ? 'Wali santri ' + s.nama : '');
+    if (!diterimaDari) throw new Error('Isi nama pembayar (Diterima dari).');
+    const bulanSpp = (p.sppBulan || []).map(Number).filter(function (b) { return b >= 1 && b <= 36; });
+    if (bulanSpp.length && !s) throw new Error('Pembayaran SPP harus memilih santri.');
+    let nominal = Number(p.nominal) || 0;
+    let untuk = norm(p.uraian);
+    const lock = kunci_();
+    lock.waitLock(30000);
+    let k, noRef;
+    try {
+      cekTerkunci_(tanggal);
+      if (bulanSpp.length) {
+        const sh = getAktifSppSS().getSheetByName(SHEET_SPP);
+        if (!sh) throw new Error('Sheet SPP tidak ditemukan.');
+        const kSpp = kolomSpp_(sh);
+        const rows = sh.getDataRange().getValues();
+        let rowIdx = -1, biaya = 0;
+        for (let i = 1; i < rows.length; i++) if (norm(rows[i][0]) === s.nisn) { rowIdx = i + 1; biaya = Number(rows[i][kSpp.biaya - 1]) || 0; break; }
+        if (rowIdx < 0) throw new Error('Santri ini belum punya data SPP. Atur biaya SPP dulu.');
+        if (biaya <= 0) throw new Error('Biaya SPP santri ini belum diatur.');
+        bulanSpp.sort(function (a, b) { return a - b; });
+        const sudah = bulanSpp.filter(function (b) { return norm(rows[rowIdx - 1][kSpp.bulan1 - 2 + b]); });
+        if (sudah.length) throw new Error('Bulan berikut sudah tercatat lunas: ' + sudah.map(function (b) { return labelBulanSPP(b, s.tahunMasuk); }).join(', ') + '. Muat ulang halaman.');
+        const tglLunas = 'Lunas (' + Utilities.formatDate(tgl_(tanggal), tz_(), 'dd/MM/yyyy') + ')';
+        bulanSpp.forEach(function (b) { sh.getRange(rowIdx, kSpp.bulan1 - 1 + b).setValue(tglLunas); });
+        nominal = biaya * bulanSpp.length;
+        untuk = 'SPP ' + bulanSpp.map(function (b) { return labelBulanSPP(b, s.tahunMasuk); }).join(', ') + ' a.n. ' + s.nama + (untuk ? ' (' + untuk + ')' : '');
+      }
+      if (nominal <= 0) throw new Error('Nominal pembayaran wajib diisi.');
+      if (!untuk) throw new Error('Isi keterangan pembayaran.');
+      const kelas = norm(p.kelas);
+      noRef = tambahKas_({ tanggal: tanggal, jenis: 'Pemasukan', kategori: kategori, uraian: untuk, nominal: nominal, dicatatOleh: me.nama, kelas: kelas });
+      k = buatKwitansi_({ tanggal: tanggal, diterimaDari: diterimaDari, nisn: s ? s.nisn : '', untuk: untuk, kategori: kategori, nominal: nominal,
+        metode: norm(p.metode), penerima: me.nama, noRef: noRef, kode: p.kodeVerifikasi }, p.html);
+      const kas = cariKas_(noRef);
+      if (kas) kas.sh.getRange(kas.row, 8).setValue(k['No Kwitansi']);
+    } finally { lock.releaseLock(); }
+    let kirim = { push: false, wa: '' };
+    if (k.NISN && p.kirimKeWali !== false) {
+      kirim = kirimKwitansiKeWali_(k);
+      const rr = rows_(SH_KWT).find(function (x) { return x.ID === k.ID; });
+      if (rr) ubah_(SH_KWT, rr, { Dikirim: stamp_() });
+    }
+    return { kwitansi: outKwt_(k), noRef: noRef, kirim: kirim };
+  }
+
+  /** Terbitkan kwitansi resmi untuk pemasukan yang sudah tercatat di Buku Kas Umum. */
+  function api_terbitkanKwitansiKas(p, me) {
+    wajib_(isBendahara_(me), 'Hanya Bendahara, Admin, atau Mudir yang dapat menerbitkan kwitansi.');
+    const lock = kunci_();
+    lock.waitLock(30000);
+    let k;
+    try {
+      const kas = cariKas_(p.noRef);
+      if (!kas) throw new Error('Transaksi ' + p.noRef + ' tidak ditemukan di Buku Kas Umum.');
+      if (norm(kas.v[2]) !== 'Pemasukan') throw new Error('Kwitansi hanya untuk pemasukan.');
+      const ada = rows_(SH_KWT).find(function (x) { return String(x['Ref Kas']) === String(p.noRef) && x.Status === 'Sah'; });
+      if (ada) throw new Error('Transaksi ini sudah memiliki kwitansi resmi No. ' + ada['No Kwitansi'] + '.');
+      const s = p.nisn ? santri_(p.nisn) : null;
+      const diterimaDari = norm(p.diterimaDari) || (s ? 'Wali santri ' + s.nama : '');
+      if (!diterimaDari) throw new Error('Isi nama pembayar (Diterima dari).');
+      k = buatKwitansi_({ tanggal: teksTgl_(kas.v[1]), diterimaDari: diterimaDari, nisn: s ? s.nisn : '', untuk: norm(kas.v[4]), kategori: norm(kas.v[3]),
+        nominal: Number(kas.v[5]) || 0, metode: norm(p.metode), penerima: me.nama, noRef: p.noRef, kode: p.kodeVerifikasi }, p.html);
+      kas.sh.getRange(kas.row, 8).setValue(k['No Kwitansi']);
+    } finally { lock.releaseLock(); }
+    let kirim = { push: false, wa: '' };
+    if (k.NISN && p.kirimKeWali) {
+      kirim = kirimKwitansiKeWali_(k);
+      const rr = rows_(SH_KWT).find(function (x) { return x.ID === k.ID; });
+      if (rr) ubah_(SH_KWT, rr, { Dikirim: stamp_() });
+    }
+    return { kwitansi: outKwt_(k), kirim: kirim };
+  }
+
+  /** Data untuk menyusun kwitansi di layar sebelum disimpan (nomor berikutnya hanya perkiraan). */
+  function api_infoKwitansiKas(p, me) {
+    wajib_(isBendahara_(me));
+    const kas = cariKas_(p.noRef);
+    if (!kas) throw new Error('Transaksi tidak ditemukan.');
+    const ada = rows_(SH_KWT).find(function (x) { return String(x['Ref Kas']) === String(p.noRef) && x.Status === 'Sah'; });
+    return { noRef: p.noRef, tanggal: teksTgl_(kas.v[1]), jenis: norm(kas.v[2]), kategori: norm(kas.v[3]), uraian: norm(kas.v[4]), nominal: Number(kas.v[5]) || 0,
+      kwitansi: ada ? outKwt_(ada) : null };
+  }
+
+  function api_listKwitansi(p, me) {
+    wajib_(isStaf_(me));
+    const q = String(p.q || '').toLowerCase();
+    return rows_(SH_KWT).filter(function (r) {
+      const t = teksTgl_(r.Tanggal);
+      if (p.tahun && t.slice(0, 4) !== String(p.tahun)) return false;
+      if (p.bulan && Number(t.slice(5, 7)) !== Number(p.bulan)) return false;
+      if (q && [r['No Kwitansi'], r['Diterima Dari'], r['Untuk Pembayaran'], r.NISN].join(' ').toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    }).sort(function (a, b) { return String(b.Dibuat).localeCompare(String(a.Dibuat)); }).slice(0, 500).map(outKwt_);
+  }
+  /** Peta Ref Kas -> kwitansi sah (untuk tombol di daftar Catat Transaksi). */
+  function api_petaKwitansiKas(p, me) {
+    wajib_(isStaf_(me));
+    const hasil = {};
+    rows_(SH_KWT).forEach(function (r) { if (r['Ref Kas'] && r.Status === 'Sah') hasil[r['Ref Kas']] = { id: r.ID, nomor: r['No Kwitansi'] }; });
+    return hasil;
+  }
+  function bolehNisn_(me, nisn) { return isStaf_(me) || me.terkait.map(String).indexOf(String(nisn)) >= 0; }
+  function api_kwitansiSantri(p, me) {
+    wajib_(bolehNisn_(me, p.nisn), 'Anda tidak memiliki akses ke data santri ini.');
+    return rows_(SH_KWT).filter(function (r) { return String(r.NISN) === String(p.nisn); })
+      .sort(function (a, b) { return String(b.Tanggal).localeCompare(String(a.Tanggal)); }).map(outKwt_);
+  }
+  function api_fileKwitansi(p, me) {
+    const r = rows_(SH_KWT).find(function (x) { return x.ID === p.id; });
+    if (!r || !r['File ID']) throw new Error('Berkas kwitansi tidak tersedia.');
+    wajib_(isStaf_(me) || (r.NISN && bolehNisn_(me, r.NISN)), 'Anda tidak memiliki akses ke kwitansi ini.');
+    return fileB64_(r['File ID']);
+  }
+  function fileB64_(id) {
+    const f = DriveApp.getFileById(id);
+    const b = f.getBlob();
+    if (b.getBytes().length > 15 * 1024 * 1024) throw new Error('Berkas terlalu besar untuk ditampilkan.');
+    return { name: f.getName(), mime: b.getContentType(), base64: Utilities.base64Encode(b.getBytes()) };
+  }
+  function api_batalKwitansi(p, me) {
+    wajib_(isBendahara_(me));
+    const alasan = norm(p.alasan);
+    if (!alasan) throw new Error('Tulis alasan pembatalan.');
+    const r = rows_(SH_KWT).find(function (x) { return x.ID === p.id; });
+    if (!r) throw new Error('Kwitansi tidak ditemukan.');
+    if (r.Status !== 'Sah') throw new Error('Kwitansi ini sudah dibatalkan.');
+    ubah_(SH_KWT, r, { Status: 'Dibatalkan', 'Dibatalkan Pada': stamp_(), 'Alasan Batal': alasan.slice(0, 300) + ' (oleh ' + me.nama + ')' });
+    tandaiBatalFile_(r['File ID'], true);
+    return { id: r.ID, status: 'Dibatalkan' };
+  }
+  function api_kirimKwitansi(p, me) {
+    wajib_(isBendahara_(me));
+    const r = rows_(SH_KWT).find(function (x) { return x.ID === p.id; });
+    if (!r) throw new Error('Kwitansi tidak ditemukan.');
+    if (r.Status !== 'Sah') throw new Error('Kwitansi yang dibatalkan tidak dapat dikirim.');
+    if (!r.NISN) throw new Error('Kwitansi ini tidak terkait santri, jadi tidak ada wali yang dituju.');
+    const h = kirimKwitansiKeWali_(r);
+    ubah_(SH_KWT, r, { Dikirim: stamp_() });
+    return h;
+  }
+  /** Dipanggil menu Catat Transaksi setelah sebuah baris kas dihapus. */
+  function setelahHapusKas(noRef, oleh) {
+    try {
+      rows_(SH_KWT).filter(function (r) { return String(r['Ref Kas']) === String(noRef) && r.Status === 'Sah'; }).forEach(function (r) {
+        ubah_(SH_KWT, r, { Status: 'Dibatalkan', 'Dibatalkan Pada': stamp_(), 'Alasan Batal': 'Transaksi kas dihapus' + (oleh ? ' oleh ' + oleh : '') });
+        tandaiBatalFile_(r['File ID'], true);
+      });
+    } catch (e) { Logger.log('setelahHapusKas: ' + e.message); }
+  }
+
+  /* ---------------- verifikasi publik (QR) ---------------- */
+  function api_verifikasi(p) {
+    const k = kodeBersih_(p.kode);
+    const nama = getPengaturan().NamaPesantren || 'Pondok Pesantren';
+    if (k.length < 8) return { ditemukan: false, lembaga: nama };
+    const r = rows_(SH_KWT).find(function (x) { return kodeBersih_(x['Kode Verifikasi']) === k; });
+    if (r) return { ditemukan: true, sah: r.Status === 'Sah', lembaga: nama, jenisDokumen: 'Kwitansi Pembayaran',
+      nomor: r['No Kwitansi'], tanggal: teksTgl_(r.Tanggal), jenis: 'Kwitansi · ' + r.Kategori, perihal: r['Untuk Pembayaran'],
+      nominal: Number(r.Nominal) || 0, diterimaDari: r['Diterima Dari'], penandatangan: 'Bendahara — ' + r['Diterima Oleh'] };
+    const t = rows_(SH_TB).find(function (x) { return kodeBersih_(x['Kode Verifikasi']) === k; });
+    if (t) return { ditemukan: true, sah: t.Status === ST_TB.SAH, lembaga: nama, jenisDokumen: 'Laporan Keuangan',
+      nomor: 'LK/' + pad_(t.Bulan, 2) + '/' + t.Tahun, tanggal: teksTgl_(t['Disahkan Pada']), jenis: 'Laporan Keuangan Bulanan',
+      perihal: 'Laporan keuangan ' + BULAN[Number(t.Bulan) - 1] + ' ' + t.Tahun, penandatangan: 'Mudir — ' + t['Disahkan Oleh'] };
+    // Laporan perkembangan santri (P...) & rapor resmi (R...) dari modul PRM_
+    if (typeof PRM_ !== 'undefined') { try { const x = PRM_.verifikasi(k); if (x) return x; } catch (e) { } }
+    return { ditemukan: false, lembaga: nama };
+  }
+
+  /* ================================================================
+   *  PENGAJUAN DANA + PERSETUJUAN MUDIR
+   * ================================================================ */
+  function noPengajuanBaru_(tahun) {
+    let max = 0;
+    rows_(SH_PD).forEach(function (r) {
+      const m = String(r['No Pengajuan']).match(/^PD-(\d{4})-(\d+)$/);
+      if (m && m[1] === String(tahun) && Number(m[2]) > max) max = Number(m[2]);
+    });
+    return 'PD-' + tahun + '-' + pad_(max + 1, 3);
+  }
+  function outPd_(r) {
+    return { id: r.ID, nomor: r['No Pengajuan'], tanggal: teksTgl_(r.Tanggal), pengaju: r['Diajukan Oleh'], uraian: r.Uraian, kategori: r.Kategori,
+      anggaranId: r['Anggaran ID'], namaAnggaran: r['Nama Anggaran'], nominal: Number(r.Nominal) || 0, rincian: r.Rincian,
+      adaNota: !!r['Nota File ID'], status: r.Status, diputusOleh: r['Diputus Oleh'], diputusPada: r['Diputus Pada'], catatan: r['Catatan Mudir'], noRef: r['Ref Kas'] };
+  }
+  function api_ajukanDana(p, me) {
+    wajib_(punya_(me, PENGAJU_DANA), 'Akun Anda tidak dapat mengajukan dana.');
+    const uraian = norm(p.uraian), kategori = norm(p.kategori);
+    const nominal = Math.round(Number(p.nominal) || 0);
+    if (!uraian) throw new Error('Isi keperluan / uraian pengajuan.');
+    if (!kategori) throw new Error('Pilih kategori pengeluaran.');
+    if (nominal <= 0) throw new Error('Nominal wajib lebih dari 0.');
+    cekTitipan_(kategori, uraian);
+    let ang = null;
+    if (p.anggaranId) {
+      ang = getAnggaranList(new Date().getFullYear()).concat(getAnggaranList(new Date().getFullYear() - 1)).find(function (a) { return a.id === p.anggaranId; });
+      if (!ang) throw new Error('Anggaran kegiatan tidak ditemukan.');
+    }
+    const lock = kunci_();
+    lock.waitLock(30000);
+    let r;
+    try {
+      const tahun = new Date().getFullYear();
+      const nomor = noPengajuanBaru_(tahun);
+      let nota = { id: '', url: '' };
+      if (p.nota && p.nota.base64) {
+        if (String(p.nota.base64).length > 14 * 1024 * 1024) throw new Error('Foto nota terlalu besar (maks 10 MB).');
+        const mime = p.nota.mime || 'application/octet-stream';
+        const ext = (String(p.nota.name || '').match(/\.[a-z0-9]{2,5}$/i) || [mime === 'application/pdf' ? '.pdf' : '.jpg'])[0].toLowerCase();
+        const f = folderJalur_(['Nota Pengajuan', tahun]).createFile(Utilities.newBlob(Utilities.base64Decode(p.nota.base64), mime, aman_(nomor + ' - ' + uraian) + ext));
+        nota = { id: f.getId(), url: f.getUrl() };
+      }
+      r = { ID: uid_(), 'No Pengajuan': nomor, Tanggal: ymd_(new Date()), 'Diajukan Oleh': me.nama, Uraian: uraian.slice(0, 300), Kategori: kategori,
+        'Anggaran ID': ang ? ang.id : '', 'Nama Anggaran': ang ? ang.namaKegiatan : '', Nominal: nominal, Rincian: norm(p.rincian).slice(0, 2000),
+        'Nota File ID': nota.id, 'Nota Link': nota.url, Status: ST_PD.MENUNGGU, 'Diputus Oleh': '', 'Diputus Pada': '', 'Catatan Mudir': '', 'Ref Kas': '', Dibuat: stamp_() };
+      tulis_(SH_PD, null, r);
+    } finally { lock.releaseLock(); }
+    kabarStaf_('Mudir', 'Pengajuan dana menunggu persetujuan', r['No Pengajuan'] + ': ' + r.Uraian + ' — ' + rupiah_(r.Nominal) + '. Diajukan oleh ' + me.nama + '.', 'keuangan_pengajuan');
+    return outPd_(r);
+  }
+  function api_listPengajuan(p, me) {
+    const semua = isStaf_(me);
+    return rows_(SH_PD).filter(function (r) {
+      if (!semua && normNama(r['Diajukan Oleh']) !== normNama(me.nama)) return false;
+      if (p.status && r.Status !== p.status) return false;
+      if (p.tahun && String(r.Tanggal).slice(0, 4) !== String(p.tahun)) return false;
+      return true;
+    }).sort(function (a, b) {
+      const pa = a.Status === ST_PD.MENUNGGU ? 0 : 1, pb = b.Status === ST_PD.MENUNGGU ? 0 : 1;
+      if (pa !== pb) return pa - pb;
+      return String(b.Dibuat).localeCompare(String(a.Dibuat));
+    }).slice(0, 300).map(outPd_);
+  }
+  function api_putuskanPengajuan(p, me) {
+    wajib_(isMudir_(me), 'Hanya Mudir yang dapat menyetujui atau menolak pengajuan dana.');
+    const setuju = p.keputusan === 'setuju';
+    const catatan = norm(p.catatan);
+    if (!setuju && !catatan) throw new Error('Tulis alasan penolakan untuk pengaju.');
+    const lock = kunci_();
+    lock.waitLock(30000);
+    let r, noRef = '';
+    try {
+      r = rows_(SH_PD).find(function (x) { return x.ID === p.id; });
+      if (!r) throw new Error('Pengajuan tidak ditemukan.');
+      if (r.Status !== ST_PD.MENUNGGU) throw new Error('Pengajuan ini sudah diputuskan (' + r.Status + ').');
+      const hariIni = ymd_(new Date());
+      if (setuju) {
+        cekTerkunci_(hariIni);
+        noRef = tambahKas_({ tanggal: hariIni, jenis: 'Pengeluaran', kategori: r.Kategori,
+          uraian: r.Uraian + ' (' + r['No Pengajuan'] + (r['Nama Anggaran'] ? ', anggaran: ' + r['Nama Anggaran'] : '') + ')',
+          nominal: r.Nominal, dicatatOleh: 'Disetujui ' + me.nama + ' · diajukan ' + r['Diajukan Oleh'], noKwitansi: r['No Pengajuan'] });
+      }
+      r = ubah_(SH_PD, r, { Status: setuju ? ST_PD.SETUJU : ST_PD.TOLAK, 'Diputus Oleh': me.nama, 'Diputus Pada': stamp_(), 'Catatan Mudir': catatan.slice(0, 500), 'Ref Kas': noRef });
+    } finally { lock.releaseLock(); }
+    const isi = r['No Pengajuan'] + ': ' + r.Uraian + ' — ' + rupiah_(r.Nominal) + (setuju ? ' disetujui dan sudah tercatat di Buku Kas Umum.' : ' ditolak.') + (catatan ? ' Catatan Mudir: ' + catatan : '');
+    kabarNama_(r['Diajukan Oleh'], setuju ? 'Pengajuan dana disetujui ✓' : 'Pengajuan dana ditolak', isi, 'keuangan_pengajuan');
+    if (setuju) akunPeran_('Bendahara').forEach(function (a) { if (normNama(a.nama) !== normNama(r['Diajukan Oleh'])) kabarNama_(a.nama, 'Dana disetujui — siap dicairkan', isi, 'keuangan_pengajuan'); });
+    return Object.assign(outPd_(Object.assign({ _row: 0 }, r)), { noRef: noRef });
+  }
+  function api_batalPengajuan(p, me) {
+    const r = rows_(SH_PD).find(function (x) { return x.ID === p.id; });
+    if (!r) throw new Error('Pengajuan tidak ditemukan.');
+    wajib_(normNama(r['Diajukan Oleh']) === normNama(me.nama) || isBendahara_(me), 'Hanya pengaju yang dapat membatalkan pengajuan ini.');
+    if (r.Status !== ST_PD.MENUNGGU) throw new Error('Hanya pengajuan yang masih menunggu yang dapat dibatalkan.');
+    ubah_(SH_PD, r, { Status: ST_PD.BATAL, 'Diputus Pada': stamp_(), 'Catatan Mudir': 'Dibatalkan oleh ' + me.nama });
+    return { id: r.ID, status: ST_PD.BATAL };
+  }
+  function api_fileNota(p, me) {
+    const r = rows_(SH_PD).find(function (x) { return x.ID === p.id; });
+    if (!r || !r['Nota File ID']) throw new Error('Nota tidak tersedia.');
+    wajib_(isStaf_(me) || normNama(r['Diajukan Oleh']) === normNama(me.nama));
+    return fileB64_(r['Nota File ID']);
+  }
+
+  /* ================================================================
+   *  LAPORAN RESMI + TUTUP BUKU
+   * ================================================================ */
+  function ringkasBulan_(bulan, tahun) {
+    const b = getBKUBulanan(bulan, tahun);
+    const perKat = {};
+    b.baris.forEach(function (t) {
+      const key = t.jenis + '|' + t.kategori;
+      if (!perKat[key]) perKat[key] = { jenis: t.jenis, kategori: t.kategori, total: 0, jumlah: 0 };
+      perKat[key].total += t.nominal; perKat[key].jumlah++;
+    });
+    return { bulan: b.bulan, tahun: b.tahun, namaBulan: b.namaBulan, saldoAwal: b.saldoAwal, totalPemasukan: b.totalPemasukan,
+      totalPengeluaran: b.totalPengeluaran, saldoAkhir: b.saldoAkhir, jumlah: b.baris.length, baris: b.baris,
+      perKategori: Object.keys(perKat).map(function (k) { return perKat[k]; }), titipan: barisTitipan_(b.baris) };
+  }
+  function outTb_(r) {
+    return { periode: String(r.Periode), bulan: Number(r.Bulan), tahun: Number(r.Tahun), saldoAwal: Number(r['Saldo Awal']) || 0,
+      pemasukan: Number(r.Pemasukan) || 0, pengeluaran: Number(r.Pengeluaran) || 0, saldoAkhir: Number(r['Saldo Akhir']) || 0,
+      jumlah: Number(r['Jumlah Transaksi']) || 0, status: r.Status, diajukanOleh: r['Diajukan Oleh'], diajukanPada: r['Diajukan Pada'],
+      disahkanOleh: r['Disahkan Oleh'], disahkanPada: r['Disahkan Pada'], catatan: r.Catatan, adaFile: !!r['File ID'], kode: r['Kode Verifikasi'] };
+  }
+  function api_statusTutupBuku(p, me) {
+    wajib_(isStaf_(me));
+    const th = Number(p.tahun) || new Date().getFullYear();
+    const per = {};
+    rows_(SH_TB).forEach(function (r) { if (Number(r.Tahun) === th) per[String(r.Periode)] = r; });
+    const batas = batasTutup_();
+    const lap = getLaporanBulanan(th);
+    return lap.map(function (b) {
+      const r = per[periode_(b.bulan, th)];
+      return { bulan: b.bulan, tahun: th, namaBulan: b.namaBulan, pemasukan: b.pemasukan, pengeluaran: b.pengeluaran,
+        status: r ? r.Status : '', tb: r ? outTb_(r) : null, terkunci: !!batas && periode_(b.bulan, th) <= batas };
+    });
+  }
+  function api_dataLaporan(p, me) {
+    wajib_(isStaf_(me));
+    const r = statusPeriode_(periode_(Number(p.bulan), Number(p.tahun)));
+    return { ringkas: ringkasBulan_(Number(p.bulan), Number(p.tahun)), tb: r ? outTb_(r) : null,
+      pengajuan: rows_(SH_PD).filter(function (x) { return x.Status === ST_PD.SETUJU && String(x['Diputus Pada']).slice(0, 7) === ym_(Number(p.bulan), Number(p.tahun)); }).map(outPd_) };
+  }
+  function api_ajukanTutupBuku(p, me) {
+    wajib_(isBendahara_(me), 'Hanya Bendahara yang dapat menutup buku.');
+    const bulan = Number(p.bulan), tahun = Number(p.tahun);
+    if (!(bulan >= 1 && bulan <= 12) || !tahun) throw new Error('Periode tidak valid.');
+    const sekarang = new Date();
+    // Hanya bulan yang sudah berakhir: transaksi otomatis (mis. pendapatan kantin) masih
+    // masuk ke bulan berjalan, jadi bulan ini belum bisa dibukukan final.
+    if (tahun > sekarang.getFullYear() || (tahun === sekarang.getFullYear() && bulan >= sekarang.getMonth() + 1)) throw new Error('Tutup buku hanya untuk bulan yang sudah berakhir. ' + BULAN[bulan - 1] + ' ' + tahun + ' dapat ditutup mulai awal bulan berikutnya.');
+    const per = periode_(bulan, tahun);
+    const lock = kunci_();
+    lock.waitLock(30000);
+    let o;
+    try {
+      const ada = statusPeriode_(per);
+      if (ada && TERKUNCI_TB.indexOf(String(ada.Status)) >= 0) throw new Error('Buku ' + BULAN[bulan - 1] + ' ' + tahun + ' sudah ' + (ada.Status === ST_TB.SAH ? 'disahkan.' : 'diajukan dan menunggu pengesahan.'));
+      const rk = ringkasBulan_(bulan, tahun);
+      if (rk.titipan.length) throw new Error('Ada ' + rk.titipan.length + ' transaksi di ' + BULAN[bulan - 1] + ' ' + tahun + ' yang tampak seperti uang belanja/saldo santri (' +
+        rk.titipan.slice(0, 3).map(function (t) { return t.noRef; }).join(', ') + (rk.titipan.length > 3 ? ', …' : '') +
+        '). Uang titipan santri bukan kas pondok: hapus transaksi tersebut dari Catat Transaksi, lalu ajukan lagi.');
+      const riwayat = ada ? String(ada.Riwayat || '') : '';
+      o = { Periode: per, Bulan: bulan, Tahun: tahun, 'Saldo Awal': rk.saldoAwal, Pemasukan: rk.totalPemasukan, Pengeluaran: rk.totalPengeluaran,
+        'Saldo Akhir': rk.saldoAkhir, 'Jumlah Transaksi': rk.jumlah, Status: ST_TB.MENUNGGU, 'Diajukan Oleh': me.nama, 'Diajukan Pada': stamp_(),
+        'Disahkan Oleh': '', 'Disahkan Pada': '', Catatan: norm(p.catatan).slice(0, 500), 'Kode Verifikasi': '', 'File ID': '', 'Link PDF': '',
+        Riwayat: (riwayat ? riwayat + '\n' : '') + stamp_() + ' diajukan oleh ' + me.nama };
+      if (ada) tulis_(SH_TB, ada._row, o); else tulis_(SH_TB, null, o);
+    } finally { lock.releaseLock(); }
+    kabarStaf_('Mudir', 'Laporan keuangan menunggu pengesahan', 'Buku kas ' + BULAN[bulan - 1] + ' ' + tahun + ' ditutup oleh ' + me.nama + '. Saldo akhir ' + rupiah_(o['Saldo Akhir']) + '.', 'keuangan_pengajuan');
+    return outTb_(o);
+  }
+  function api_kembalikanTutupBuku(p, me) {
+    const per = periode_(Number(p.bulan), Number(p.tahun));
+    const r = statusPeriode_(per);
+    if (!r) throw new Error('Periode ini belum ditutup.');
+    if (r.Status === ST_TB.MENUNGGU) {
+      wajib_(isMudir_(me) || isBendahara_(me));
+      if (isMudir_(me) && !norm(p.catatan)) throw new Error('Tulis catatan perbaikan untuk Bendahara.');
+    } else if (r.Status === ST_TB.SAH) {
+      wajib_(isMudir_(me), 'Laporan yang sudah disahkan hanya dapat dibuka kembali oleh Mudir.');
+      if (!norm(p.catatan)) throw new Error('Tulis alasan membuka kembali buku ini.');
+      tandaiBatalFile_(r['File ID'], true);
+    } else throw new Error('Buku periode ini tidak sedang ditutup.');
+    const status = r.Status === ST_TB.SAH ? ST_TB.BUKA : ST_TB.KEMBALI;
+    const o = ubah_(SH_TB, r, { Status: status, Catatan: norm(p.catatan).slice(0, 500), Riwayat: String(r.Riwayat || '') + '\n' + stamp_() + ' ' + status.toLowerCase() + ' oleh ' + me.nama + (p.catatan ? ': ' + norm(p.catatan) : '') });
+    if (isMudir_(me)) akunPeran_('Bendahara').forEach(function (a) { kabarNama_(a.nama, 'Buku kas ' + BULAN[Number(p.bulan) - 1] + ' ' + p.tahun + ' ' + status.toLowerCase(), norm(p.catatan), 'keuangan_pengajuan'); });
+    return outTb_(o);
+  }
+  function api_sahkanTutupBuku(p, me) {
+    wajib_(isMudir_(me), 'Hanya Mudir yang dapat mengesahkan laporan keuangan.');
+    if (!p.html) throw new Error('Isi laporan kosong.');
+    const bulan = Number(p.bulan), tahun = Number(p.tahun);
+    const per = periode_(bulan, tahun);
+    const lock = kunci_();
+    lock.waitLock(30000);
+    let o;
+    try {
+      const r = statusPeriode_(per);
+      if (!r || r.Status !== ST_TB.MENUNGGU) throw new Error('Laporan ' + BULAN[bulan - 1] + ' ' + tahun + ' tidak sedang menunggu pengesahan.');
+      const rk = ringkasBulan_(bulan, tahun);
+      if (rk.saldoAkhir !== Number(r['Saldo Akhir']) || rk.jumlah !== Number(r['Jumlah Transaksi'])) throw new Error('Isi buku kas berubah sejak diajukan. Minta Bendahara mengajukan ulang.');
+      const kode = kodeUnik_('L', p.kodeVerifikasi);
+      const isi = String(p.html).split('{{KODE}}').join(kode.replace(/^(.{4})(.{4})(.*)$/, '$1-$2-$3'));
+      const f = simpanPdf_(isi, aman_('Laporan Keuangan ' + pad_(bulan, 2) + ' ' + BULAN[bulan - 1] + ' ' + tahun), ['Laporan Bulanan', tahun]);
+      o = ubah_(SH_TB, r, { Status: ST_TB.SAH, 'Disahkan Oleh': me.nama, 'Disahkan Pada': stamp_(), 'Kode Verifikasi': kode, 'File ID': f.id, 'Link PDF': f.url,
+        Riwayat: String(r.Riwayat || '') + '\n' + stamp_() + ' disahkan oleh ' + me.nama });
+    } finally { lock.releaseLock(); }
+    akunPeran_('Bendahara').forEach(function (a) { kabarNama_(a.nama, 'Laporan keuangan disahkan ✓', 'Laporan ' + BULAN[bulan - 1] + ' ' + tahun + ' telah disahkan oleh ' + me.nama + '.', 'keuangan_pengajuan'); });
+    return outTb_(o);
+  }
+  function api_fileLaporan(p, me) {
+    wajib_(isStaf_(me));
+    const r = statusPeriode_(periode_(Number(p.bulan), Number(p.tahun)));
+    if (!r || !r['File ID']) throw new Error('Laporan resmi bulan ini belum disahkan.');
+    return fileB64_(r['File ID']);
+  }
+
+  /* ================================================================
+   *  TAGIHAN SPP KE WALI (aplikasi + WA + catatan)
+   * ================================================================ */
+  function kirimSatuTagihan_(t, oleh) {
+    let push = false, wa = '';
+    try { kirimPushKeWali(t.nisn, '💳 Tagihan SPP ' + t.nama, 'SPP yang belum dibayar: ' + t.bulanTunggak.join(', ') + '. Total ' + rupiah_(t.tunggakanSPP) + '. Rincian di menu SPP aplikasi WASIAT.'); push = true; } catch (e) { }
+    if (!t.noWa) wa = 'tanpa nomor';
+    else if (!waTerkonfigurasi_()) wa = 'WA belum diatur';
+    else {
+      try {
+        const h = kirimWA_(t.noWa, buildPesanTagihanSPP(t.nama, t.bulanTunggak, t.tunggakanSPP), 'spp_tagihan_manual');
+        wa = h && h.ok ? 'terkirim' : (h && h.dilewati ? 'nonaktif' : 'gagal');
+      } catch (e) { wa = 'gagal'; }
+    }
+    try {
+      sheet_(SH_LOG).appendRow([stamp_(), t.nisn, t.nama, t.tunggakanSPP, t.bulanTunggak.length, 'Aplikasi' + (wa === 'terkirim' ? ' + WA' : ''), oleh]);
+    } catch (e) { }
+    return { push: push, wa: wa };
+  }
+  function api_kirimTagihan(p, me) {
+    wajib_(isBendahara_(me));
+    const t = getTunggakanSantri().find(function (x) { return x.nisn === norm(p.nisn); });
+    if (!t) throw new Error('Santri ini tidak memiliki tunggakan SPP.');
+    return kirimSatuTagihan_(t, me.nama);
+  }
+  function api_kirimTagihanMassal(p, me) {
+    wajib_(isBendahara_(me));
+    const min = Math.max(1, Number(p.minBulan) || 1);
+    const pilih = (p.nisnList || []).map(String);
+    let jumlah = 0, wa = 0;
+    getTunggakanSantri().forEach(function (t) {
+      if (t.status) return;                                   // santri keluar/lulus dilewati
+      if (t.jumlahBulan < min) return;
+      if (pilih.length && pilih.indexOf(t.nisn) < 0) return;
+      const h = kirimSatuTagihan_(t, me.nama);
+      jumlah++; if (h.wa === 'terkirim') wa++;
+      if (h.wa === 'terkirim') Utilities.sleep(300);
+    });
+    return { jumlah: jumlah, wa: wa };
+  }
+  function api_logTagihan(p, me) {
+    wajib_(isStaf_(me));
+    const sh = getMasterSS().getSheetByName(SH_LOG);
+    if (!sh || sh.getLastRow() < 2) return {};
+    const hasil = {};
+    sh.getRange(2, 1, sh.getLastRow() - 1, 7).getValues().forEach(function (r) {
+      const w = r[0] instanceof Date ? Utilities.formatDate(r[0], tz_(), 'yyyy-MM-dd HH:mm') : String(r[0]).slice(0, 16);
+      hasil[String(r[1])] = { waktu: w, kanal: r[5], oleh: r[6] };
+    });
+    return hasil;
+  }
+
+  /* ================================================================
+   *  KONFIRMASI TRANSFER DARI WALI
+   *  Wali mengunggah bukti transfer -> Bendahara menekan Terima -> jalur yang SAMA
+   *  dengan menu Terima Pembayaran (kas + SPP lunas + kwitansi ber-QR). Pembayaran
+   *  manual (setor tunai / bukti lewat WA) tetap lewat menu Terima Pembayaran seperti biasa.
+   * ================================================================ */
+  const SH_KT = 'KonfirmasiTransfer';
+  HEAD[SH_KT] = ['ID', 'Dibuat', 'NISN', 'Nama Santri', 'Dikirim Oleh', 'Jenis', 'Bulan SPP', 'Kategori', 'Keterangan', 'Nominal',
+    'Tanggal Transfer', 'Rekening Pengirim', 'Catatan', 'Bukti File ID', 'Status', 'Diproses Oleh', 'Diproses Pada', 'Alasan', 'No Kwitansi', 'Ref Kas'];
+  const ST_KT = { MENUNGGU: 'Menunggu', PROSES: 'Diproses', TERIMA: 'Diterima', TOLAK: 'Ditolak', BATAL: 'Dibatalkan' };
+  const PROP_REK = 'KEU_REKENING';
+
+  function sppSantri_(nisn) {
+    const sh = getAktifSppSS().getSheetByName(SHEET_SPP);
+    if (!sh) return null;
+    const k = kolomSpp_(sh);
+    const rows = sh.getDataRange().getValues();
+    for (let i = 1; i < rows.length; i++) {
+      if (norm(rows[i][0]) !== String(nisn)) continue;
+      return { biaya: Number(rows[i][k.biaya - 1]) || 0, bebas: String(rows[i][k.bebas - 1]).toUpperCase() === 'TRUE',
+        lunas: rows[i].slice(k.bulan1 - 1, k.bulan1 - 1 + 36).map(function (v) { return !!norm(v); }) };
+    }
+    return null;
+  }
+  function bulanMenunggu_(nisn, kecualiId) {
+    const ada = {};
+    rows_(SH_KT).forEach(function (r) {
+      if (String(r.NISN) !== String(nisn) || r.ID === kecualiId || (r.Status !== ST_KT.MENUNGGU && r.Status !== ST_KT.PROSES)) return;
+      String(r['Bulan SPP'] || '').split(',').map(Number).filter(Boolean).forEach(function (b) { ada[b] = true; });
+    });
+    return ada;
+  }
+  function ketTf_(r) { return 'transfer ' + Utilities.formatDate(tgl_(r['Tanggal Transfer']), tz_(), 'dd/MM/yyyy'); }
+  /** Sama persis dengan teks "Untuk pembayaran" yang dibuat api_terimaPembayaran. */
+  function untukKt_(r, s, bulan) {
+    if (r.Jenis === 'SPP') return 'SPP ' + bulan.map(function (b) { return labelBulanSPP(b, s.tahunMasuk); }).join(', ') + ' a.n. ' + s.nama + ' (' + ketTf_(r) + ')';
+    return r.Keterangan + ' (transfer)';
+  }
+  function outKt_(r, s) {
+    const bulan = String(r['Bulan SPP'] || '').split(',').map(Number).filter(Boolean);
+    return { id: r.ID, dibuat: r.Dibuat, nisn: String(r.NISN), nama: r['Nama Santri'], pengirim: r['Dikirim Oleh'], jenis: r.Jenis,
+      bulan: bulan, labelBulan: s ? bulan.map(function (b) { return labelBulanSPP(b, s.tahunMasuk); }) : [], kategori: r.Kategori,
+      keterangan: r.Keterangan, nominal: Number(r.Nominal) || 0, tanggalTransfer: teksTgl_(r['Tanggal Transfer']), rekening: r['Rekening Pengirim'],
+      catatan: r.Catatan, adaBukti: !!r['Bukti File ID'], status: r.Status, diprosesOleh: r['Diproses Oleh'], diprosesPada: r['Diproses Pada'],
+      alasan: r.Alasan, noKwitansi: r['No Kwitansi'], untuk: s ? untukKt_(r, s, bulan) : '', ketTf: ketTf_(r) };
+  }
+  function kategoriPemasukan_() {
+    try { return getKategoriKasList().filter(function (k) { return k.jenis === 'Pemasukan'; }).map(function (k) { return k.nama; }); } catch (e) { return []; }
+  }
+  function kategoriSpp_() { return kategoriPemasukan_().find(function (k) { return /^spp$/i.test(k); }) || 'SPP'; }
+
+  /** Data form wali: rekening pondok, bulan SPP yang bisa dibayar, kategori lain, dan riwayat konfirmasinya. */
+  function api_infoKonfirmasi(p, me) {
+    wajib_(bolehNisn_(me, p.nisn), 'Anda tidak memiliki akses ke data santri ini.');
+    const s = santri_(p.nisn);
+    if (!s) throw new Error('Data santri tidak ditemukan.');
+    const spp = sppSantri_(s.nisn);
+    const menunggu = bulanMenunggu_(s.nisn);
+    const bulan = [];
+    if (spp && !spp.bebas && spp.biaya > 0) {
+      for (let b = 1; b <= 36; b++) {
+        if (spp.lunas[b - 1]) continue;
+        bulan.push({ idx: b, label: labelBulanSPP(b, s.tahunMasuk), menunggu: !!menunggu[b] });
+        if (bulan.length >= 8) break;
+      }
+    }
+    return { santri: { nisn: s.nisn, nama: s.nama }, biaya: spp ? spp.biaya : 0, bebas: spp ? spp.bebas : false, bulan: bulan,
+      kategori: kategoriPemasukan_().filter(function (k) { return !/^spp$/i.test(k) && !uangTitipanSantri(k, ''); }),
+      rekening: props_().getProperty(PROP_REK) || '',
+      riwayat: rows_(SH_KT).filter(function (r) { return String(r.NISN) === s.nisn; })
+        .sort(function (a, b) { return String(b.Dibuat).localeCompare(String(a.Dibuat)); }).slice(0, 20).map(function (r) { return outKt_(r, s); }) };
+  }
+
+  function api_kirimKonfirmasi(p, me) {
+    wajib_(bolehNisn_(me, p.nisn), 'Anda tidak memiliki akses ke data santri ini.');
+    const s = santri_(p.nisn);
+    if (!s) throw new Error('Data santri tidak ditemukan.');
+    const jenis = p.jenis === 'Lain' ? 'Lain' : 'SPP';
+    const tglTf = teksTgl_(p.tanggalTransfer);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(tglTf)) throw new Error('Isi tanggal transfer.');
+    if (tglTf > ymd_(new Date())) throw new Error('Tanggal transfer tidak boleh di masa depan.');
+    if (!p.bukti || !p.bukti.base64) throw new Error('Lampirkan foto/berkas bukti transfer.');
+    if (String(p.bukti.base64).length > 7 * 1024 * 1024) throw new Error('Berkas bukti terlalu besar (maks 5 MB).');
+    const mime = String(p.bukti.mime || '');
+    if (!/^image\/(jpeg|png|webp)$|^application\/pdf$/.test(mime)) throw new Error('Bukti harus berupa foto (JPG/PNG) atau PDF.');
+    let bulan = [], nominal = 0, kategori = '', ket = '';
+    const lock = kunci_();
+    lock.waitLock(30000);
+    let r;
+    try {
+      const aktif = rows_(SH_KT).filter(function (x) { return String(x.NISN) === s.nisn && x.Status === ST_KT.MENUNGGU; });
+      if (aktif.length >= 5) throw new Error('Masih ada 5 konfirmasi yang menunggu diperiksa Bendahara. Tunggu sampai diproses.');
+      if (jenis === 'SPP') {
+        const spp = sppSantri_(s.nisn);
+        if (!spp || spp.biaya <= 0) throw new Error('Data SPP santri ini belum diatur. Hubungi Bendahara.');
+        if (spp.bebas) throw new Error('Santri ini dibebaskan dari SPP.');
+        bulan = (p.sppBulan || []).map(Number).filter(function (b) { return b >= 1 && b <= 36; });
+        bulan = bulan.filter(function (b, i) { return bulan.indexOf(b) === i; }).sort(function (a, b) { return a - b; });
+        if (!bulan.length) throw new Error('Pilih bulan SPP yang dibayar.');
+        const sudah = bulan.filter(function (b) { return spp.lunas[b - 1]; });
+        if (sudah.length) throw new Error('Bulan berikut sudah lunas: ' + sudah.map(function (b) { return labelBulanSPP(b, s.tahunMasuk); }).join(', ') + '.');
+        const tunggu = bulanMenunggu_(s.nisn);
+        const dobel = bulan.filter(function (b) { return tunggu[b]; });
+        if (dobel.length) throw new Error('Bulan ' + dobel.map(function (b) { return labelBulanSPP(b, s.tahunMasuk); }).join(', ') + ' sudah dikonfirmasi dan sedang menunggu diperiksa.');
+        nominal = spp.biaya * bulan.length;
+        kategori = kategoriSpp_();
+        ket = 'SPP ' + bulan.map(function (b) { return labelBulanSPP(b, s.tahunMasuk); }).join(', ');
+      } else {
+        kategori = norm(p.kategori); ket = norm(p.keterangan).slice(0, 200);
+        nominal = Math.round(Number(p.nominal) || 0);
+        if (!kategori || kategoriPemasukan_().indexOf(kategori) < 0) throw new Error('Pilih jenis pembayaran.');
+        if (!ket) throw new Error('Isi keterangan pembayaran.');
+        if (nominal <= 0) throw new Error('Isi nominal yang ditransfer.');
+        cekTitipan_(kategori, ket);
+      }
+      const d = new Date();
+      const ext = mime === 'application/pdf' ? '.pdf' : (mime === 'image/png' ? '.png' : '.jpg');
+      const f = folderJalur_(['Bukti Transfer', d.getFullYear(), pad_(d.getMonth() + 1, 2) + ' ' + BULAN[d.getMonth()]])
+        .createFile(Utilities.newBlob(Utilities.base64Decode(p.bukti.base64), mime, aman_(tglTf + ' - ' + s.nama + ' - ' + ket) + ext));
+      r = { ID: uid_(), Dibuat: stamp_(), NISN: s.nisn, 'Nama Santri': s.nama, 'Dikirim Oleh': me.nama, Jenis: jenis, 'Bulan SPP': bulan.join(','),
+        Kategori: kategori, Keterangan: ket, Nominal: nominal, 'Tanggal Transfer': tglTf, 'Rekening Pengirim': norm(p.rekening).slice(0, 120),
+        Catatan: norm(p.catatan).slice(0, 300), 'Bukti File ID': f.getId(), Status: ST_KT.MENUNGGU, 'Diproses Oleh': '', 'Diproses Pada': '',
+        Alasan: '', 'No Kwitansi': '', 'Ref Kas': '' };
+      tulis_(SH_KT, null, r);
+    } finally { lock.releaseLock(); }
+    try { kabarStaf_('Bendahara', '💳 Konfirmasi transfer baru', s.nama + ': ' + ket + ' · ' + rupiah_(nominal) + '. Periksa di menu Konfirmasi Transfer.', 'konfirmasi_transfer'); } catch (e) { }
+    return outKt_(r, s);
+  }
+
+  function api_batalKonfirmasi(p, me) {
+    const r = rows_(SH_KT).find(function (x) { return x.ID === p.id; });
+    if (!r) throw new Error('Konfirmasi tidak ditemukan.');
+    wajib_(bolehNisn_(me, r.NISN), 'Anda tidak memiliki akses ke data ini.');
+    if (r.Status !== ST_KT.MENUNGGU) throw new Error('Konfirmasi ini sudah ' + String(r.Status).toLowerCase() + '.');
+    ubah_(SH_KT, r, { Status: ST_KT.BATAL, 'Diproses Oleh': me.nama, 'Diproses Pada': stamp_() });
+    return { id: r.ID, status: ST_KT.BATAL };
+  }
+
+  function api_listKonfirmasi(p, me) {
+    wajib_(isBendahara_(me), 'Hanya Bendahara, Admin, atau Mudir.');
+    const st = norm(p.status) || ST_KT.MENUNGGU;
+    const semua = rows_(SH_KT);
+    const daftar = semua.filter(function (r) { return st === 'Semua' || r.Status === st || (st === ST_KT.MENUNGGU && r.Status === ST_KT.PROSES); })
+      .sort(function (a, b) { return st === ST_KT.MENUNGGU ? String(a.Dibuat).localeCompare(String(b.Dibuat)) : String(b.Dibuat).localeCompare(String(a.Dibuat)); })
+      .slice(0, 200);
+    const memo = {};
+    return { rekening: props_().getProperty(PROP_REK) || '', menunggu: semua.filter(function (r) { return r.Status === ST_KT.MENUNGGU; }).length,
+      data: daftar.map(function (r) { const n = String(r.NISN); if (!(n in memo)) memo[n] = santri_(n); return outKt_(r, memo[n]); }) };
+  }
+
+  function api_buktiKonfirmasi(p, me) {
+    const r = rows_(SH_KT).find(function (x) { return x.ID === p.id; });
+    if (!r || !r['Bukti File ID']) throw new Error('Bukti tidak tersedia.');
+    wajib_(bolehNisn_(me, r.NISN), 'Anda tidak memiliki akses ke bukti ini.');
+    return fileB64_(r['Bukti File ID']);
+  }
+
+  /** Terima: jalur Terima Pembayaran yang sama. Bendahara boleh mengurangi bulan bila nominal transfer kurang. */
+  function api_terimaKonfirmasi(p, me) {
+    wajib_(isBendahara_(me), 'Hanya Bendahara, Admin, atau Mudir yang dapat menerima pembayaran.');
+    const lock = kunci_();
+    lock.waitLock(30000);
+    let r;
+    try {
+      r = rows_(SH_KT).find(function (x) { return x.ID === p.id; });
+      if (!r) throw new Error('Konfirmasi tidak ditemukan.');
+      if (r.Status !== ST_KT.MENUNGGU) throw new Error('Konfirmasi ini sudah ' + String(r.Status).toLowerCase() + (r['Diproses Oleh'] ? ' oleh ' + r['Diproses Oleh'] : '') + '.');
+      r = Object.assign(r, ubah_(SH_KT, r, { Status: ST_KT.PROSES, 'Diproses Oleh': me.nama, 'Diproses Pada': stamp_() }));
+    } finally { lock.releaseLock(); }
+    const s = santri_(r.NISN);
+    let hasil;
+    try {
+      if (!s) throw new Error('Data santri tidak ditemukan.');
+      const asal = String(r['Bulan SPP'] || '').split(',').map(Number).filter(Boolean);
+      let bulan = asal;
+      if (r.Jenis === 'SPP' && p.sppBulan) {
+        bulan = (p.sppBulan || []).map(Number).filter(function (b) { return asal.indexOf(b) >= 0; });
+        if (!bulan.length) throw new Error('Pilih minimal satu bulan yang diterima.');
+      }
+      hasil = api_terimaPembayaran({
+        tanggal: ymd_(new Date()), nisn: s.nisn, diterimaDari: 'Wali santri ' + s.nama, kategori: r.Kategori,
+        uraian: r.Jenis === 'SPP' ? ketTf_(r) : r.Keterangan + ' (transfer)',
+        nominal: Number(r.Nominal) || 0, sppBulan: r.Jenis === 'SPP' ? bulan : [], metode: 'Transfer Bank', kelas: norm(p.kelas),
+        kirimKeWali: p.kirimKeWali !== false, html: p.html, kodeVerifikasi: p.kodeVerifikasi }, me);
+      const sisa = asal.filter(function (b) { return bulan.indexOf(b) < 0; });
+      const cur = rows_(SH_KT).find(function (x) { return x.ID === r.ID; });
+      ubah_(SH_KT, cur, { Status: ST_KT.TERIMA, 'Diproses Oleh': me.nama, 'Diproses Pada': stamp_(), 'No Kwitansi': hasil.kwitansi.nomor, 'Ref Kas': hasil.noRef,
+        'Bulan SPP': r.Jenis === 'SPP' ? bulan.join(',') : '', Nominal: hasil.kwitansi.nominal,
+        Alasan: sisa.length ? 'Diterima sebagian; belum diterima: ' + sisa.map(function (b) { return labelBulanSPP(b, s.tahunMasuk); }).join(', ') + (norm(p.catatan) ? ' — ' + norm(p.catatan) : '') : norm(p.catatan) });
+    } catch (e) {
+      // gagal -> kembalikan ke Menunggu supaya bisa diproses ulang
+      try { const cur = rows_(SH_KT).find(function (x) { return x.ID === r.ID; }); if (cur && cur.Status === ST_KT.PROSES) ubah_(SH_KT, cur, { Status: ST_KT.MENUNGGU, 'Diproses Oleh': '', 'Diproses Pada': '' }); } catch (e2) { }
+      throw e;
+    }
+    return hasil;
+  }
+
+  function api_tolakKonfirmasi(p, me) {
+    wajib_(isBendahara_(me), 'Hanya Bendahara, Admin, atau Mudir.');
+    const alasan = norm(p.alasan);
+    if (!alasan) throw new Error('Tulis alasan penolakan agar wali tahu apa yang perlu diperbaiki.');
+    const lock = kunci_();
+    lock.waitLock(30000);
+    let r;
+    try {
+      r = rows_(SH_KT).find(function (x) { return x.ID === p.id; });
+      if (!r) throw new Error('Konfirmasi tidak ditemukan.');
+      if (r.Status !== ST_KT.MENUNGGU) throw new Error('Konfirmasi ini sudah ' + String(r.Status).toLowerCase() + '.');
+      ubah_(SH_KT, r, { Status: ST_KT.TOLAK, 'Diproses Oleh': me.nama, 'Diproses Pada': stamp_(), Alasan: alasan.slice(0, 300) });
+    } finally { lock.releaseLock(); }
+    const s = santri_(r.NISN);
+    const isi = 'Konfirmasi transfer ' + r.Keterangan + ' (' + rupiah_(r.Nominal) + ') belum dapat diterima. Alasan: ' + alasan;
+    try { kirimPushKeWali(String(r.NISN), '⚠️ Konfirmasi transfer perlu diperbaiki', isi); } catch (e) { }
+    if (s && s.noWa) { try { kirimWA_(s.noWa, 'Assalamualaikum Wr. Wb.\n\nYth. Orang Tua/Wali Santri *' + s.nama + '*\n\n' + isi + '\n\nSilakan kirim ulang konfirmasi di aplikasi WASIAT (menu SPP) atau hubungi Bendahara.\n\nJazakumullah khairan.', 'konfirmasi_transfer'); } catch (e) { } }
+    return { id: r.ID, status: ST_KT.TOLAK };
+  }
+
+  function api_simpanRekening(p, me) {
+    wajib_(isBendahara_(me), 'Hanya Bendahara, Admin, atau Mudir.');
+    props_().setProperty(PROP_REK, norm(p.rekening).slice(0, 500));
+    return { rekening: props_().getProperty(PROP_REK) };
+  }
+
+  /* ---------------- ringkasan untuk menu ---------------- */
+  function api_ringkas(p, me) {
+    const pd = rows_(SH_PD);
+    const tb = rows_(SH_TB);
+    return {
+      pengajuanMenunggu: pd.filter(function (r) { return r.Status === ST_PD.MENUNGGU; }).length,
+      pengajuanSaya: pd.filter(function (r) { return r.Status === ST_PD.MENUNGGU && normNama(r['Diajukan Oleh']) === normNama(me.nama); }).length,
+      laporanMenunggu: tb.filter(function (r) { return r.Status === ST_TB.MENUNGGU; }).length,
+      konfirmasiMenunggu: isBendahara_(me) ? rows_(SH_KT).filter(function (r) { return r.Status === ST_KT.MENUNGGU; }).length : 0,
+      bisaPutuskan: isMudir_(me), bendahara: isBendahara_(me), roles: me.roles, nama: me.nama,
+    };
+  }
+  function api_kop(p, me) {
+    let kop = null;
+    try { kop = SURAT_.kopUntukModulLain(); } catch (e) { }
+    return { kop: kop, namaPesantren: getPengaturan().NamaPesantren || 'Pondok Pesantren', alamat: getPengaturan().AlamatPesantren || '' };
+  }
+
+  /* ---------------- pintu masuk ---------------- */
+  const HANDLERS = {
+    verifikasi: api_verifikasi,
+    ringkas: api_ringkas, kop: api_kop,
+    terimaPembayaran: api_terimaPembayaran, terbitkanKwitansiKas: api_terbitkanKwitansiKas, infoKwitansiKas: api_infoKwitansiKas,
+    listKwitansi: api_listKwitansi, petaKwitansiKas: api_petaKwitansiKas, kwitansiSantri: api_kwitansiSantri, fileKwitansi: api_fileKwitansi,
+    batalKwitansi: api_batalKwitansi, kirimKwitansi: api_kirimKwitansi,
+    ajukanDana: api_ajukanDana, listPengajuan: api_listPengajuan, putuskanPengajuan: api_putuskanPengajuan, batalPengajuan: api_batalPengajuan, fileNota: api_fileNota,
+    statusTutupBuku: api_statusTutupBuku, dataLaporan: api_dataLaporan, ajukanTutupBuku: api_ajukanTutupBuku, kembalikanTutupBuku: api_kembalikanTutupBuku,
+    sahkanTutupBuku: api_sahkanTutupBuku, fileLaporan: api_fileLaporan,
+    kirimTagihan: api_kirimTagihan, kirimTagihanMassal: api_kirimTagihanMassal, logTagihan: api_logTagihan,
+    infoKonfirmasi: api_infoKonfirmasi, kirimKonfirmasi: api_kirimKonfirmasi, batalKonfirmasi: api_batalKonfirmasi, listKonfirmasi: api_listKonfirmasi,
+    buktiKonfirmasi: api_buktiKonfirmasi, terimaKonfirmasi: api_terimaKonfirmasi, tolakKonfirmasi: api_tolakKonfirmasi, simpanRekening: api_simpanRekening,
+  };
+  const PUBLIK = { verifikasi: true };
+  function tangani(req) {
+    const fn = HANDLERS[req.action];
+    if (!fn) return { ok: false, error: 'Aksi keuangan tidak dikenal: ' + req.action };
+    try {
+      if (PUBLIK[req.action]) return { ok: true, data: fn(req.payload || {}) };
+      let me = null;
+      try { me = (typeof SURAT_ !== 'undefined') ? SURAT_.identitasToken(req.token) : null; } catch (e) { me = null; }
+      if (!me) return { ok: false, auth: false, error: 'Sesi berakhir. Silakan keluar lalu masuk kembali ke WASIAT.' };
+      return { ok: true, data: fn(req.payload || {}, me) };
+    } catch (err) {
+      return { ok: false, error: String(err && err.message ? err.message : err) };
+    }
+  }
+
+  return { tangani: tangani, bulanTerkunci: bulanTerkunci, setelahHapusKas: setelahHapusKas, terbilang: terbilang,
+    uangTitipanSantri: uangTitipanSantri, pesanTitipan: pesanTitipan };
+})();
+
+// ======================================================================
+// FITUR LANJUTAN WASIAT (PRM_) -- semuanya GRATIS: hanya Apps Script, Sheets,
+// Drive, push OneSignal, dan WA yang sudah dipakai.
+//
+//  1. Laporan Perkembangan Bulanan santri (untuk wali, ber-QR)
+//  2. Kondisi Pondok Hari Ini (Mudir/Admin/Kabag)
+//  3. Peringatan dini santri
+//  4. Jadwal otomatis: pengingat SPP + kabar laporan bulanan + peringatan dini
+//  5. Kartu santri ber-QR (data kartu)
+//  6. Rapor resmi ber-QR
+//  7. PPDB online
+//
+// Prinsip: modul ini HANYA MEMBACA data lama lewat fungsi yang sudah ada, dan menulis
+// ke sheet BARUnya sendiri (LaporanPerkembangan, PeringatanDini, RaporResmi, PPDB).
+// Tidak ada sheet lama yang diubah strukturnya. Pekerjaan berat dihitung terjadwal atau
+// diingat sementara di cache, supaya absensi, hafalan, dan kasir tidak ikut melambat.
+// ======================================================================
+var PRM_ = (function () {
+  const BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+  const ADM = ['Admin', 'Mudir'];
+  const PIMPINAN = ['Admin', 'Mudir', 'KabagPutra', 'KabagPutri', 'Kabag'];
+  const SH_LP = 'LaporanPerkembangan';
+  const SH_PD = 'PeringatanDini';
+  const SH_RAPOR = 'RaporResmi';
+  const SH_PPDB = 'PPDB';
+  const HEAD = {
+    LaporanPerkembangan: ['Kode', 'NISN', 'Nama', 'Periode', 'Dibuat', 'Ringkasan'],
+    PeringatanDini: ['Tanggal', 'NISN', 'Nama', 'Kelas', 'Halaqoh', 'Kode', 'Alasan', 'Level'],
+    RaporResmi: ['ID', 'Kode', 'NISN', 'Nama', 'Kelas', 'Semester', 'Diterbitkan', 'Oleh', 'File ID', 'Status', 'Catatan'],
+    PPDB: ['ID', 'No Daftar', 'Waktu', 'Nama', 'JK', 'Tempat Lahir', 'Tanggal Lahir', 'Asal Sekolah', 'Jenjang', 'Nama Ayah', 'Nama Ibu',
+      'No WA', 'Alamat', 'Catatan', 'Berkas', 'Status', 'Catatan Panitia', 'Diproses Oleh', 'Diproses Pada', 'NISN', 'Kode Cek'],
+  };
+
+  /* ---------------- util ---------------- */
+  const tz_ = function () { return Session.getScriptTimeZone(); };
+  const ymd_ = function (d) { return Utilities.formatDate(d, tz_(), 'yyyy-MM-dd'); };
+  const stamp_ = function () { return Utilities.formatDate(new Date(), tz_(), 'yyyy-MM-dd HH:mm:ss'); };
+  const pad_ = function (n, d) { return String(n).padStart(d || 2, '0'); };
+  function teks_(v) { return v instanceof Date ? ymd_(v) : norm(v); }
+  function aman_(f, cadangan) { try { return f(); } catch (e) { Logger.log('PRM_: ' + (e && e.message)); return cadangan; } }
+  function kodeAcak_(awal, panjang) {
+    const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let s = awal;
+    while (s.length < (panjang || 10)) s += A.charAt(Math.floor(Math.random() * A.length));
+    return s;
+  }
+  function kodeBersih_(k) { return String(k || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+  function wajib_(ok, pesan) { if (!ok) throw new Error(pesan || 'Akun Anda tidak memiliki akses untuk tindakan ini.'); }
+  function punya_(me, list) { return me.roles.some(function (r) { return list.indexOf(r) >= 0; }); }
+  function hanyaWali_(me) { return me.roles.length > 0 && me.roles.every(function (r) { return r === 'WaliSantri'; }); }
+  function bolehNisn_(me, nisn) { return !hanyaWali_(me) ? !!me.roles.length : me.terkait.map(String).indexOf(String(nisn)) >= 0; }
+  function props_() { return PropertiesService.getScriptProperties(); }
+  function cache_() { try { return CacheService.getScriptCache(); } catch (e) { return null; } }
+  function ingat_(kunci, detik, f) {
+    const c = cache_();
+    if (c) { try { const a = c.get(kunci); if (a) return JSON.parse(a); } catch (e) { } }
+    const v = f();
+    if (c) { try { const s = JSON.stringify(v); if (s.length < 95000) c.put(kunci, s, detik); } catch (e) { } }
+    return v;
+  }
+
+  function sheet_(nama) {
+    const ss = getMasterSS();
+    let sh = ss.getSheetByName(nama);
+    if (!sh) {
+      sh = ss.insertSheet(nama);
+      sh.getRange(1, 1, 1, HEAD[nama].length).setValues([HEAD[nama]]);
+      sh.setFrozenRows(1);
+      ['NISN', 'Kode', 'No Daftar', 'Periode', 'No WA', 'Kode Cek'].forEach(function (k) {
+        const c = HEAD[nama].indexOf(k);
+        if (c >= 0) { try { sh.getRange(1, c + 1, sh.getMaxRows(), 1).setNumberFormat('@'); } catch (e) { } }
+      });
+    }
+    return sh;
+  }
+  function rows_(nama) {
+    const sh = getMasterSS().getSheetByName(nama);
+    if (!sh || sh.getLastRow() < 2) return [];
+    const h = HEAD[nama];
+    return sh.getRange(2, 1, sh.getLastRow() - 1, h.length).getValues().map(function (r, i) {
+      const o = { _row: i + 2 };
+      h.forEach(function (k, j) { o[k] = r[j] instanceof Date ? Utilities.formatDate(r[j], tz_(), k === 'Tanggal Lahir' || k === 'Tanggal' ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm:ss') : r[j]; });
+      return o;
+    }).filter(function (o) { return o[h[0]] !== '' && o[h[0]] != null; });
+  }
+  function tulis_(nama, baris, obj) {
+    const sh = sheet_(nama);
+    const nilai = HEAD[nama].map(function (k) { return obj[k] == null ? '' : obj[k]; });
+    if (baris) sh.getRange(baris, 1, 1, nilai.length).setValues([nilai]); else sh.appendRow(nilai);
+  }
+  function ubah_(nama, r, perubahan) {
+    const o = {}; HEAD[nama].forEach(function (k) { o[k] = k in perubahan ? perubahan[k] : r[k]; });
+    tulis_(nama, r._row, o);
+    return o;
+  }
+
+  /* ---------------- data dasar santri (sekali baca) ---------------- */
+  function petaSantri_() {
+    const ss = getAktifSS();
+    const v = ss.getSheetByName(SHEET_SANTRI).getDataRange().getValues();
+    const h = v[0].map(function (x) { return norm(x); });
+    const iJK = h.indexOf('Jenis Kelamin') > -1 ? h.indexOf('Jenis Kelamin') : 3;
+    const peta = {};
+    v.slice(1).forEach(function (r) {
+      const n = norm(r[0]).replace(/^'/, ''); if (!n) return;
+      peta[n] = { nisn: n, nama: norm(r[1]), tahunMasuk: r[2], jk: norm(r[iJK]), noWa: norm(r[4]), kelas: '', halaqoh: '' };
+    });
+    aman_(function () { const sh = ss.getSheetByName(SHEET_ROMBEL); if (sh) sh.getDataRange().getValues().slice(1).forEach(function (r) { const n = norm(r[0]); if (peta[n]) peta[n].kelas = norm(r[2]); }); });
+    aman_(function () { const sh = ss.getSheetByName(SHEET_HALAQOH_ANGGOTA); if (sh) sh.getDataRange().getValues().slice(1).forEach(function (r) { const n = norm(r[0]); if (peta[n] && !peta[n].halaqoh) peta[n].halaqoh = norm(r[2]); }); });
+    return peta;
+  }
+  function namaLembaga_() { return aman_(function () { return getPengaturan().NamaPesantren; }, '') || 'Pondok Pesantren'; }
+  function waliKelas_() {
+    const peta = {};
+    aman_(function () {
+      const v = getAktifSS().getSheetByName(SHEET_GURU).getDataRange().getValues();
+      const i = v[0].map(function (x) { return norm(x); }).indexOf('WaliKelas');
+      if (i < 0) return;
+      v.slice(1).forEach(function (r) { const k = norm(r[i]); if (k && norm(r[0])) k.split(',').forEach(function (kk) { kk = kk.trim(); if (kk) peta[kk] = norm(r[0]); }); });
+    });
+    return peta;
+  }
+
+  /* ================================================================
+   *  1. LAPORAN PERKEMBANGAN BULANAN
+   * ================================================================ */
+  function periode_(bulan, tahun) { return 'LP-' + tahun + '-' + pad_(bulan); }
+  function sudahBerakhir_(bulan, tahun) { const n = new Date(); return tahun < n.getFullYear() || (tahun === n.getFullYear() && bulan < n.getMonth() + 1); }
+
+  function hitungLaporan_(nisn, bulan, tahun) {
+    const mulai = tahun + '-' + pad_(bulan) + '-01';
+    const akhir = tahun + '-' + pad_(bulan) + '-' + pad_(new Date(tahun, bulan, 0).getDate());
+    const s = petaSantri_()[nisn];
+    if (!s) throw new Error('Data santri tidak ditemukan.');
+    const out = { santri: { nisn: s.nisn, nama: s.nama, kelas: s.kelas, halaqoh: s.halaqoh, jk: s.jk }, bulan: bulan, tahun: tahun,
+      namaBulan: BULAN[bulan - 1], mulai: mulai, akhir: akhir, lembaga: namaLembaga_(), waliKelas: waliKelas_()[s.kelas] || '' };
+
+    out.asrama = aman_(function () {
+      const r = apiGetKehadiranHarianSantri({ nisn: nisn, tglMulai: mulai, tglAkhir: akhir });
+      return r && r.ok ? r.rekap : null;
+    }, null);
+
+    out.kelasAbsen = aman_(function () {
+      const rows = getRiwayatAbsensi({ nisn: nisn, tanggalMulai: mulai, tanggalAkhir: akhir }).filter(function (x) { return x.tipeAbsen === 'Akademik'; });
+      const r = { hadir: 0, sakit: 0, izin: 0, alpa: 0, total: rows.length, sikap: null };
+      let js = 0, ns = 0;
+      const alpaMapel = {};
+      rows.forEach(function (x) {
+        if (x.status === 'Hadir') r.hadir++;
+        else if (x.status === 'Sakit') r.sakit++;
+        else if (x.status === 'Izin' || x.status === 'Izin Pulang') r.izin++;
+        else { r.alpa++; alpaMapel[x.mapel] = (alpaMapel[x.mapel] || 0) + 1; }
+        if (x.nilaiSikap !== '' && x.nilaiSikap != null && !isNaN(Number(x.nilaiSikap))) { js += Number(x.nilaiSikap); ns++; }
+      });
+      r.persen = r.total ? Math.round(r.hadir * 100 / r.total) : null;
+      r.sikap = ns ? Math.round(js / ns * 100) / 100 : null;
+      r.alpaMapel = Object.keys(alpaMapel).map(function (m) { return { mapel: m, jumlah: alpaMapel[m] }; });
+      return r;
+    }, null);
+
+    out.hafalan = aman_(function () {
+      const r = apiGetRiwayatHafalanBulan({ nisn: nisn, bulan: bulan, tahun: tahun });
+      const data = r && r.ok ? r.data : [];
+      const perJenis = {};
+      let setor = 0, hadir = 0, tidakHadir = 0;
+      const halaman = {};
+      let terakhir = null;
+      data.forEach(function (x) {
+        perJenis[x.jenis] = (perJenis[x.jenis] || 0) + 1;
+        if (JENIS_HAFALAN_SETOR.indexOf(x.jenis) >= 0) setor++;
+        if (JENIS_HAFALAN_DIANGGAP_HADIR.indexOf(x.jenis) >= 0) hadir++; else tidakHadir++;
+        if (x.jenis === 'Sabaq') {
+          String(x.halaman || '').split(/[,;]/).forEach(function (h) {
+            const m = String(h).match(/(\d+)\s*-\s*(\d+)/);
+            if (m) { for (let i = Number(m[1]); i <= Number(m[2]) && i - Number(m[1]) < 40; i++) halaman[i] = 1; }
+            else if (/\d/.test(h)) halaman[String(h).replace(/\D/g, '')] = 1;
+          });
+          terakhir = x;
+        }
+      });
+      return { pertemuan: data.length, setor: setor, hadir: hadir, tidakHadir: tidakHadir, perJenis: perJenis, sabaqHalaman: Object.keys(halaman).length,
+        sabaqTerakhir: terakhir ? { tanggal: terakhir.tanggal, surah: terakhir.surah, ayat: terakhir.ayat, juz: terakhir.juz, halaman: terakhir.halaman } : null,
+        nilai: data.filter(function (x) { return x.nilai; }).slice(-5).map(function (x) { return { tanggal: x.tanggal, jenis: x.jenis, nilai: x.nilai }; }) };
+    }, null);
+
+    out.progres = aman_(function () {
+      const r = apiGetProgressHafalan({ nisn: nisn });
+      if (!r || !r.ok) return null;
+      return { persen: r.data.persen, juzSelesai: r.data.totalJuzSelesai, halaman: r.data.totalHalamanTersetor, ringkasan: r.data.ringkasan };
+    }, null);
+
+    out.nilai = aman_(function () {
+      const list = getRiwayatNilai({ nisn: nisn }).filter(function (x) { return x.tanggal >= mulai && x.tanggal <= akhir; });
+      const per = {};
+      list.forEach(function (x) { const k = x.mapel; if (!per[k]) per[k] = { mapel: k, nilai: [] }; per[k].nilai.push({ jenis: x.jenisNilai, nilai: x.nilai }); });
+      return Object.keys(per).map(function (k) {
+        const angka = per[k].nilai.map(function (n) { return Number(n.nilai); }).filter(function (n) { return !isNaN(n); });
+        return { mapel: k, jumlah: per[k].nilai.length, rata: angka.length ? Math.round(angka.reduce(function (a, b) { return a + b; }, 0) / angka.length * 10) / 10 : null,
+          rincian: per[k].nilai.map(function (n) { return n.jenis + ' ' + n.nilai; }).join(', ') };
+      });
+    }, []);
+
+    out.perilaku = aman_(function () {
+      const list = getRiwayatPelanggaranSantri(nisn).filter(function (x) { return x.tanggal >= mulai && x.tanggal <= akhir; });
+      return { pelanggaran: list.filter(function (x) { return x.pelanggaran; }).map(function (x) { return { tanggal: x.tanggal, isi: x.pelanggaran, poin: x.poinPelanggaran }; }),
+        prestasi: list.filter(function (x) { return x.prestasi; }).map(function (x) { return { tanggal: x.tanggal, isi: x.prestasi, poin: x.poinPrestasi }; }),
+        poinPelanggaran: list.reduce(function (a, x) { return a + (Number(x.poinPelanggaran) || 0); }, 0),
+        poinPrestasi: list.reduce(function (a, x) { return a + (Number(x.poinPrestasi) || 0); }, 0) };
+    }, null);
+
+    out.spp = aman_(function () { const r = getSppSaya(nisn); return { ada: r.adaSpp, bebas: r.bebas, tunggakan: r.totalTunggakan, bulan: r.bulanTunggakan }; }, null);
+    return out;
+  }
+
+  function api_laporanSantri(p, me) {
+    const nisn = norm(p.nisn).replace(/^'/, '');
+    wajib_(bolehNisn_(me, nisn), 'Anda tidak memiliki akses ke data santri ini.');
+    const n = new Date();
+    const bulan = Number(p.bulan) || n.getMonth() + 1, tahun = Number(p.tahun) || n.getFullYear();
+    if (tahun > n.getFullYear() || (tahun === n.getFullYear() && bulan > n.getMonth() + 1)) throw new Error('Bulan tersebut belum berjalan.');
+    const selesai = sudahBerakhir_(bulan, tahun);
+    // Bulan yang sudah berakhir: hasil diingat 6 jam (datanya tidak berubah lagi)
+    const data = selesai ? ingat_('prm_lp_' + nisn + '_' + tahun + pad_(bulan), 21600, function () { return hitungLaporan_(nisn, bulan, tahun); })
+      : hitungLaporan_(nisn, bulan, tahun);
+    data.final = selesai;
+    if (selesai) {
+      // Kode keaslian: satu per santri per bulan, dibuat saat laporan pertama kali dibuka
+      const per = periode_(bulan, tahun);
+      let r = rows_(SH_LP).find(function (x) { return String(x.NISN) === nisn && String(x.Periode) === per; });
+      if (!r) {
+        const lock = LockService.getScriptLock(); lock.waitLock(20000);
+        try {
+          r = rows_(SH_LP).find(function (x) { return String(x.NISN) === nisn && String(x.Periode) === per; });
+          if (!r) {
+            r = { Kode: kodeAcak_('P'), NISN: nisn, Nama: data.santri.nama, Periode: per, Dibuat: stamp_(),
+              Ringkasan: JSON.stringify({ asrama: data.asrama && data.asrama.persen, kelas: data.kelasAbsen && data.kelasAbsen.persen, setor: data.hafalan && data.hafalan.setor }) };
+            tulis_(SH_LP, null, r);
+          }
+        } finally { lock.releaseLock(); }
+      }
+      data.kode = r.Kode;
+      data.nomor = 'LP/' + pad_(bulan) + '/' + tahun + '/' + nisn;
+    }
+    return data;
+  }
+
+  /** Daftar santri yang boleh dilihat akun ini (untuk pemilih santri di halaman laporan). */
+  function api_daftarSantriSaya(p, me) {
+    const peta = petaSantri_();
+    let list = Object.keys(peta).map(function (k) { return peta[k]; });
+    if (hanyaWali_(me)) list = list.filter(function (s) { return me.terkait.indexOf(s.nisn) >= 0; });
+    return list.map(function (s) { return { nisn: s.nisn, nama: s.nama, kelas: s.kelas }; }).sort(function (a, b) { return (a.kelas + a.nama).localeCompare(b.kelas + b.nama); });
+  }
+
+  function verifikasi(k) {
+    k = kodeBersih_(k);
+    if (k.charAt(0) === 'P') {
+      const r = rows_(SH_LP).find(function (x) { return kodeBersih_(x.Kode) === k; });
+      if (!r) return null;
+      const m = String(r.Periode).match(/^LP-(\d{4})-(\d{2})$/);
+      return { ditemukan: true, sah: true, lembaga: namaLembaga_(), jenisDokumen: 'Laporan Perkembangan Santri',
+        nomor: 'LP/' + (m ? m[2] + '/' + m[1] : '') + '/' + r.NISN, tanggal: String(r.Dibuat).slice(0, 10), jenis: 'Laporan bulanan',
+        perihal: 'Perkembangan ' + (m ? BULAN[Number(m[2]) - 1] + ' ' + m[1] : '') + ' a.n. ' + r.Nama, penandatangan: 'Sistem WASIAT' };
+    }
+    if (k.charAt(0) === 'R') {
+      const r = rows_(SH_RAPOR).find(function (x) { return kodeBersih_(x.Kode) === k; });
+      if (!r) return null;
+      return { ditemukan: true, sah: r.Status === 'Sah', lembaga: namaLembaga_(), jenisDokumen: 'Rapor Santri', nomor: 'RPT/' + r.NISN + '/' + r.Semester,
+        tanggal: String(r.Diterbitkan).slice(0, 10), jenis: 'Rapor semester ' + r.Semester, perihal: 'Rapor a.n. ' + r.Nama + ' (kelas ' + r.Kelas + ')',
+        penandatangan: 'Diterbitkan oleh ' + r.Oleh };
+    }
+    return null;
+  }
+
+  /** Kirim kabar "laporan bulan X sudah tersedia" ke semua wali, bertahap (dipanggil jadwal). */
+  function kabarLaporanBertahap_(batas) {
+    const n = new Date();
+    const pb = n.getMonth() === 0 ? 12 : n.getMonth(), pt = n.getMonth() === 0 ? n.getFullYear() - 1 : n.getFullYear();
+    const per = periode_(pb, pt);
+    let st = {}; try { st = JSON.parse(props_().getProperty('PRM_KABAR_LP') || '{}'); } catch (e) { }
+    if (st.periode === per && st.selesai) return { dilewati: true };
+    if (st.periode !== per) st = { periode: per, idx: 0, selesai: false, push: 0, wa: 0 };
+    const daftar = Object.keys(petaSantri_()).sort();
+    const peta = petaSantri_();
+    const waMati = aman_(function () { return jenisWANonaktif_()['laporan_bulanan']; }, false);
+    const sampai = Math.min(daftar.length, st.idx + (batas || 60));
+    for (let i = st.idx; i < sampai; i++) {
+      const s = peta[daftar[i]];
+      const isi = 'Laporan perkembangan ' + s.nama + ' bulan ' + BULAN[pb - 1] + ' ' + pt + ' (kehadiran, hafalan, nilai, perilaku) sudah tersedia di aplikasi WASIAT, menu Laporan.';
+      aman_(function () { kirimPushKeWali(s.nisn, '📊 Laporan bulanan ' + s.nama, isi); st.push++; });
+      if (!waMati && s.noWa) {
+        aman_(function () {
+          kirimWAKategori_('laporan_bulanan', s.noWa, 'Assalamualaikum Wr. Wb.\n\nYth. Orang Tua/Wali Santri *' + s.nama + '*\n\n' + isi + '\n\nJazakumullah khairan.');
+          st.wa++; Utilities.sleep(800);
+        });
+      }
+    }
+    st.idx = sampai; st.selesai = sampai >= daftar.length;
+    props_().setProperty('PRM_KABAR_LP', JSON.stringify(st));
+    return st;
+  }
+
+  /* ================================================================
+   *  2. KONDISI PONDOK HARI INI
+   * ================================================================ */
+  function hitungKondisi_(token) {
+    const ss = getAktifSS();
+    const hariIni = ymd_(new Date());
+    const tujuh = []; for (let i = 6; i >= 0; i--) tujuh.push(ymd_(new Date(Date.now() - i * 86400000)));
+    const out = { tanggal: hariIni, dibuat: stamp_(), tren: tujuh.map(function (t) { return { tanggal: t, hadirAsrama: null, setoran: 0, pemasukan: 0, pengeluaran: 0, pelanggaran: 0 }; }) };
+    const idx = {}; tujuh.forEach(function (t, i) { idx[t] = i; });
+
+    out.santri = aman_(function () {
+      const r = apiGetStatusPondok({});
+      return r && r.ok ? { total: r.total, diPondok: r.diPondok, hadir: r.hadir, sakit: r.sakit, izin: r.izin, alpa: r.alpa, izinPulang: r.izinPulang,
+        sudahAbsen: r.sudahAbsen, putra: r.putra, putri: r.putri, sakitList: (r.sakitList || []).slice(0, 15), izinPulangList: (r.izinPulangList || []).slice(0, 15) } : null;
+    }, null);
+
+    // Absensi asrama 7 hari (persen hadir per hari)
+    aman_(function () {
+      const sh = ss.getSheetByName(SHEET_ABSENSI_HARIAN);
+      if (!sh || sh.getLastRow() < 2) return;
+      const per = {};
+      nilaiCatatanUnik_(sh).slice(1).forEach(function (r) {
+        const t = teks_(r[0]); if (!(t in idx)) return;
+        const k = t + '|' + norm(r[2]);
+        per[k] = norm(r[5]);
+      });
+      const hit = {};
+      Object.keys(per).forEach(function (k) { const t = k.split('|')[0]; if (!hit[t]) hit[t] = { h: 0, n: 0 }; hit[t].n++; if (per[k] === 'Hadir') hit[t].h++; });
+      Object.keys(hit).forEach(function (t) { out.tren[idx[t]].hadirAsrama = Math.round(hit[t].h * 100 / hit[t].n); });
+    });
+
+    // Hafalan: setoran hari ini + 7 hari
+    out.hafalan = aman_(function () {
+      const sh = ss.getSheetByName(SHEET_HAFALAN);
+      const r = { setoran: 0, sabaq: 0, santri: 0, tidakSetor: 0, halaqohTerisi: 0 };
+      if (!sh || sh.getLastRow() < 2) return r;
+      const santri = {}, halaqoh = {};
+      nilaiCatatanUnik_(sh).slice(1).forEach(function (x) {
+        const t = teks_(x[0]); if (!(t in idx)) return;
+        const jenis = norm(x[6]);
+        const setor = JENIS_HAFALAN_SETOR.indexOf(jenis) >= 0;
+        if (setor) out.tren[idx[t]].setoran++;
+        if (t !== hariIni) return;
+        if (setor) { r.setoran++; santri[norm(x[4])] = 1; }
+        if (jenis === 'Sabaq') r.sabaq++;
+        if (jenis === 'Tidak Setor') r.tidakSetor++;
+        halaqoh[norm(x[2]) + '|' + norm(x[1])] = 1;
+      });
+      r.santri = Object.keys(santri).length; r.halaqohTerisi = Object.keys(halaqoh).length;
+      return r;
+    }, null);
+
+    // Mengajar hari ini: sesi tercatat & jurnal
+    out.mengajar = aman_(function () {
+      const st = getStatusJurnalHariIni();
+      const guru = {}; st.forEach(function (x) { guru[x.pengampu] = 1; });
+      return { sesi: st.length, guru: Object.keys(guru).length, jurnalBelum: st.filter(function (x) { return !x.sudahIsiJurnal; }).length };
+    }, null);
+
+    // Keuangan
+    out.keuangan = aman_(function () {
+      const n = new Date();
+      const d = getDashboardKeuangan(n.getMonth() + 1, n.getFullYear());
+      const tg = getTunggakanSantri().filter(function (s) { return !s.status; });
+      const r = { saldo: d.saldoKumulatif, masukBulan: d.pemasukanBulan, keluarBulan: d.pengeluaranBulan,
+        tunggakanSantri: tg.length, tunggakanTotal: tg.reduce(function (a, s) { return a + s.tunggakanSPP; }, 0) };
+      const kas = getMasterSS().getSheetByName(SHEET_KAS_UMUM);
+      if (kas && kas.getLastRow() > 1) {
+        kas.getRange(2, 1, kas.getLastRow() - 1, 6).getValues().forEach(function (x) {
+          const t = teks_(x[1]); if (!(t in idx)) return;
+          if (norm(x[2]) === 'Pemasukan') out.tren[idx[t]].pemasukan += Number(x[5]) || 0; else out.tren[idx[t]].pengeluaran += Number(x[5]) || 0;
+        });
+      }
+      return r;
+    }, null);
+
+    // Pelanggaran 7 hari
+    out.pelanggaranHariIni = aman_(function () {
+      const sh = getPelanggaranAktifSS().getSheetByName(SHEET_PENCATATAN_PEL);
+      if (!sh || sh.getLastRow() < 2) return 0;
+      let hariIniN = 0;
+      sh.getDataRange().getValues().slice(1).forEach(function (x) {
+        const t = teks_(x[0]); if (!(t in idx) || !norm(x[3])) return;
+        out.tren[idx[t]].pelanggaran++;
+        if (t === hariIni) hariIniN++;
+      });
+      return hariIniN;
+    }, 0);
+
+    // Hal yang menunggu keputusan
+    out.menunggu = aman_(function () {
+      const m = { konfirmasiTransfer: 0, pengajuanDana: 0, laporanKeuangan: 0, saldoKantin: 0, surat: 0, izinGuru: 0, peringatanDini: 0 };
+      const hitung = function (nama, kolom, nilai) {
+        const sh = getMasterSS().getSheetByName(nama); if (!sh || sh.getLastRow() < 2) return 0;
+        const h = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(function (x) { return norm(x); });
+        const c = h.indexOf(kolom); if (c < 0) return 0;
+        return sh.getRange(2, c + 1, sh.getLastRow() - 1, 1).getValues().filter(function (x) { return norm(x[0]) === nilai; }).length;
+      };
+      m.konfirmasiTransfer = hitung('KonfirmasiTransfer', 'Status', 'Menunggu');
+      m.pengajuanDana = hitung('PengajuanDana', 'Status', 'Menunggu');
+      m.laporanKeuangan = hitung('TutupBuku', 'Status', 'Menunggu Pengesahan');
+      m.saldoKantin = aman_(function () { return getNotifBadge().pengajuanPending; }, 0);
+      m.surat = aman_(function () { const r = SURAT_.ringkasUntukWasiat(token); return r && r.ok ? r.menunggu : 0; }, 0);
+      m.izinGuru = aman_(function () {
+        const sh = getAktifSS().getSheetByName(SHEET_IZIN_GURU); if (!sh || sh.getLastRow() < 2) return 0;
+        const h = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(function (x) { return norm(x); });
+        const c = h.indexOf('Status'); if (c < 0) return 0;
+        return sh.getRange(2, c + 1, sh.getLastRow() - 1, 1).getValues().filter(function (x) { return /menunggu|pending|diajukan/i.test(norm(x[0])); }).length;
+      }, 0);
+      m.peringatanDini = rows_(SH_PD).length;
+      return m;
+    }, null);
+    return out;
+  }
+  function api_kondisiPondok(p, me, token) {
+    wajib_(punya_(me, PIMPINAN), 'Hanya Mudir, Admin, atau Kepala Bagian.');
+    if (p.segarkan) { const c = cache_(); if (c) try { c.remove('prm_kondisi'); } catch (e) { } }
+    return ingat_('prm_kondisi', 300, function () { return hitungKondisi_(token); });
+  }
+
+  /* ================================================================
+   *  3. PERINGATAN DINI
+   *  Melihat 14 hari terakhir. Aturan sengaja sederhana dan bisa dijelaskan:
+   *   - Alpa asrama >= 2 hari, atau alpa di kelas >= 3 jam pelajaran
+   *   - Sakit >= 3 hari
+   *   - Tidak ada Sabaq (hafalan baru) 14 hari padahal 30 hari sebelumnya ada
+   *   - Pelanggaran >= 2 kali, atau poin pelanggaran >= 20
+   * ================================================================ */
+  const ATURAN_PD = { alpaAsrama: 2, alpaKelas: 3, sakit: 3, hariSabaq: 14, pelanggaran: 2, poin: 20 };
+  function hitungPeringatan_() {
+    const ss = getAktifSS();
+    const peta = petaSantri_();
+    const now = Date.now();
+    const b14 = ymd_(new Date(now - 13 * 86400000)), b44 = ymd_(new Date(now - 43 * 86400000)), hari = ymd_(new Date(now));
+    const d = {}; const get = function (n) { if (!d[n]) d[n] = { alpaA: 0, sakit: 0, alpaK: 0, sabaq14: 0, sabaqLama: 0, pel: 0, poin: 0, hariA: {} }; return d[n]; };
+    aman_(function () {
+      const sh = ss.getSheetByName(SHEET_ABSENSI_HARIAN); if (!sh || sh.getLastRow() < 2) return;
+      const per = {};
+      nilaiCatatanUnik_(sh).slice(1).forEach(function (r) { const t = teks_(r[0]); if (t < b14 || t > hari) return; per[norm(r[2]) + '|' + t] = norm(r[5]); });
+      Object.keys(per).forEach(function (k) { const n = k.split('|')[0], st = per[k]; if (st === 'Alpa') get(n).alpaA++; else if (st === 'Sakit') get(n).sakit++; });
+    });
+    aman_(function () {
+      const sh = ss.getSheetByName(SHEET_ABSENSI); if (!sh || sh.getLastRow() < 2) return;
+      nilaiCatatanUnik_(sh).slice(1).forEach(function (r) { const t = teks_(r[0]); if (t < b14 || t > hari) return; if (norm(r[16] || 'Akademik') !== 'Akademik') return; if (norm(r[8]) === 'Alpa') get(norm(r[6])).alpaK++; });
+    });
+    aman_(function () {
+      const sh = ss.getSheetByName(SHEET_HAFALAN); if (!sh || sh.getLastRow() < 2) return;
+      nilaiCatatanUnik_(sh).slice(1).forEach(function (r) {
+        if (norm(r[6]) !== 'Sabaq') return;
+        const t = teks_(r[0]); if (t < b44 || t > hari) return;
+        if (t >= b14) get(norm(r[4])).sabaq14++; else get(norm(r[4])).sabaqLama++;
+      });
+    });
+    aman_(function () {
+      const sh = getPelanggaranAktifSS().getSheetByName(SHEET_PENCATATAN_PEL); if (!sh || sh.getLastRow() < 2) return;
+      sh.getDataRange().getValues().slice(1).forEach(function (r) { const t = teks_(r[0]); if (t < b14 || t > hari || !norm(r[3])) return; const x = get(norm(r[1])); x.pel++; x.poin += Number(r[4]) || 0; });
+    });
+    const hasil = [];
+    Object.keys(d).forEach(function (n) {
+      const s = peta[n]; if (!s) return;
+      const x = d[n], alasan = [];
+      let level = 0;
+      if (x.alpaA >= ATURAN_PD.alpaAsrama) { alasan.push({ k: 'alpa', t: 'Alpa di asrama ' + x.alpaA + ' hari (14 hari terakhir)' }); level += 2; }
+      if (x.alpaK >= ATURAN_PD.alpaKelas) { alasan.push({ k: 'alpakelas', t: 'Alpa di kelas ' + x.alpaK + ' jam pelajaran' }); level += 1; }
+      if (x.sakit >= ATURAN_PD.sakit) { alasan.push({ k: 'sakit', t: 'Sakit ' + x.sakit + ' hari — perlu dipantau kesehatannya' }); level += 1; }
+      if (x.sabaq14 === 0 && x.sabaqLama > 0) { alasan.push({ k: 'hafalan', t: 'Belum ada hafalan baru (Sabaq) selama 2 pekan' }); level += 1; }
+      if (x.pel >= ATURAN_PD.pelanggaran || x.poin >= ATURAN_PD.poin) { alasan.push({ k: 'perilaku', t: x.pel + ' pelanggaran (' + x.poin + ' poin) dalam 2 pekan' }); level += 2; }
+      if (alasan.length) hasil.push({ nisn: n, nama: s.nama, kelas: s.kelas, halaqoh: s.halaqoh, jk: s.jk, alasan: alasan, level: level >= 3 ? 'Tinggi' : 'Perlu perhatian' });
+    });
+    return hasil.sort(function (a, b) { return (b.level === 'Tinggi') - (a.level === 'Tinggi') || a.kelas.localeCompare(b.kelas) || a.nama.localeCompare(b.nama); });
+  }
+  /** Hitung ulang & simpan (dipanggil jadwal harian atau tombol Perbarui). Mengabari wali kelas untuk temuan BARU saja. */
+  function perbaruiPeringatan_(kabari) {
+    const hasil = hitungPeringatan_();
+    const sh = sheet_(SH_PD);
+    if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, HEAD[SH_PD].length).clearContent();
+    const hari = ymd_(new Date());
+    if (hasil.length) {
+      sh.getRange(2, 1, hasil.length, HEAD[SH_PD].length).setValues(hasil.map(function (x) {
+        return [hari, x.nisn, x.nama, x.kelas, x.halaqoh, x.alasan.map(function (a) { return a.k; }).join(','), x.alasan.map(function (a) { return a.t; }).join(' | '), x.level];
+      }));
+    }
+    props_().setProperty('PRM_PD_TERAKHIR', stamp_());
+    if (kabari) {
+      // hanya temuan yang belum dikabarkan dalam 7 hari terakhir
+      let sudah = {}; try { sudah = JSON.parse(props_().getProperty('PRM_PD_KABAR') || '{}'); } catch (e) { }
+      const batas = Date.now() - 7 * 86400000;
+      Object.keys(sudah).forEach(function (k) { if (sudah[k] < batas) delete sudah[k]; });
+      const wk = waliKelas_();
+      const perGuru = {};
+      let baru = 0;
+      hasil.forEach(function (x) {
+        const k = x.nisn + '|' + x.alasan.map(function (a) { return a.k; }).join(',');
+        if (sudah[k]) return;
+        sudah[k] = Date.now(); baru++;
+        const g = wk[x.kelas]; if (g) { (perGuru[g] = perGuru[g] || []).push(x.nama); }
+      });
+      Object.keys(perGuru).forEach(function (g) {
+        aman_(function () { kirimPushOneSignal([g], '⚠️ Santri perlu perhatian', perGuru[g].slice(0, 5).join(', ') + (perGuru[g].length > 5 ? ' dan lainnya' : '') + '. Buka menu Peringatan Dini.', '', { jenis: 'peringatan' }); });
+      });
+      if (baru) {
+        aman_(function () {
+          const pimpinan = getAktifSS().getSheetByName(SHEET_ROLE).getDataRange().getValues().slice(1)
+            .filter(function (r) { return /Mudir|Admin|Kabag/.test(norm(r[3])); }).map(function (r) { return norm(r[0]); });
+          if (pimpinan.length) kirimPushOneSignal(pimpinan, '⚠️ Peringatan dini santri', baru + ' temuan baru: ' + hasil.length + ' santri perlu perhatian. Buka menu Peringatan Dini.', '', { jenis: 'peringatan' });
+        });
+      }
+      props_().setProperty('PRM_PD_KABAR', JSON.stringify(sudah).slice(0, 8500));
+    }
+    return hasil.length;
+  }
+  function api_peringatanDini(p, me) {
+    const pimpinan = punya_(me, PIMPINAN);
+    let kelasSaya = [];
+    if (!pimpinan) {
+      const wk = waliKelas_();
+      kelasSaya = Object.keys(wk).filter(function (k) { return normNama(wk[k]) === normNama(me.nama); });
+      wajib_(kelasSaya.length || punya_(me, ['Pembina', 'PembinaPutra', 'PembinaPutri']), 'Peringatan dini untuk wali kelas, pembina, Kepala Bagian, Admin, dan Mudir.');
+    }
+    if (p.perbarui) { wajib_(pimpinan, 'Hanya pimpinan yang dapat menghitung ulang.'); perbaruiPeringatan_(false); }
+    let list = rows_(SH_PD).map(function (r) { return { nisn: String(r.NISN), nama: r.Nama, kelas: r.Kelas, halaqoh: r.Halaqoh, alasan: String(r.Alasan).split(' | '), level: r.Level, tanggal: r.Tanggal }; });
+    if (!pimpinan && kelasSaya.length) list = list.filter(function (x) { return kelasSaya.indexOf(x.kelas) >= 0; });
+    if (!pimpinan && !kelasSaya.length) {
+      // Pembina: santri sesuai gender asrama yang dibina
+      const g = punya_(me, ['PembinaPutri']) ? 'perempuan' : (punya_(me, ['PembinaPutra']) ? 'laki-laki' : '');
+      if (g) { const peta = petaSantri_(); list = list.filter(function (x) { return peta[x.nisn] && peta[x.nisn].jk.toLowerCase() === g; }); }
+    }
+    return { data: list, terakhir: props_().getProperty('PRM_PD_TERAKHIR') || '', aturan: ATURAN_PD, pimpinan: pimpinan, kelasSaya: kelasSaya };
+  }
+
+  /* ================================================================
+   *  4. JADWAL OTOMATIS (satu pemicu per jam, ringan)
+   * ================================================================ */
+  const PROP_JADWAL = 'PRM_JADWAL';
+  function bacaJadwal_() {
+    let j = {}; try { j = JSON.parse(props_().getProperty(PROP_JADWAL) || '{}'); } catch (e) { }
+    return { sppAktif: !!j.sppAktif, sppTanggal: j.sppTanggal || [5, 20], sppMinBulan: Number(j.sppMinBulan) || 1,
+      laporanAktif: j.laporanAktif !== false, laporanTanggal: Number(j.laporanTanggal) || 2,
+      peringatanAktif: j.peringatanAktif !== false, jam: Number(j.jam) || 8 };
+  }
+  function pemicuAda_() { return aman_(function () { return ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'prmJadwalOtomatis'; }); }, false); }
+  function api_statusJadwal(p, me) {
+    wajib_(punya_(me, ['Admin', 'Mudir', 'Bendahara']), 'Hanya Admin, Mudir, atau Bendahara.');
+    let log = []; try { log = JSON.parse(props_().getProperty('PRM_JADWAL_LOG') || '[]'); } catch (e) { }
+    const lama = aman_(function () { return ScriptApp.getProjectTriggers().filter(function (t) { return t.getHandlerFunction() === 'jalankanPengingatSPP'; }).length; }, 0);
+    return { jadwal: bacaJadwal_(), aktif: pemicuAda_(), log: log, pemicuSppLama: lama };
+  }
+  function api_simpanJadwal(p, me) {
+    wajib_(punya_(me, ['Admin', 'Mudir', 'Bendahara']), 'Hanya Admin, Mudir, atau Bendahara.');
+    const lama = bacaJadwal_();
+    const j = {
+      sppAktif: p.sppAktif === true, sppMinBulan: Math.max(1, Math.min(12, Number(p.sppMinBulan) || 1)),
+      sppTanggal: String(p.sppTanggal || '').split(/[^\d]+/).map(Number).filter(function (x) { return x >= 1 && x <= 28; }).slice(0, 4),
+      laporanAktif: p.laporanAktif !== false, laporanTanggal: Math.max(1, Math.min(10, Number(p.laporanTanggal) || 2)),
+      peringatanAktif: p.peringatanAktif !== false, jam: Math.max(6, Math.min(20, Number(p.jam) || 8)),
+    };
+    if (j.sppAktif && !j.sppTanggal.length) throw new Error('Isi tanggal pengingat SPP, misalnya 5, 20.');
+    // Bendahara hanya boleh mengubah bagian SPP
+    if (!punya_(me, ADM)) { j.laporanAktif = lama.laporanAktif; j.laporanTanggal = lama.laporanTanggal; j.peringatanAktif = lama.peringatanAktif; j.jam = lama.jam; }
+    props_().setProperty(PROP_JADWAL, JSON.stringify(j));
+    // Satu pemicu per jam. Pemicu SPP lama (tgl 7 & 20, dipasang manual dari editor) dilepas bila
+    // pengingat SPP diatur dari sini, supaya wali tidak menerima pengingat dua kali.
+    ScriptApp.getProjectTriggers().forEach(function (t) {
+      if (t.getHandlerFunction() === 'prmJadwalOtomatis') ScriptApp.deleteTrigger(t);
+      if (j.sppAktif && t.getHandlerFunction() === 'jalankanPengingatSPP') ScriptApp.deleteTrigger(t);
+    });
+    if (j.sppAktif || j.laporanAktif || j.peringatanAktif) ScriptApp.newTrigger('prmJadwalOtomatis').timeBased().everyHours(1).create();
+    return api_statusJadwal(p, me);
+  }
+  function catatLog_(teks) {
+    let log = []; try { log = JSON.parse(props_().getProperty('PRM_JADWAL_LOG') || '[]'); } catch (e) { }
+    log.unshift(stamp_() + ' — ' + teks);
+    props_().setProperty('PRM_JADWAL_LOG', JSON.stringify(log.slice(0, 15)));
+  }
+  /** Pengingat SPP bertahap: maksimal 40 wali per jalan, dilanjutkan jam berikutnya. */
+  function pengingatSppBertahap_(j, kunciHari) {
+    let st = {}; try { st = JSON.parse(props_().getProperty('PRM_SPP_JALAN') || '{}'); } catch (e) { }
+    if (st.hari === kunciHari && st.selesai) return null;
+    if (st.hari !== kunciHari) st = { hari: kunciHari, idx: 0, selesai: false, push: 0, wa: 0 };
+    const waMati = aman_(function () { return jenisWANonaktif_()['spp_tagihan_otomatis']; }, false);
+    const daftar = getTunggakanSantri().filter(function (s) { return !s.status && s.jumlahBulan >= j.sppMinBulan; });
+    const sampai = Math.min(daftar.length, st.idx + 40);
+    const logSh = aman_(function () {
+      const ss = getMasterSS();
+      let sh = ss.getSheetByName('LogTagihan');
+      if (!sh) { sh = ss.insertSheet('LogTagihan'); sh.appendRow(['Waktu', 'NISN', 'Nama', 'Total', 'Jumlah Bulan', 'Kanal', 'Oleh']); sh.setFrozenRows(1); }
+      return sh;
+    }, null);
+    for (let i = st.idx; i < sampai; i++) {
+      const s = daftar[i];
+      aman_(function () { kirimPushKeWali(s.nisn, '💳 Pengingat Pembayaran SPP', 'Tunggakan SPP ' + s.nama + ': Rp' + s.tunggakanSPP.toLocaleString('id-ID') + ' (' + s.jumlahBulan + ' bulan). Sudah transfer? Kirim buktinya di menu SPP aplikasi WASIAT.'); st.push++; });
+      if (!waMati && s.noWa) {
+        aman_(function () {
+          const pesan = buildPesanTagihanSPP(s.nama, s.bulanTunggak, s.tunggakanSPP).replace('Jazakumullah khairan.',
+            'Bila sudah membayar lewat transfer, cukup kirim foto buktinya di aplikasi WASIAT (menu SPP › Bayar lewat Transfer).\n\nJazakumullah khairan.');
+          kirimWAKategori_('spp_tagihan_otomatis', s.noWa, pesan); st.wa++; Utilities.sleep(900);
+        });
+      }
+      if (logSh) aman_(function () { logSh.appendRow([stamp_(), s.nisn, s.nama, s.tunggakanSPP, s.jumlahBulan, 'otomatis', 'Jadwal otomatis']); });
+    }
+    st.idx = sampai; st.selesai = sampai >= daftar.length; st.total = daftar.length;
+    props_().setProperty('PRM_SPP_JALAN', JSON.stringify(st));
+    return st;
+  }
+  function jalankanJadwal() {
+    const j = bacaJadwal_();
+    const n = new Date();
+    const jam = Number(Utilities.formatDate(n, tz_(), 'H'));
+    const tgl = Number(Utilities.formatDate(n, tz_(), 'd'));
+    const hari = ymd_(n);
+    if (jam < j.jam || jam > 21) return 'di luar jam kerja';
+    const hasil = [];
+    // Peringatan dini: sekali sehari
+    if (j.peringatanAktif && props_().getProperty('PRM_PD_HARI') !== hari) {
+      props_().setProperty('PRM_PD_HARI', hari);
+      const nPd = aman_(function () { return perbaruiPeringatan_(true); }, -1);
+      hasil.push('Peringatan dini: ' + nPd + ' santri');
+    }
+    // Pengingat SPP pada tanggal yang dipilih
+    if (j.sppAktif && j.sppTanggal.indexOf(tgl) >= 0) {
+      const st = aman_(function () { return pengingatSppBertahap_(j, hari); }, null);
+      if (st) hasil.push('Pengingat SPP: ' + st.idx + '/' + st.total + ' wali (push ' + st.push + ', WA ' + st.wa + ')');
+    }
+    // Kabar laporan bulanan: mulai tanggal yang dipilih
+    if (j.laporanAktif && tgl >= j.laporanTanggal) {
+      const st = aman_(function () { return kabarLaporanBertahap_(60); }, null);
+      if (st && !st.dilewati) hasil.push('Kabar laporan ' + st.periode + ': ' + st.idx + ' santri (push ' + st.push + ', WA ' + st.wa + ')');
+    }
+    if (hasil.length) catatLog_(hasil.join(' · '));
+    return hasil.join(' · ') || 'tidak ada tugas';
+  }
+
+  /* ================================================================
+   *  5. KARTU SANTRI (data kartu; QR berisi kode santri)
+   * ================================================================ */
+  function api_dataKartu(p, me) {
+    wajib_(punya_(me, ['Admin', 'Mudir', 'Bendahara', 'KabagPutra', 'KabagPutri', 'Kabag']), 'Hanya Admin, Mudir, Bendahara, atau Kepala Bagian.');
+    const peta = petaSantri_();
+    let list = Object.keys(peta).map(function (k) { return peta[k]; });
+    if (p.kelas) list = list.filter(function (s) { return s.kelas === p.kelas; });
+    if (p.nisn && p.nisn.length) list = list.filter(function (s) { return p.nisn.indexOf(s.nisn) >= 0; });
+    return { lembaga: namaLembaga_(), santri: list.map(function (s) { return { nisn: s.nisn, nama: s.nama, kelas: s.kelas, halaqoh: s.halaqoh, jk: s.jk, tahunMasuk: s.tahunMasuk }; })
+      .sort(function (a, b) { return (a.kelas + a.nama).localeCompare(b.kelas + b.nama); }) };
+  }
+
+  /* ---------------- pintu masuk ---------------- */
+  const HANDLERS = {
+    laporanSantri: api_laporanSantri, daftarSantriSaya: api_daftarSantriSaya,
+    kondisiPondok: api_kondisiPondok, peringatanDini: api_peringatanDini,
+    statusJadwal: api_statusJadwal, simpanJadwal: api_simpanJadwal,
+    dataKartu: api_dataKartu,
+  };
+  const PUBLIK = {};
+  function daftarkan(nama, fn, publik) { HANDLERS[nama] = fn; if (publik) PUBLIK[nama] = true; }
+  function tangani(req) {
+    const fn = HANDLERS[req.action];
+    if (!fn) return { ok: false, error: 'Aksi tidak dikenal: ' + req.action };
+    try {
+      if (PUBLIK[req.action]) return { ok: true, data: fn(req.payload || {}) };
+      const me = (typeof AMAN_ !== 'undefined') ? AMAN_.identitas(req.token) : null;
+      if (!me) return { ok: false, perluLogin: true, error: 'Sesi berakhir. Silakan keluar lalu masuk kembali ke WASIAT.' };
+      return { ok: true, data: fn(req.payload || {}, me, req.token) };
+    } catch (err) {
+      return { ok: false, error: String(err && err.message ? err.message : err) };
+    }
+  }
+
+  return { tangani: tangani, verifikasi: verifikasi, jalankanJadwal: jalankanJadwal, daftarkan: daftarkan,
+    // dipakai bagian lain modul (rapor, PPDB) & pengujian
+    _u: { sheet_: sheet_, rows_: rows_, tulis_: tulis_, ubah_: ubah_, HEAD: HEAD, kodeAcak_: kodeAcak_, kodeBersih_: kodeBersih_, wajib_: wajib_, punya_: punya_,
+      hanyaWali_: hanyaWali_, bolehNisn_: bolehNisn_, petaSantri_: petaSantri_, namaLembaga_: namaLembaga_, stamp_: stamp_, ymd_: ymd_, aman_: aman_, props_: props_,
+      hitungPeringatan_: hitungPeringatan_, perbaruiPeringatan_: perbaruiPeringatan_ } };
+})();
+
+/** Dijalankan pemicu per jam (dipasang dari menu Otomatisasi). */
+function prmJadwalOtomatis() { return PRM_.jalankanJadwal(); }
+
+// ======================================================================
+// PRM_ bagian 2: RAPOR RESMI ber-QR + PPDB ONLINE
+// (didaftarkan ke PRM_ lewat PRM_.daftarkan, memakai util PRM_._u)
+// ======================================================================
+(function () {
+  const U = PRM_._u;
+  const BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+  function props() { return PropertiesService.getScriptProperties(); }
+  function folderAkar_(kunci, nama) {
+    const id = props().getProperty(kunci);
+    if (id) { try { return DriveApp.getFolderById(id); } catch (e) { } }
+    const f = DriveApp.createFolder(nama + ' - ' + U.namaLembaga_().toUpperCase());
+    props().setProperty(kunci, f.getId());
+    return f;
+  }
+  function sub_(induk, nama) { const it = induk.getFoldersByName(String(nama)); return it.hasNext() ? it.next() : induk.createFolder(String(nama)); }
+  function bersihNama_(s) { return String(s == null ? '' : s).replace(/[\/\\:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 120); }
+  function fileB64_(id) {
+    const f = DriveApp.getFileById(id);
+    const b = f.getBlob();
+    if (b.getBytes().length > 15 * 1024 * 1024) throw new Error('Berkas terlalu besar untuk ditampilkan.');
+    return { name: f.getName(), mime: b.getContentType(), base64: Utilities.base64Encode(b.getBytes()) };
+  }
+
+  /* ================================================================
+   *  6. RAPOR RESMI ber-QR
+   *  Wali kelas/Admin/Mudir menerbitkan rapor dari halaman Rapor Santri. PDF tersimpan
+   *  di Drive, wali melihatnya di tab Nilai, dan keasliannya bisa dipindai.
+   * ================================================================ */
+  const BOLEH_RAPOR = ['Admin', 'Mudir', 'WaliKelas'];
+  function api_terbitkanRapor(p, me) {
+    U.wajib_(U.punya_(me, BOLEH_RAPOR), 'Hanya wali kelas, Admin, atau Mudir yang dapat menerbitkan rapor resmi.');
+    const nisn = norm(p.nisn).replace(/^'/, ''), semester = norm(p.semester), kelas = norm(p.kelas);
+    if (!nisn || !semester) throw new Error('Data rapor tidak lengkap.');
+    if (!p.html || String(p.html).length > 3 * 1024 * 1024) throw new Error('Isi rapor kosong atau terlalu besar.');
+    const s = U.petaSantri_()[nisn];
+    if (!s) throw new Error('Santri tidak ditemukan.');
+    const kode = U.kodeBersih_(p.kodeVerifikasi).length === 10 && /^R/.test(U.kodeBersih_(p.kodeVerifikasi)) ? U.kodeBersih_(p.kodeVerifikasi) : U.kodeAcak_('R');
+    const isi = String(p.html).split('{{KODE}}').join(kode.replace(/^(.{4})(.{4})(.*)$/, '$1-$2-$3'));
+    const lock = LockService.getScriptLock(); lock.waitLock(20000);
+    let r;
+    try {
+      // terbit ulang: rapor sebelumnya untuk semester yang sama otomatis "Diganti"
+      U.rows_('RaporResmi').forEach(function (x) { if (String(x.NISN) === nisn && String(x.Semester) === semester && x.Status === 'Sah') U.ubah_('RaporResmi', x, { Status: 'Diganti', Catatan: 'Diganti oleh terbitan ' + U.stamp_() }); });
+      const pdf = Utilities.newBlob(isi, 'text/html', 'rapor.html').getAs('application/pdf').setName(bersihNama_('Rapor ' + s.nama + ' - ' + semester) + '.pdf');
+      const folder = sub_(sub_(folderAkar_('PRM_RAPOR_ROOT', 'RAPOR'), bersihNama_(semester)), bersihNama_(kelas || s.kelas || 'Tanpa Kelas'));
+      const f = folder.createFile(pdf);
+      r = { ID: Utilities.getUuid().split('-')[0] + Date.now().toString(36), Kode: kode, NISN: nisn, Nama: s.nama, Kelas: kelas || s.kelas, Semester: semester,
+        Diterbitkan: U.stamp_(), Oleh: me.nama, 'File ID': f.getId(), Status: 'Sah', Catatan: '' };
+      U.tulis_('RaporResmi', null, r);
+    } finally { lock.releaseLock(); }
+    if (p.kabariWali !== false) {
+      U.aman_(function () { kirimPushKeWali(nisn, '🏅 Rapor ' + s.nama + ' sudah terbit', 'Rapor semester ' + semester + ' dapat dilihat dan diunduh di aplikasi WASIAT, tab Nilai.'); });
+    }
+    return { id: r.ID, kode: r.Kode, nama: r.Nama, semester: r.Semester };
+  }
+  function api_raporSantri(p, me) {
+    const nisn = norm(p.nisn).replace(/^'/, '');
+    U.wajib_(U.bolehNisn_(me, nisn), 'Anda tidak memiliki akses ke data santri ini.');
+    return U.rows_('RaporResmi').filter(function (x) { return String(x.NISN) === nisn && (x.Status === 'Sah' || !U.hanyaWali_(me)); })
+      .sort(function (a, b) { return String(b.Diterbitkan).localeCompare(String(a.Diterbitkan)); })
+      .map(function (x) { return { id: x.ID, semester: x.Semester, kelas: x.Kelas, diterbitkan: String(x.Diterbitkan).slice(0, 10), oleh: x.Oleh, status: x.Status, kode: x.Kode }; });
+  }
+  function api_fileRapor(p, me) {
+    const r = U.rows_('RaporResmi').find(function (x) { return x.ID === p.id; });
+    if (!r) throw new Error('Rapor tidak ditemukan.');
+    U.wajib_(U.bolehNisn_(me, r.NISN), 'Anda tidak memiliki akses ke rapor ini.');
+    return fileB64_(r['File ID']);
+  }
+  function api_batalRapor(p, me) {
+    U.wajib_(U.punya_(me, BOLEH_RAPOR), 'Hanya wali kelas, Admin, atau Mudir.');
+    if (!norm(p.alasan)) throw new Error('Tulis alasan pembatalan.');
+    const r = U.rows_('RaporResmi').find(function (x) { return x.ID === p.id; });
+    if (!r) throw new Error('Rapor tidak ditemukan.');
+    if (r.Status !== 'Sah') throw new Error('Rapor ini sudah tidak berlaku.');
+    U.ubah_('RaporResmi', r, { Status: 'Dibatalkan', Catatan: norm(p.alasan).slice(0, 200) + ' — ' + me.nama });
+    return { id: r.ID, status: 'Dibatalkan' };
+  }
+  PRM_.daftarkan('terbitkanRapor', api_terbitkanRapor);
+  PRM_.daftarkan('raporSantri', api_raporSantri);
+  PRM_.daftarkan('fileRapor', api_fileRapor);
+  PRM_.daftarkan('batalRapor', api_batalRapor);
+
+  /* ================================================================
+   *  7. PPDB ONLINE
+   *  Halaman publik /ppdb/ (tanpa login). Pengamanan: penyaringan jebakan bot,
+   *  batas kiriman per 10 menit, berkas dibatasi ukurannya & jenisnya.
+   * ================================================================ */
+  const PROP_PPDB = 'PRM_PPDB';
+  const ST = ['Baru', 'Diverifikasi', 'Perlu Perbaikan', 'Tes/Wawancara', 'Diterima', 'Cadangan', 'Tidak Diterima', 'Menjadi Santri'];
+  function aturan_() {
+    let a = {}; try { a = JSON.parse(props().getProperty(PROP_PPDB) || '{}'); } catch (e) { }
+    return { buka: !!a.buka, tahun: a.tahun || (new Date().getFullYear() + '/' + (new Date().getFullYear() + 1)), jenjang: a.jenjang || ['SMP / Tsanawiyah', 'SMA / Aliyah'],
+      info: a.info || '', kuota: Number(a.kuota) || 0, kontak: a.kontak || '', berkas: a.berkas || ['Pas foto', 'Kartu Keluarga', 'Akta kelahiran', 'Ijazah / SKL / Rapor terakhir'] };
+  }
+  function api_ppdbInfo() {
+    const a = aturan_();
+    const jumlah = U.rows_('PPDB').length;
+    return { lembaga: U.namaLembaga_(), buka: a.buka && (!a.kuota || jumlah < a.kuota * 3), tahun: a.tahun, jenjang: a.jenjang, info: a.info, kontak: a.kontak, berkas: a.berkas,
+      penuh: !!(a.kuota && jumlah >= a.kuota * 3) };
+  }
+  function noDaftar_(tahun) {
+    const awal = 'PPDB-' + String(tahun).slice(0, 4) + '-';
+    let max = 0;
+    U.rows_('PPDB').forEach(function (r) { const m = String(r['No Daftar']).match(/-(\d+)$/); if (String(r['No Daftar']).indexOf(awal) === 0 && m && Number(m[1]) > max) max = Number(m[1]); });
+    return awal + String(max + 1).padStart(4, '0');
+  }
+  function api_ppdbDaftar(p) {
+    const a = aturan_();
+    if (!a.buka) throw new Error('Pendaftaran sedang ditutup.');
+    if (norm(p.website)) throw new Error('Pendaftaran tidak dapat diproses.'); // jebakan bot (kolom tersembunyi)
+    const c = CacheService.getScriptCache();
+    const n = Number(c.get('ppdb_laju') || 0);
+    if (n >= 20) throw new Error('Pendaftaran sedang ramai. Silakan coba lagi 10 menit lagi.');
+    c.put('ppdb_laju', String(n + 1), 600);
+    const nama = norm(p.nama).slice(0, 100), wa = norm(p.noWa).replace(/[^\d]/g, '');
+    const tgl = norm(p.tanggalLahir);
+    if (nama.length < 3) throw new Error('Isi nama lengkap calon santri.');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(tgl)) throw new Error('Isi tanggal lahir.');
+    if (!/^(0|62)8\d{7,12}$/.test(wa)) throw new Error('Nomor WhatsApp orang tua tidak valid (contoh 081234567890).');
+    if (['Laki-laki', 'Perempuan'].indexOf(norm(p.jk)) < 0) throw new Error('Pilih jenis kelamin.');
+    const berkas = (p.berkas || []).slice(0, 6);
+    let total = 0;
+    berkas.forEach(function (b) {
+      if (!/^image\/(jpeg|png|webp)$|^application\/pdf$/.test(String(b.mime))) throw new Error('Berkas harus foto (JPG/PNG) atau PDF.');
+      total += String(b.base64 || '').length;
+    });
+    if (total > 12 * 1024 * 1024) throw new Error('Total berkas terlalu besar (maks sekitar 9 MB). Kirim foto yang lebih kecil.');
+    // pendaftar sama (nama + tgl lahir + WA) tidak boleh mendaftar dua kali
+    const ada = U.rows_('PPDB').find(function (r) { return normNama(r.Nama) === normNama(nama) && String(r['Tanggal Lahir']).slice(0, 10) === tgl && String(r['No WA']) === wa; });
+    if (ada) throw new Error('Calon santri ini sudah terdaftar dengan nomor ' + ada['No Daftar'] + '. Gunakan menu Cek Status.');
+    const lock = LockService.getScriptLock(); lock.waitLock(20000);
+    let r;
+    try {
+      const no = noDaftar_(a.tahun);
+      const folder = sub_(sub_(folderAkar_('PRM_PPDB_ROOT', 'PPDB'), bersihNama_(a.tahun.replace(/\//g, '-'))), bersihNama_(no + ' - ' + nama));
+      const daftarBerkas = berkas.map(function (b, i) {
+        const ext = b.mime === 'application/pdf' ? '.pdf' : (b.mime === 'image/png' ? '.png' : '.jpg');
+        const f = folder.createFile(Utilities.newBlob(Utilities.base64Decode(b.base64), b.mime, bersihNama_((b.label || ('Berkas ' + (i + 1)))) + ext));
+        return { label: bersihNama_(b.label || ('Berkas ' + (i + 1))), id: f.getId() };
+      });
+      r = { ID: Utilities.getUuid().split('-')[0] + Date.now().toString(36), 'No Daftar': no, Waktu: U.stamp_(), Nama: nama, JK: norm(p.jk),
+        'Tempat Lahir': norm(p.tempatLahir).slice(0, 60), 'Tanggal Lahir': tgl, 'Asal Sekolah': norm(p.asalSekolah).slice(0, 100), Jenjang: norm(p.jenjang).slice(0, 60),
+        'Nama Ayah': norm(p.namaAyah).slice(0, 80), 'Nama Ibu': norm(p.namaIbu).slice(0, 80), 'No WA': wa, Alamat: norm(p.alamat).slice(0, 300), Catatan: norm(p.catatan).slice(0, 300),
+        Berkas: JSON.stringify(daftarBerkas), Status: 'Baru', 'Catatan Panitia': '', 'Diproses Oleh': '', 'Diproses Pada': '', NISN: '', 'Kode Cek': U.kodeAcak_('', 6) };
+      U.tulis_('PPDB', null, r);
+    } finally { lock.releaseLock(); }
+    U.aman_(function () {
+      const staf = getAktifSS().getSheetByName(SHEET_ROLE).getDataRange().getValues().slice(1).filter(function (x) { return /Admin|Mudir|Sekretaris/.test(norm(x[3])); }).map(function (x) { return norm(x[0]); });
+      if (staf.length) kirimPushOneSignal(staf, '📝 Pendaftar PPDB baru', r.Nama + ' (' + r.Jenjang + ') · ' + r['No Daftar'], '', { jenis: 'ppdb' });
+    });
+    U.aman_(function () {
+      kirimWAKategori_('ppdb', wa, 'Assalamualaikum Wr. Wb.\n\nTerima kasih, pendaftaran *' + r.Nama + '* di ' + U.namaLembaga_() + ' telah kami terima.\n\nNomor pendaftaran: *' + r['No Daftar'] + '*\nKode cek: *' + r['Kode Cek'] +
+        '*\n\nSimpan nomor & kode ini untuk mengecek status pendaftaran di halaman PPDB.\n\nJazakumullah khairan.');
+    });
+    return { noDaftar: r['No Daftar'], kodeCek: r['Kode Cek'], nama: r.Nama };
+  }
+  function outPublik_(r) {
+    return { noDaftar: r['No Daftar'], nama: r.Nama, jenjang: r.Jenjang, status: r.Status, catatan: r['Catatan Panitia'], waktu: String(r.Waktu).slice(0, 10) };
+  }
+  function api_ppdbCek(p) {
+    const c = CacheService.getScriptCache();
+    const n = Number(c.get('ppdb_cek') || 0);
+    if (n >= 60) throw new Error('Terlalu banyak pengecekan. Coba lagi beberapa menit lagi.');
+    c.put('ppdb_cek', String(n + 1), 300);
+    const no = norm(p.noDaftar).toUpperCase(), kode = U.kodeBersih_(p.kodeCek);
+    const r = U.rows_('PPDB').find(function (x) { return String(x['No Daftar']).toUpperCase() === no && U.kodeBersih_(x['Kode Cek']) === kode; });
+    if (!r) throw new Error('Nomor pendaftaran atau kode cek tidak cocok.');
+    return outPublik_(r);
+  }
+  function bolehPpdb_(me) { return U.punya_(me, ['Admin', 'Mudir', 'Sekretaris']); }
+  function api_ppdbDaftarPendaftar(p, me) {
+    U.wajib_(bolehPpdb_(me), 'Hanya Admin, Mudir, atau Sekretaris.');
+    const list = U.rows_('PPDB').map(function (r) {
+      let b = []; try { b = JSON.parse(r.Berkas || '[]'); } catch (e) { }
+      return { id: r.ID, noDaftar: r['No Daftar'], waktu: r.Waktu, nama: r.Nama, jk: r.JK, tempatLahir: r['Tempat Lahir'], tanggalLahir: String(r['Tanggal Lahir']).slice(0, 10),
+        asalSekolah: r['Asal Sekolah'], jenjang: r.Jenjang, ayah: r['Nama Ayah'], ibu: r['Nama Ibu'], noWa: String(r['No WA']), alamat: r.Alamat, catatan: r.Catatan,
+        berkas: b.map(function (x, i) { return { i: i, label: x.label }; }), status: r.Status, catatanPanitia: r['Catatan Panitia'], diprosesOleh: r['Diproses Oleh'], nisn: String(r.NISN || '') };
+    }).sort(function (a, b) { return String(b.waktu).localeCompare(String(a.waktu)); });
+    const rekap = {}; list.forEach(function (x) { rekap[x.status] = (rekap[x.status] || 0) + 1; });
+    return { aturan: aturan_(), data: list, rekap: rekap, status: ST };
+  }
+  function api_ppdbBerkas(p, me) {
+    U.wajib_(bolehPpdb_(me), 'Hanya Admin, Mudir, atau Sekretaris.');
+    const r = U.rows_('PPDB').find(function (x) { return x.ID === p.id; });
+    if (!r) throw new Error('Pendaftar tidak ditemukan.');
+    let b = []; try { b = JSON.parse(r.Berkas || '[]'); } catch (e) { }
+    const x = b[Number(p.i)]; if (!x) throw new Error('Berkas tidak ditemukan.');
+    return fileB64_(x.id);
+  }
+  function api_ppdbProses(p, me) {
+    U.wajib_(bolehPpdb_(me), 'Hanya Admin, Mudir, atau Sekretaris.');
+    const st = norm(p.status);
+    if (ST.indexOf(st) < 0 || st === 'Menjadi Santri') throw new Error('Status tidak dikenal.');
+    const r = U.rows_('PPDB').find(function (x) { return x.ID === p.id; });
+    if (!r) throw new Error('Pendaftar tidak ditemukan.');
+    if (r.Status === 'Menjadi Santri') throw new Error('Pendaftar ini sudah menjadi santri.');
+    const o = U.ubah_('PPDB', r, { Status: st, 'Catatan Panitia': norm(p.catatan).slice(0, 300), 'Diproses Oleh': me.nama, 'Diproses Pada': U.stamp_() });
+    if (p.kabari !== false) {
+      U.aman_(function () {
+        kirimWAKategori_('ppdb', String(r['No WA']), 'Assalamualaikum Wr. Wb.\n\nInformasi pendaftaran *' + r.Nama + '* (' + r['No Daftar'] + ') di ' + U.namaLembaga_() + ':\n\nStatus: *' + st + '*' +
+          (norm(p.catatan) ? '\nCatatan: ' + norm(p.catatan) : '') + '\n\nJazakumullah khairan.');
+      });
+    }
+    return outPublik_(o);
+  }
+  function api_ppdbJadikanSantri(p, me) {
+    U.wajib_(U.punya_(me, ['Admin', 'Mudir']), 'Hanya Admin atau Mudir yang dapat memasukkan ke Data Santri.');
+    const r = U.rows_('PPDB').find(function (x) { return x.ID === p.id; });
+    if (!r) throw new Error('Pendaftar tidak ditemukan.');
+    if (r.Status !== 'Diterima') throw new Error('Hanya pendaftar berstatus Diterima yang dapat dimasukkan ke Data Santri.');
+    const nisn = norm(p.nisn);
+    if (!/^\d{3,20}$/.test(nisn)) throw new Error('Isi NISN (angka) untuk santri baru.');
+    const h = apiTambahSantriManual({ nisn: nisn, nama: r.Nama, tahunMasuk: norm(p.tahunMasuk) || String(new Date().getFullYear()), jenisKelamin: r.JK, noWaOrtu: String(r['No WA']),
+      kelas: norm(p.kelas), jenisMasuk: 'Santri Baru (PPDB)', asalSekolah: r['Asal Sekolah'], oleh: me.nama });
+    if (!h.ok) throw new Error(h.error);
+    U.ubah_('PPDB', r, { Status: 'Menjadi Santri', NISN: nisn, 'Diproses Oleh': me.nama, 'Diproses Pada': U.stamp_() });
+    return { nisn: nisn, nama: r.Nama, catatan: h.pesanRombel || '' };
+  }
+  function api_ppdbAtur(p, me) {
+    U.wajib_(U.punya_(me, ['Admin', 'Mudir']), 'Hanya Admin atau Mudir.');
+    const a = {
+      buka: p.buka === true, tahun: norm(p.tahun).slice(0, 20) || aturan_().tahun, kuota: Math.max(0, Number(p.kuota) || 0), kontak: norm(p.kontak).slice(0, 120),
+      info: String(p.info || '').slice(0, 2000),
+      jenjang: String(p.jenjang || '').split(/\n|,/).map(function (x) { return x.trim(); }).filter(Boolean).slice(0, 8),
+      berkas: String(p.berkas || '').split(/\n|,/).map(function (x) { return x.trim(); }).filter(Boolean).slice(0, 6),
+    };
+    if (!a.jenjang.length) a.jenjang = aturan_().jenjang;
+    if (!a.berkas.length) a.berkas = aturan_().berkas;
+    props().setProperty(PROP_PPDB, JSON.stringify(a));
+    return aturan_();
+  }
+  PRM_.daftarkan('ppdbInfo', api_ppdbInfo, true);
+  PRM_.daftarkan('ppdbDaftar', api_ppdbDaftar, true);
+  PRM_.daftarkan('ppdbCek', api_ppdbCek, true);
+  PRM_.daftarkan('ppdbDaftarPendaftar', api_ppdbDaftarPendaftar);
+  PRM_.daftarkan('ppdbBerkas', api_ppdbBerkas);
+  PRM_.daftarkan('ppdbProses', api_ppdbProses);
+  PRM_.daftarkan('ppdbJadikanSantri', api_ppdbJadikanSantri);
+  PRM_.daftarkan('ppdbAtur', api_ppdbAtur);
+})();
+
+
+// ======================================================================
+// PERSURATAN (Simpel Surat) -- modul sekretariat yang digabung ke WASIAT
+//
+// Seluruh kode persuratan dibungkus dalam SURAT_ (namespace sendiri), jadi tidak ada
+// nama fungsi/konstanta yang bertabrakan dengan WASIAT. Datanya terpisah: folder
+// "PERSURATAN - PP WIHDATUL UMMAH POSO" + spreadsheet "00. BUKU AGENDA SURAT" (dibuat
+// otomatis saat persuratan pertama kali dibuka). Tidak ada sheet WASIAT yang ditulis;
+// data santri, guru, dan akun hanya DIBACA dari WASIAT.
+// Aplikasi web-nya ada di folder /surat/ dan memanggil server ini dengan modul:'surat'.
+// ======================================================================
+var SURAT_ = (function () {
+  /**
+   * ================================================================
+   *  SIMPEL SURAT — Sistem Persuratan Pondok Pesantren Wihdatul Ummah Poso
+   *  Backend: Google Apps Script  (file 1 dari 2: Code.gs + Akun.gs)
+   *  Database : Google Sheets (dibuat otomatis oleh setup())
+   *  Arsip    : Google Drive  (folder dibuat otomatis oleh setup())
+   * ================================================================
+   *  CARA PAKAI SINGKAT
+   *  1. Tempel Code.gs dan Akun.gs ke proyek Apps Script (script.google.com)
+   *  2. Pilih fungsi "setup" lalu klik Jalankan (Run) -> izinkan akses
+   *  3. Deploy > New deployment > Web app
+   *       Execute as : Me          Who has access : Anyone
+   *  4. Salin URL Web App -> tempel ke config.js
+   *  Akun awal: admin / 123456  (wajib ganti PIN saat pertama masuk)
+   * ================================================================
+   */
+
+  const CFG = {
+    ROOT_NAME: 'PERSURATAN - PP WIHDATUL UMMAH POSO',
+    DB_NAME: '00. BUKU AGENDA SURAT - PP WIHDATUL UMMAH POSO',
+  };
+
+  /** Nama folder utama di dalam folder PERSURATAN (angka di depan = urutan tampil di Drive) */
+  const F = {
+    KELUAR: '01. Surat Keluar',
+    MASUK: '02. Surat Masuk',
+    SET: '99. Pengaturan (logo & tanda tangan)',
+  };
+  const PREFIX_BATAL = '[DIBATALKAN] ';
+  const JENIS_MASUK = ['Undangan', 'Pemberitahuan & Edaran', 'Permohonan', 'Surat Keputusan & Instruksi',
+    'Laporan', 'Kerja Sama', 'Lainnya'];
+
+  const BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli',
+    'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+  const ROMAWI = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+
+  /** Status surat keluar */
+  const ST = { DRAF: 'Draf', MENUNGGU: 'Menunggu Persetujuan', REVISI: 'Perlu Revisi', TERBIT: 'Terbit', TERKIRIM: 'Terkirim', BATAL: 'Dibatalkan' };
+
+  const HEAD = {
+    SuratKeluar: ['ID', 'No Urut', 'Tahun', 'Nomor Surat', 'Tanggal', 'Jenis', 'Kode', 'Perihal',
+      'Tujuan', 'Penandatangan', 'Status', 'File ID', 'Link PDF', 'Data JSON', 'Dibuat', 'Diperbarui', 'Kategori',
+      'Dibuat Oleh', 'Disetujui Oleh', 'Disetujui Pada', 'Catatan Persetujuan', 'Kode Verifikasi', 'Penerima JSON', 'Status Kirim', 'Revisi JSON'],
+    SuratMasuk: ['ID', 'No Agenda', 'Tahun', 'Nomor Surat', 'Tanggal Surat', 'Tanggal Diterima',
+      'Pengirim', 'Perihal', 'Disposisi', 'Keterangan', 'File ID', 'Link File', 'Dicatat', 'Jenis',
+      'Disposisi Ke', 'Status Tindak Lanjut', 'Catatan Tindak Lanjut', 'Ditindaklanjuti Pada', 'Dicatat Oleh'],
+    Pengaturan: ['Kunci', 'Nilai'],
+    Template: ['ID', 'Nama', 'Kategori', 'Kode', 'Definisi JSON', 'Dibuat', 'Diperbarui'],
+    Santri: ['ID', 'Nama', 'NIS', 'NISN', 'Jenis Kelamin', 'Tempat Lahir', 'Tanggal Lahir', 'Kelas', 'Asrama/Kamar',
+      'Nama Wali', 'Hubungan Wali', 'No HP Wali', 'Alamat', 'Status', 'Diperbarui'],
+    Guru: ['ID', 'Nama', 'NIY/NIP', 'Jabatan', 'Jenis Kelamin', 'No HP', 'Alamat', 'Status', 'Diperbarui'],
+    Pengguna: ['ID', 'Nama', 'Username', 'Peran', 'Hash', 'Salt', 'Terkait', 'No WA', 'Status', 'Versi',
+      'Wajib Ganti PIN', 'Dibuat', 'Login Terakhir'],
+    Notifikasi: ['ID', 'Untuk', 'Judul', 'Pesan', 'Jenis', 'Ref', 'Dibuat', 'Dibaca', 'Dari', 'WA', 'Info WA', 'Percobaan WA'],
+  };
+  /** Kunci data (dipakai aplikasi) ↔ kolom sheet, urutan sama dengan HEAD */
+  const PEOPLE = {
+    santri: { sheet: 'Santri', keys: ['id', 'nama', 'nis', 'nisn', 'jk', 'tempatLahir', 'tglLahir', 'kelas', 'asrama', 'wali', 'hubunganWali', 'hpWali', 'alamat', 'status', 'diperbarui'], unik: 'nis' },
+    guru: { sheet: 'Guru', keys: ['id', 'nama', 'niy', 'jabatan', 'jk', 'hp', 'alamat', 'status', 'diperbarui'], unik: 'niy' },
+  };
+  /** Kategori template bawaan yang dikelompokkan (selain itu: kategori = nama jenis surat) */
+  const KATEGORI_BAWAAN = ['Pendisiplinan Santri', 'Surat Keputusan'];
+
+  const DEFAULTS = {
+    kopKiri: 'PONDOK PESANTREN SALAFIYAH\nWIHDATUL UMMAH\nPOSO SULAWESI TENGAH',
+    kopKanan: 'معهد سلفية\nوحدة الأمة بوسو\nسولاويسي الوسطى',
+    kopBar: 'Sekretariat : Jl. Lingkar Moengko-Lembomawo Kel. Moengko Lama Kec. Poso Kota Kab. Poso Hp. 082292255617',
+    warnaKop: '#01B0F1',
+    namaResmi: 'Pondok Pesantren Salafiyah Wihdatul Ummah Poso',
+    kota: 'Poso',
+    formatNomor: 'K.{urut}/PPS-WU/{bulan}/{tahun}',
+    digitUrut: '3',
+    penandatangan: JSON.stringify([
+      { jabatan: 'Mudir  PPS Wihdatul Ummah Poso', nama: 'Muh. Idul Fitran, S.H.', nip: 'NIY. 10031994092018027' },
+    ]),
+    tampilHijriah: 'tidak',
+    gayaSalam: 'arab',
+    wajibPersetujuan: 'ya',
+    tampilQr: 'ya',
+    waProvider: 'wasiat',
+    waServer: 'jkt.wablas.com',
+    appUrl: '',
+  };
+  const IMG_KEY = /^(logo|ttd\d{1,2})$/;
+  /** Pengaturan yang boleh diubah lewat aplikasi (token WA disimpan terpisah di Script Properties) */
+  const SET_BOLEH = ['kopKiri', 'kopKanan', 'kopBar', 'warnaKop', 'namaResmi', 'kota', 'formatNomor', 'digitUrut',
+    'penandatangan', 'tampilHijriah', 'gayaSalam', 'wajibPersetujuan', 'tampilQr', 'waProvider', 'waServer', 'appUrl'];
+
+  /* ================================================================
+   *  SETUP — jalankan sekali dari editor (aman dijalankan ulang)
+   * ================================================================ */
+
+  /**
+   * Jalankan SEKALI dari editor bila sebelumnya sudah ada surat yang tersimpan
+   * dengan susunan folder lama. Semua PDF dipindah ke susunan baru.
+   */
+  function rapikanArsip() {
+    let pindah = 0;
+    rows_('SuratKeluar').forEach(function (r) {
+      if (!r['File ID']) return;
+      try {
+        const f = DriveApp.getFileById(r['File ID']);
+        f.moveTo(folderKeluar_(r.Kategori, r.Jenis, r.Tahun));
+        const nm = f.getName().replace(PREFIX_BATAL, '');
+        f.setName((r.Status === ST.BATAL ? PREFIX_BATAL : '') + nm);
+        pindah++;
+      } catch (e) { Logger.log('Lewati ' + r['Nomor Surat'] + ': ' + e.message); }
+    });
+    rows_('SuratMasuk').forEach(function (r) {
+      if (!r['File ID']) return;
+      try { DriveApp.getFileById(r['File ID']).moveTo(folderMasuk_(r.Jenis, r.Tahun)); pindah++; }
+      catch (e) { Logger.log('Lewati ' + r['No Agenda'] + ': ' + e.message); }
+    });
+    ['Surat Keluar', 'Surat Masuk', 'Pengaturan'].forEach(function (n) {
+      const it = root_().getFoldersByName(n);
+      while (it.hasNext()) {
+        const fo = it.next();
+        if (n === 'Pengaturan') { const fi = fo.getFiles(); while (fi.hasNext()) fi.next().moveTo(folder_(root_(), F.SET)); }
+        trashIfEmpty_(fo);
+      }
+    });
+    Logger.log('Selesai. ' + pindah + ' file dirapikan.');
+  }
+
+  function trashIfEmpty_(fo) {
+    const subs = fo.getFolders();
+    while (subs.hasNext()) trashIfEmpty_(subs.next());
+    if (!fo.getFiles().hasNext() && !fo.getFolders().hasNext()) fo.setTrashed(true);
+  }
+
+  /** Darurat: jalankan dari editor bila semua admin lupa PIN → akun "admin" PIN 123456 */
+
+  /* ================================================================
+   *  WEB APP ENDPOINT
+   * ================================================================ */
+
+  const HANDLERS = {
+    // publik
+    login: api_login, verify: api_verify,
+    // semua pengguna
+    ping: api_ping, me: api_me, changeMyPin: api_changeMyPin, getSettings: api_getSettings,
+    listNotif: api_listNotif, readNotif: api_readNotif, getFile: api_getFile,
+    listPending: api_listPending, approve: api_approve, reject: api_reject,
+    listDisposisiSaya: api_listDisposisiSaya, tindakLanjut: api_tindakLanjut,
+    // pengelola (Sekretaris & Mudir)
+    saveSettings: api_saveSettings, uploadImage: api_uploadImage, removeImage: api_removeImage,
+    nextNumber: api_nextNumber, saveSurat: api_saveSurat, listSurat: api_listSurat, getSurat: api_getSurat,
+    setStatus: api_setStatus, deleteDraft: api_deleteDraft, kirimSurat: api_kirimSurat,
+    saveSuratMasuk: api_saveSuratMasuk, listSuratMasuk: api_listSuratMasuk, dashboard: api_dashboard,
+    listTemplates: api_listTemplates, saveTemplate: api_saveTemplate, deleteTemplate: api_deleteTemplate,
+    listPeople: api_listPeople, savePerson: api_savePerson, deletePerson: api_deletePerson, importPeople: api_importPeople,
+    listUsers: api_listUsers, saveUser: api_saveUser, resetPin: api_resetPin, deleteUser: api_deleteUser,
+    buatAkunWali: api_buatAkunWali, buatAkunGuru: api_buatAkunGuru, waTest: api_waTest, meta: api_meta,
+    hubungkanArsipLama: function (p) { return hubungkanArsipLama(p.id); },
+    arsipSuratLama: api_arsipSuratLama, hapusArsipLama: api_hapusArsipLama,
+  };
+
+
+  /* ================================================================
+   *  PENGATURAN
+   * ================================================================ */
+  function api_ping(p, me) {
+    db_();
+    return { pesan: 'Terhubung', waktu: new Date().toISOString() };
+  }
+
+  function signers_(s) {
+    let list = [];
+    try { list = JSON.parse(s.penandatangan || '[]'); } catch (e) { }
+    return Array.isArray(list) ? list : [];
+  }
+
+  /** Apakah akun ini boleh memakai gambar tanda tangan ke-i? */
+
+  function api_getSettings(p, me) {
+    const s = settings_();
+    const signers = signers_(s);
+    const images = {};
+    Object.keys(s).forEach(function (k) {
+      if (k.indexOf('img_') !== 0 || !s[k]) return;
+      const key = k.slice(4);
+      const m = key.match(/^ttd(\d+)$/);
+      if (m && !bolehTtd_(me, Number(m[1]), s, signers)) { images[key] = 'terkunci'; return; }
+      try {
+        const b = DriveApp.getFileById(s[k]).getBlob();
+        images[key] = 'data:' + b.getContentType() + ';base64,' + Utilities.base64Encode(b.getBytes());
+      } catch (e) { }
+    });
+    const out = {};
+    Object.keys(s).forEach(function (k) { if (k.indexOf('img_') !== 0) out[k] = s[k]; });
+    const pengelola = me && PENGELOLA.indexOf(me.Peran) >= 0;
+    return {
+      settings: out, images: images,
+      rootUrl: pengelola ? root_().getUrl() : '', dbUrl: pengelola ? db_().getUrl() : '',
+      wa: pengelola ? waStatus_() : null,
+      peran: PERAN,
+    };
+  }
+
+  function api_saveSettings(p, me) {
+    const sh = sheet_('Pengaturan');
+    const cur = rows_('Pengaturan');
+    const data = p.settings || {};
+    Object.keys(data).forEach(function (k) {
+      if (SET_BOLEH.indexOf(k) < 0) return;
+      let v = data[k];
+      if (typeof v !== 'string') v = JSON.stringify(v);
+      const r = cur.find(function (x) { return x.Kunci === k; });
+      if (r) writeRow_(sh, r._row, [k, v]); else appendText_(sh, [k, v]);
+    });
+    // token WA disimpan di Script Properties (tidak terlihat di Sheets)
+    const P = props_();
+    if (p.waToken === '-') P.deleteProperty('WA_TOKEN'); else if (p.waToken) P.setProperty('WA_TOKEN', String(p.waToken).trim());
+    if (p.waSecret === '-') P.deleteProperty('WA_SECRET'); else if (p.waSecret) P.setProperty('WA_SECRET', String(p.waSecret).trim());
+    return api_getSettings({}, me);
+  }
+
+  function api_uploadImage(p) {
+    if (!IMG_KEY.test(String(p.key))) throw new Error('Jenis gambar tidak dikenal.');
+    if (!p.base64) throw new Error('File gambar kosong.');
+    const folder = folder_(root_(), F.SET);
+    const old = settings_()['img_' + p.key];
+    if (old) { try { DriveApp.getFileById(old).setTrashed(true); } catch (e) { } }
+    const blob = Utilities.newBlob(Utilities.base64Decode(p.base64), p.mime || 'image/png', p.key + ext_(p.mime));
+    const file = folder.createFile(blob);
+    setSetting_('img_' + p.key, file.getId());
+    return { key: p.key, fileId: file.getId() };
+  }
+
+  function api_removeImage(p) {
+    if (!IMG_KEY.test(String(p.key))) throw new Error('Jenis gambar tidak dikenal.');
+    const old = settings_()['img_' + p.key];
+    if (old) { try { DriveApp.getFileById(old).setTrashed(true); } catch (e) { } }
+    setSetting_('img_' + p.key, '');
+    return { key: p.key };
+  }
+
+  /* ================================================================
+   *  SURAT KELUAR — DRAF → PERSETUJUAN → TERBIT
+   * ================================================================ */
+  function api_nextNumber(p) {
+    const d = parseDate_(p.tanggal);
+    const urut = nextUrut_(d.getFullYear());
+    return { urut: urut, nomor: formatNomor_(settings_(), urut, d, p.kode) };
+  }
+
+  function statusOf_(r) { return r.Status === 'Diarsipkan' ? ST.TERBIT : (r.Status || ST.TERBIT); }
+  const sudahTerbit_ = function (r) { const s = statusOf_(r); return s === ST.TERBIT || s === ST.TERKIRIM; };
+
+  /** Akun yang berhak menyetujui surat ini: akun yang namanya = penandatangan; bila tidak ada → semua Mudir */
+  function bolehSetujui_(me, r) {
+    return me.Peran === 'mudir' || approversFor_(r).some(function (u) { return u.ID === me.ID; });
+  }
+
+  function api_saveSurat(p, me) {
+    const s = settings_();
+    const wajib = s.wajibPersetujuan !== 'tidak';
+    const bolehTerbit = me.Peran === 'mudir' || !wajib;
+    let aksi = p.aksi || 'terbit';
+    const lock = kunciSurat_();
+    lock.waitLock(30000);
+    try {
+      const all = rows_('SuratKeluar');
+      let ex = null;
+      if (p.id) {
+        ex = all.find(function (r) { return r.ID === p.id; });
+        if (!ex) throw new Error('Data surat yang akan diperbarui tidak ditemukan.');
+        if (statusOf_(ex) === ST.BATAL) throw new Error('Surat yang dibatalkan tidak bisa diubah. Aktifkan kembali dulu.');
+      }
+      if (aksi === 'terbit' && !bolehTerbit) aksi = 'ajukan';
+      if (aksi === 'draf' && ex && sudahTerbit_(ex)) aksi = bolehTerbit ? 'terbit' : 'ajukan';
+
+      const d = parseDate_(p.tanggal);
+      const o = {
+        Tanggal: ymd_(d), Jenis: p.jenis || '', Kode: p.kode || '', Perihal: p.perihal || '', Tujuan: p.tujuan || '',
+        Penandatangan: p.penandatangan || '', 'Data JSON': JSON.stringify(p.data || {}), Diperbarui: stamp_(),
+        Kategori: p.kategori || p.jenis || '', 'Penerima JSON': JSON.stringify(p.penerima || {}),
+      };
+      if (!ex) { o.ID = uid_(); o.Dibuat = stamp_(); o['Dibuat Oleh'] = me.ID; o.Tahun = String(d.getFullYear()); }
+      if (p.nomorManual && (!ex || !ex['Nomor Surat'])) o._nomorManual = String(p.nomorManual).trim();
+
+      // revisi atas surat yang sudah terbit: simpan terpisah, versi lama tetap berlaku sampai disetujui
+      if (ex && sudahTerbit_(ex) && ex['File ID'] && aksi === 'ajukan') {
+        const rev = {}; Object.keys(o).forEach(function (k) { if (k.charAt(0) !== '_') rev[k] = o[k]; });
+        writeObj_('SuratKeluar', ex._row, { 'Revisi JSON': JSON.stringify(rev), Status: ST.MENUNGGU, 'Catatan Persetujuan': '', Diperbarui: stamp_() }, ex);
+        notify_(approversFor_(Object.assign({}, ex, rev)), {
+          judul: 'Revisi surat menunggu persetujuan', jenis: 'persetujuan', ref: ex.ID,
+          pesan: 'Revisi ' + (ex['Nomor Surat'] || '') + ' — ' + (rev.Jenis || '') + ': ' + (rev.Perihal || '') + '. Diajukan oleh ' + me.Nama + '.',
+        }, me);
+        return { id: ex.ID, nomor: ex['Nomor Surat'], status: ST.MENUNGGU };
+      }
+      if (aksi === 'draf' || aksi === 'ajukan') {
+        o.Status = aksi === 'draf' ? ST.DRAF : ST.MENUNGGU;
+        if (aksi === 'ajukan') o['Catatan Persetujuan'] = '';
+        if (o._nomorManual) { cekNomorUnik_(all, o._nomorManual, ex); o['Nomor Surat'] = o._nomorManual; o['No Urut'] = (o._nomorManual.match(/\d+/) || ['0'])[0]; }
+        delete o._nomorManual;
+        const row = writeObj_('SuratKeluar', ex ? ex._row : null, o, ex);
+        if (aksi === 'ajukan') {
+          const r = Object.assign({}, ex || {}, o);
+          notify_(approversFor_(r), {
+            judul: 'Surat menunggu persetujuan', jenis: 'persetujuan', ref: row.ID,
+            pesan: (o.Jenis || 'Surat') + ': ' + (o.Perihal || '') + (o.Tujuan ? ' — kepada ' + o.Tujuan : '') + '. Diajukan oleh ' + me.Nama + '.',
+          }, me);
+        }
+        return { id: row.ID, nomor: row['Nomor Surat'] || '', status: row.Status };
+      }
+      // terbit langsung (Mudir, atau persetujuan tidak diwajibkan)
+      o['Revisi JSON'] = '';
+      const res = terbit_(Object.assign({}, ex || {}, o), ex, p.html, p.kodeVerifikasi, me, all);
+      if (ex && statusOf_(ex) === ST.MENUNGGU && ex['Dibuat Oleh'] && ex['Dibuat Oleh'] !== me.ID) {
+        const pembuat = users_().find(function (u) { return u.ID === ex['Dibuat Oleh']; });
+        if (pembuat) notify_([pembuat], { judul: 'Surat disetujui (dengan perubahan) ✓', jenis: 'disetujui', ref: ex.ID,
+          pesan: (o.Jenis || '') + ': ' + (o.Perihal || '') + ' — Nomor ' + res.nomor + '. Diubah & disetujui oleh ' + me.Nama + '.' }, me);
+      }
+      return res;
+    } finally {
+      lock.releaseLock();
+    }
+  }
+
+  function cekNomorUnik_(all, nomor, ex) {
+    if (all.some(function (r) { return r['Nomor Surat'] === nomor && (!ex || r.ID !== ex.ID) && statusOf_(r) !== ST.BATAL; })) {
+      throw new Error('Nomor surat ' + nomor + ' sudah dipakai. Gunakan nomor lain.');
+    }
+  }
+
+  /** Beri nomor (bila belum), buat PDF, simpan ke folder kategori, tandai Terbit */
+  function terbit_(r, ex, html, kode, me, all) {
+    if (!html) throw new Error('Isi surat kosong.');
+    const d = parseDate_(r.Tanggal);
+    const tahun = d.getFullYear();
+    all = all || rows_('SuratKeluar');
+    let nomor = r['Nomor Surat'], urut = r['No Urut'];
+    if (!nomor) {
+      if (r._nomorManual) { cekNomorUnik_(all, r._nomorManual, ex); nomor = r._nomorManual; urut = (nomor.match(/\d+/) || ['0'])[0]; }
+      else { urut = nextUrut_(tahun, all); nomor = formatNomor_(settings_(), urut, d, r.Kode); }
+    }
+    delete r._nomorManual;
+    kode = String(kode || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (kode.length < 8 || all.some(function (x) { return x['Kode Verifikasi'] === kode && (!ex || x.ID !== ex.ID); })) {
+      kode = r['Kode Verifikasi'] || kodeAcak_();
+    }
+    const isi = String(html).split('{{NOMOR}}').join(nomor);
+    const per = String(r.Perihal || r.Jenis || 'Surat');
+    const tuj = String(r.Tujuan || '');
+    const base = safeName_(nomor + ' - ' + per + (tuj && per.indexOf(tuj) < 0 && tuj !== 'Internal' ? ' - ' + tuj : ''));
+    const folder = folderKeluar_(r.Kategori, r.Jenis, tahun);
+    const pdf = Utilities.newBlob(isi, 'text/html', base + '.html').getAs('application/pdf').setName(base + '.pdf');
+    const file = folder.createFile(pdf);
+    if (ex && ex['File ID'] && ex['File ID'] !== file.getId()) { try { DriveApp.getFileById(ex['File ID']).setTrashed(true); } catch (e) { } }
+    const o = {
+      'Nomor Surat': nomor, 'No Urut': String(urut), Tahun: String(tahun),
+      Status: ex && statusOf_(ex) === ST.TERKIRIM ? ST.TERKIRIM : ST.TERBIT,
+      'File ID': file.getId(), 'Link PDF': file.getUrl(), 'Kode Verifikasi': kode,
+      'Disetujui Oleh': me.Nama, 'Disetujui Pada': stamp_(), Diperbarui: stamp_(),
+    };
+    Object.keys(r).forEach(function (k) { if (!(k in o) && k !== '_row' && HEAD.SuratKeluar.indexOf(k) >= 0) o[k] = r[k]; });
+    const row = writeObj_('SuratKeluar', ex ? ex._row : null, o, ex);
+    return { id: row.ID, nomor: nomor, url: file.getUrl(), fileId: file.getId(), status: row.Status, kode: kode };
+  }
+
+  function kodeAcak_() {
+    const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let s = '';
+    for (let i = 0; i < 10; i++) s += A.charAt(Math.floor(Math.random() * A.length));
+    return s;
+  }
+
+  function api_listPending(p, me) {
+    return rows_('SuratKeluar')
+      .filter(function (r) { return statusOf_(r) === ST.MENUNGGU && bolehSetujui_(me, r); })
+      .sort(function (a, b) { return a.Diperbarui < b.Diperbarui ? -1 : 1; })
+      .map(function (r) { const e = efektif_(r); const o = outKeluar_(e); o.revisi = !!r['Revisi JSON']; try { o.data = JSON.parse(e['Data JSON'] || '{}'); } catch (x) { o.data = {}; } return o; });
+  }
+
+  function api_approve(p, me) {
+    const lock = kunciSurat_(); lock.waitLock(30000);
+    try {
+      const all = rows_('SuratKeluar');
+      const r = all.find(function (x) { return x.ID === p.id; });
+      if (!r) throw new Error('Surat tidak ditemukan.');
+      if (statusOf_(r) !== ST.MENUNGGU) throw new Error('Surat ini tidak sedang menunggu persetujuan (status: ' + statusOf_(r) + ').');
+      if (!bolehSetujui_(me, r)) throw new Error('Akun Anda tidak berhak menyetujui surat ini.');
+      const upd = Object.assign({}, efektif_(r), { 'Catatan Persetujuan': p.catatan || '', 'Revisi JSON': '' });
+      if (p.data) upd['Data JSON'] = JSON.stringify(p.data);
+      const res = terbit_(upd, r, p.html, p.kodeVerifikasi, me, all);
+      const pembuat = users_().find(function (u) { return u.ID === r['Dibuat Oleh']; });
+      if (pembuat && pembuat.ID !== me.ID) {
+        notify_([pembuat], { judul: 'Surat disetujui ✓', jenis: 'disetujui', ref: r.ID,
+          pesan: r.Jenis + ': ' + r.Perihal + ' — Nomor ' + res.nomor + '. Disetujui oleh ' + me.Nama + (p.catatan ? '. Catatan: ' + p.catatan : '') + '.' }, me);
+      }
+      return res;
+    } finally { lock.releaseLock(); }
+  }
+
+  function api_reject(p, me) {
+    const r = rows_('SuratKeluar').find(function (x) { return x.ID === p.id; });
+    if (!r) throw new Error('Surat tidak ditemukan.');
+    if (statusOf_(r) !== ST.MENUNGGU) throw new Error('Surat ini tidak sedang menunggu persetujuan.');
+    if (!bolehSetujui_(me, r)) throw new Error('Akun Anda tidak berhak memproses surat ini.');
+    const catatan = String(p.catatan || '').trim();
+    if (!catatan) throw new Error('Tulis catatan perbaikan untuk sekretaris.');
+    // revisi atas surat yang sudah terbit → versi lama tetap berlaku
+    const kembali = r['File ID'] ? ST.TERBIT : ST.REVISI;
+    writeObj_('SuratKeluar', r._row, { Status: kembali, 'Catatan Persetujuan': catatan, 'Revisi JSON': '', Diperbarui: stamp_() }, r);
+    const pembuat = users_().find(function (u) { return u.ID === r['Dibuat Oleh']; });
+    if (pembuat) notify_([pembuat], { judul: 'Surat perlu revisi', jenis: 'revisi', ref: r.ID, pesan: r.Jenis + ': ' + r.Perihal + '. Catatan dari ' + me.Nama + ': ' + catatan }, me);
+    return { id: r.ID, status: kembali };
+  }
+
+  function api_listSurat(p) {
+    const q = String(p.q || '').toLowerCase();
+    const notifs = rows_('Notifikasi');
+    let list = rows_('SuratKeluar').filter(function (r) {
+      const st = statusOf_(r);
+      if (p.tahun && r.Tahun !== String(p.tahun) && String(r.Tanggal).slice(0, 4) !== String(p.tahun)) return false;
+      if (p.bulan && Number(String(r.Tanggal).slice(5, 7)) !== Number(p.bulan)) return false;
+      if (p.jenis && r.Jenis !== p.jenis) return false;
+      if (p.status && st !== p.status) return false;
+      if (q) {
+        const hay = [r['Nomor Surat'], r.Perihal, r.Tujuan, r.Jenis, r.Penandatangan, r['Data JSON']].join(' ').toLowerCase();
+        if (hay.indexOf(q) < 0) return false;
+      }
+      return true;
+    });
+    list.sort(function (a, b) {
+      const pa = sudahTerbit_(a) ? 1 : 0, pb = sudahTerbit_(b) ? 1 : 0;
+      if (pa !== pb) return pa - pb;                       // draf/menunggu tampil paling atas
+      if (a.Tanggal !== b.Tanggal) return a.Tanggal < b.Tanggal ? 1 : -1;
+      return Number(b['No Urut']) - Number(a['No Urut']);
+    });
+    return list.slice(0, Number(p.limit || 500)).map(function (r) {
+      const o = outKeluar_(r);
+      const kir = notifs.filter(function (n) { return n.Ref === r.ID && n.Jenis === 'surat'; });
+      o.terkirimKe = kir.length; o.dibacaOleh = kir.filter(function (n) { return n.Dibaca; }).length;
+      return o;
+    });
+  }
+
+  /** Data surat termasuk revisi yang sedang diajukan (bila ada) */
+  function efektif_(r) {
+    if (!r['Revisi JSON']) return r;
+    try { return Object.assign({}, r, JSON.parse(r['Revisi JSON'])); } catch (e) { return r; }
+  }
+
+  function api_getSurat(p) {
+    const r0 = rows_('SuratKeluar').find(function (x) { return x.ID === p.id; });
+    if (!r0) throw new Error('Surat tidak ditemukan.');
+    const r = efektif_(r0);
+    const o = outKeluar_(r);
+    o.revisi = !!r0['Revisi JSON'];
+    try { o.data = JSON.parse(r['Data JSON'] || '{}'); } catch (e) { o.data = {}; }
+    const notifs = rows_('Notifikasi').filter(function (n) { return n.Ref === r.ID && n.Jenis === 'surat'; });
+    const users = {}; users_().forEach(function (u) { users[u.ID] = u; });
+    o.pengiriman = notifs.map(function (n) { const u = users[n.Untuk] || {}; return { nama: u.Nama || '?', peran: PERAN[u.Peran] || '', dikirim: n.Dibuat, dibaca: n.Dibaca, wa: n.WA }; });
+    return o;
+  }
+
+  function api_setStatus(p) {
+    const allowed = [ST.TERBIT, ST.TERKIRIM, ST.BATAL, 'Diarsipkan'];
+    if (allowed.indexOf(p.status) < 0) throw new Error('Status tidak valid.');
+    const status = p.status === 'Diarsipkan' ? ST.TERBIT : p.status;
+    const r = rows_('SuratKeluar').find(function (x) { return x.ID === p.id; });
+    if (!r) throw new Error('Surat tidak ditemukan.');
+    if (status !== ST.BATAL && !r['File ID']) throw new Error('Surat ini belum terbit.');
+    if (r['File ID']) {
+      try {
+        const f = DriveApp.getFileById(r['File ID']);
+        const nm = f.getName().replace(PREFIX_BATAL, '');
+        f.setName((status === ST.BATAL ? PREFIX_BATAL : '') + nm);
+      } catch (e) { }
+    }
+    writeObj_('SuratKeluar', r._row, { Status: !r['File ID'] && status === ST.BATAL ? ST.BATAL : status, Diperbarui: stamp_() }, r);
+    return { id: p.id, status: status };
+  }
+
+  function api_deleteDraft(p) {
+    const r = rows_('SuratKeluar').find(function (x) { return x.ID === p.id; });
+    if (!r) throw new Error('Surat tidak ditemukan.');
+    if (r['File ID'] || sudahTerbit_(r) && r['Nomor Surat']) throw new Error('Surat yang sudah terbit tidak bisa dihapus — gunakan "Batalkan".');
+    sheet_('SuratKeluar').deleteRow(r._row);
+    return { id: p.id };
+  }
+
+  /**
+   * Kirim surat yang sudah terbit ke penerimanya (wali santri / guru / akun tertentu).
+   * Lapis 1: Kotak Masuk aplikasi (pasti). Lapis 2: WA bila aktif.
+   */
+  function api_kirimSurat(p, me) {
+    const r = rows_('SuratKeluar').find(function (x) { return x.ID === p.id; });
+    if (!r) throw new Error('Surat tidak ditemukan.');
+    if (!sudahTerbit_(r) || !r['File ID']) throw new Error('Surat harus disetujui/terbit dulu sebelum dikirim.');
+    let pen = {};
+    try { pen = JSON.parse(r['Penerima JSON'] || '{}'); } catch (e) { }
+    const santriIds = (p.santri || pen.santri || []), guruIds = (p.guru || pen.guru || []);
+    let target = usersForPeople_(santriIds, guruIds);
+    if (p.users && p.users.length) {
+      const ids = p.users; target = target.concat(users_().filter(function (u) { return ids.indexOf(u.ID) >= 0; }));
+    }
+    const santri = people_('santri').filter(function (s) { return santriIds.indexOf(s.id) >= 0; });
+    const guru = people_('guru').filter(function (g) { return guruIds.indexOf(g.id) >= 0; });
+    const tanpaAkun = santri.filter(function (s) { return !usersForPeople_([s.id], []).length; }).map(function (s) { return 'Wali ' + s.nama; })
+      .concat(guru.filter(function (g) { return !usersForPeople_([], [g.id]).length; }).map(function (g) { return g.nama; }));
+    if (!target.length) throw new Error('Belum ada akun penerima untuk surat ini' + (tanpaAkun.length ? ' (' + tanpaAkun.join(', ') + ' belum punya akun WASIAT)' : '') + '. Tambahkan akunnya di WASIAT (RoleAkses): Orang Tua Santri dengan NISN anak, atau guru/pengurus.');
+    const namaSantri = santri.map(function (s) { return s.nama; }).join(', ');
+    const hasil = notify_(target, {
+      judul: namaSantri ? 'Surat dari pondok untuk ananda ' + namaSantri : 'Surat dari pondok untuk Anda',
+      pesan: r.Jenis + ' — ' + r.Perihal + ' (No. ' + r['Nomor Surat'] + ', ' + r.Tanggal + ').' + (p.pesan ? '\n' + p.pesan : ''),
+      jenis: 'surat', ref: r.ID,
+    }, me);
+    const ringkas = 'Aplikasi: ' + hasil.app + ' akun · WA: ' + Object.keys(hasil.wa).filter(function (k) { return hasil.wa[k]; }).map(function (k) { return hasil.wa[k] + ' ' + k; }).join(', ');
+    writeObj_('SuratKeluar', r._row, { Status: ST.TERKIRIM, 'Status Kirim': ringkas + ' · ' + stamp_(), Diperbarui: stamp_() }, r);
+    return { app: hasil.app, wa: hasil.wa, tanpaAkun: tanpaAkun };
+  }
+
+  /** Unduh file surat untuk akun yang berhak (Drive tetap privat) */
+  function api_getFile(p, me) {
+    const kind = p.kind === 'masuk' ? 'masuk' : 'keluar';
+    const r = rows_(kind === 'masuk' ? 'SuratMasuk' : 'SuratKeluar').find(function (x) { return x.ID === p.id; });
+    if (!r || !r['File ID']) throw new Error('File surat tidak tersedia.');
+    let boleh = PENGELOLA.indexOf(me.Peran) >= 0;
+    if (!boleh) boleh = rows_('Notifikasi').some(function (n) { return n.Untuk === me.ID && n.Ref === r.ID; });
+    if (!boleh && kind === 'masuk') boleh = r['Disposisi Ke'] === me.ID;
+    if (!boleh) throw new Error('Anda tidak memiliki akses ke surat ini.');
+    if (kind === 'keluar' && statusOf_(r) === ST.BATAL && PENGELOLA.indexOf(me.Peran) < 0) throw new Error('Surat ini telah dibatalkan oleh pondok.');
+    const f = DriveApp.getFileById(r['File ID']);
+    const b = f.getBlob();
+    if (b.getBytes().length > 15 * 1024 * 1024) throw new Error('File terlalu besar untuk ditampilkan.');
+    api_readNotif({ ref: r.ID }, me);
+    return { name: f.getName(), mime: b.getContentType(), base64: Utilities.base64Encode(b.getBytes()) };
+  }
+
+  /* ================================================================
+   *  SURAT MASUK + DISPOSISI
+   * ================================================================ */
+  function api_saveSuratMasuk(p, me) {
+    if (!p.pengirim || !p.perihal) throw new Error('Pengirim dan perihal wajib diisi.');
+    const lock = kunciSurat_();
+    lock.waitLock(30000);
+    try {
+      const all = rows_('SuratMasuk');
+      const d = parseDate_(p.tanggalTerima);
+      const tahun = d.getFullYear();
+      let max = 0;
+      all.forEach(function (r) {
+        if (r.Tahun !== String(tahun)) return;
+        const n = Number((String(r['No Agenda']).match(/\d+/) || ['0'])[0]);
+        if (n > max) max = n;
+      });
+      const noAgenda = 'SM.' + pad_(max + 1, 3) + '/' + tahun;
+
+      let fileId = '', fileUrl = '';
+      if (p.file && p.file.base64) {
+        const folder = folderMasuk_(p.jenis, tahun);
+        const name = safeName_(noAgenda + ' - ' + p.pengirim + ' - ' + p.perihal) + ext_(p.file.mime, p.file.name);
+        const blob = Utilities.newBlob(Utilities.base64Decode(p.file.base64), p.file.mime || 'application/octet-stream', name);
+        const f = folder.createFile(blob);
+        fileId = f.getId(); fileUrl = f.getUrl();
+      }
+      const tujuan = p.disposisiKe ? users_().find(function (u) { return u.ID === p.disposisiKe; }) : null;
+      const o = {
+        ID: uid_(), 'No Agenda': noAgenda, Tahun: String(tahun), 'Nomor Surat': p.nomorSurat || '-', 'Tanggal Surat': p.tanggalSurat || '',
+        'Tanggal Diterima': ymd_(d), Pengirim: p.pengirim, Perihal: p.perihal,
+        Disposisi: tujuan ? tujuan.Nama + ' (' + (PERAN[tujuan.Peran] || tujuan.Peran) + ')' : (p.disposisi || ''),
+        Keterangan: p.keterangan || '', 'File ID': fileId, 'Link File': fileUrl, Dicatat: stamp_(), Jenis: jenisMasuk_(p.jenis),
+        'Disposisi Ke': tujuan ? tujuan.ID : '', 'Status Tindak Lanjut': tujuan ? 'Belum' : '', 'Dicatat Oleh': me.ID,
+      };
+      writeObj_('SuratMasuk', null, o);
+      let notif = null;
+      if (tujuan) {
+        notif = notify_([tujuan], {
+          judul: 'Disposisi surat masuk', jenis: 'disposisi', ref: o.ID,
+          pesan: 'Dari ' + o.Pengirim + ': ' + o.Perihal + ' (Agenda ' + noAgenda + ').' + (o.Keterangan ? ' Catatan: ' + o.Keterangan : '') + ' Mohon ditindaklanjuti.',
+        }, me);
+      }
+      return { id: o.ID, noAgenda: noAgenda, url: fileUrl, notif: notif };
+    } finally {
+      lock.releaseLock();
+    }
+  }
+
+  function api_listSuratMasuk(p) {
+    const q = String(p.q || '').toLowerCase();
+    let list = rows_('SuratMasuk').filter(function (r) {
+      if (p.tahun && r.Tahun !== String(p.tahun)) return false;
+      if (p.bulan && Number(String(r['Tanggal Diterima']).slice(5, 7)) !== Number(p.bulan)) return false;
+      if (p.jenis && jenisMasuk_(r.Jenis) !== p.jenis) return false;
+      if (q) {
+        const hay = [r['No Agenda'], r['Nomor Surat'], r.Pengirim, r.Perihal, r.Disposisi].join(' ').toLowerCase();
+        if (hay.indexOf(q) < 0) return false;
+      }
+      return true;
+    });
+    list.sort(function (a, b) { return a['Tanggal Diterima'] < b['Tanggal Diterima'] ? 1 : a['Tanggal Diterima'] > b['Tanggal Diterima'] ? -1 : (a['No Agenda'] < b['No Agenda'] ? 1 : -1); });
+    return list.slice(0, Number(p.limit || 500)).map(outMasuk_);
+  }
+
+  function api_listDisposisiSaya(p, me) {
+    return rows_('SuratMasuk').filter(function (r) { return r['Disposisi Ke'] === me.ID; })
+      .sort(function (a, b) { return a.Dicatat < b.Dicatat ? 1 : -1; }).map(outMasuk_);
+  }
+
+  function api_tindakLanjut(p, me) {
+    const r = rows_('SuratMasuk').find(function (x) { return x.ID === p.id; });
+    if (!r) throw new Error('Surat tidak ditemukan.');
+    if (r['Disposisi Ke'] !== me.ID && PENGELOLA.indexOf(me.Peran) < 0) throw new Error('Disposisi ini bukan untuk akun Anda.');
+    const st = p.status === 'Proses' ? 'Proses' : 'Selesai';
+    writeObj_('SuratMasuk', r._row, { 'Status Tindak Lanjut': st, 'Catatan Tindak Lanjut': String(p.catatan || '').slice(0, 1000), 'Ditindaklanjuti Pada': stamp_() }, r);
+    const pencatat = users_().filter(function (u) { return u.ID === r['Dicatat Oleh'] || u.Peran === 'admin'; }).filter(function (u) { return u.ID !== me.ID; });
+    notify_(pencatat, { judul: 'Tindak lanjut disposisi: ' + st, jenis: 'info', ref: r.ID,
+      pesan: me.Nama + ' — ' + r.Perihal + ' (' + r['No Agenda'] + ')' + (p.catatan ? ': ' + p.catatan : '') }, me);
+    return { id: r.ID, status: st };
+  }
+
+  function api_dashboard(p, me) {
+    const now = new Date();
+    const y = String(now.getFullYear());
+    const mm = pad_(now.getMonth() + 1, 2);
+    const kel = rows_('SuratKeluar');
+    const mas = rows_('SuratMasuk');
+    const kelAktif = kel.filter(sudahTerbit_);
+    const sortDesc = function (key) { return function (a, b) { return a[key] < b[key] ? 1 : -1; }; };
+    return {
+      keluarTahun: kelAktif.filter(function (r) { return r.Tahun === y; }).length,
+      keluarBulan: kelAktif.filter(function (r) { return String(r.Tanggal).slice(0, 7) === y + '-' + mm; }).length,
+      masukTahun: mas.filter(function (r) { return r.Tahun === y; }).length,
+      masukBulan: mas.filter(function (r) { return String(r['Tanggal Diterima']).slice(0, 7) === y + '-' + mm; }).length,
+      menunggu: kel.filter(function (r) { return statusOf_(r) === ST.MENUNGGU; }).length,
+      menungguSaya: kel.filter(function (r) { return statusOf_(r) === ST.MENUNGGU && bolehSetujui_(me, r); }).length,
+      revisi: kel.filter(function (r) { return statusOf_(r) === ST.REVISI; }).length,
+      draf: kel.filter(function (r) { return statusOf_(r) === ST.DRAF; }).length,
+      disposisiBelum: mas.filter(function (r) { return r['Status Tindak Lanjut'] && r['Status Tindak Lanjut'] !== 'Selesai'; }).length,
+      terakhirKeluar: kel.slice().sort(sortDesc('Diperbarui')).slice(0, 6).map(outKeluar_),
+      folderKeluar: subFolders_(F.KELUAR, kelAktif.map(function (r) { return r.Kategori || r.Jenis; })),
+      folderMasuk: subFolders_(F.MASUK, mas.map(function (r) { return jenisMasuk_(r.Jenis); })),
+      jenisMasuk: JENIS_MASUK,
+      wa: waStatus_(),
+      rootUrl: root_().getUrl(),
+      dbUrl: db_().getUrl(),
+    };
+  }
+
+  /* ---------------- penulisan baris berdasarkan nama kolom ---------------- */
+  function writeObj_(name, rowIdx, o, base) {
+    const h = HEAD[name];
+    const merged = {};
+    h.forEach(function (k) { merged[k] = (o && k in o) ? o[k] : (base && base[k] != null ? base[k] : ''); });
+    const sh = sheet_(name);
+    const row = h.map(function (k) { return merged[k] == null ? '' : merged[k]; });
+    if (rowIdx) writeRow_(sh, rowIdx, row); else appendText_(sh, row);
+    return merged;
+  }
+
+  function outKeluar_(r) {
+    return {
+      id: r.ID, urut: r['No Urut'], tahun: r.Tahun, nomor: r['Nomor Surat'], tanggal: r.Tanggal,
+      jenis: r.Jenis, kode: r.Kode, perihal: r.Perihal, tujuan: r.Tujuan, penandatangan: r.Penandatangan,
+      status: statusOf_(r), fileId: r['File ID'], url: r['Link PDF'], dibuat: r.Dibuat, diperbarui: r.Diperbarui, kategori: r.Kategori,
+      catatan: r['Catatan Persetujuan'], disetujuiOleh: r['Disetujui Oleh'], disetujuiPada: r['Disetujui Pada'],
+      kodeVerifikasi: r['Kode Verifikasi'], statusKirim: r['Status Kirim'], dibuatOleh: namaUser_(r['Dibuat Oleh']),
+      revisi: !!r['Revisi JSON'],
+      arsip: String(r['Data JSON'] || '').indexOf('"arsipLama":true') >= 0,
+    };
+  }
+
+
+  function outMasuk_(r) {
+    return {
+      id: r.ID, noAgenda: r['No Agenda'], tahun: r.Tahun, nomor: r['Nomor Surat'],
+      tanggalSurat: r['Tanggal Surat'], tanggalTerima: r['Tanggal Diterima'], pengirim: r.Pengirim,
+      perihal: r.Perihal, disposisi: r.Disposisi, keterangan: r.Keterangan, url: r['Link File'], dicatat: r.Dicatat,
+      jenis: jenisMasuk_(r.Jenis), adaFile: !!r['File ID'],
+      disposisiKe: r['Disposisi Ke'], tindakLanjut: r['Status Tindak Lanjut'], catatanTL: r['Catatan Tindak Lanjut'], tlPada: r['Ditindaklanjuti Pada'],
+    };
+  }
+
+  /* ---------------- DATA SANTRI & GURU ---------------- */
+
+  function personRow_(jenis, d) {
+    return PEOPLE[jenis].keys.map(function (k) { return k === 'diperbarui' ? stamp_() : String(d[k] == null ? '' : d[k]).trim(); });
+  }
+
+  function clean_(o) { const c = {}; Object.keys(o).forEach(function (k) { if (k !== '_row') c[k] = o[k]; }); return c; }
+
+  function api_listPeople(p) {
+    const out = {};
+    const list = p && p.jenis ? [p.jenis] : Object.keys(PEOPLE);
+    list.forEach(function (j) {
+      out[j] = people_(j).map(clean_).sort(function (a, b) { return a.nama.localeCompare(b.nama); });
+    });
+    return out;
+  }
+
+
+
+  /** Impor banyak data sekaligus (dari tempel Excel). mode: 'tambah' (perbarui yang sama) | 'ganti' (hapus semua dulu) */
+
+  /* ---------------- TEMPLATE KUSTOM ---------------- */
+  function api_listTemplates() {
+    return rows_('Template').map(function (r) {
+      try { const d = JSON.parse(r['Definisi JSON']); d.id = r.ID; return d; } catch (e) { return null; }
+    }).filter(Boolean);
+  }
+
+  function api_saveTemplate(p) {
+    const d = p.def || {};
+    d.nama = String(d.nama || '').trim();
+    d.kategori = String(d.kategori || '').trim();
+    if (!d.nama || !d.kategori) throw new Error('Nama template dan kategori wajib diisi.');
+    if (!d.isi) throw new Error('Isi surat kosong.');
+    if (JSON.stringify(d).length > 45000) throw new Error('Template terlalu panjang.');
+    const lock = kunciSurat_();
+    lock.waitLock(30000);
+    try {
+      const sh = sheet_('Template');
+      const all = rows_('Template');
+      if (all.some(function (r) { return r.Nama.toLowerCase() === d.nama.toLowerCase() && r.ID !== d.id; })) {
+        throw new Error('Nama template "' + d.nama + '" sudah dipakai.');
+      }
+      const ex = d.id ? all.find(function (r) { return r.ID === d.id; }) : null;
+      if (!d.id || !ex) d.id = 'c_' + uid_();
+      const now = stamp_();
+      const row = [d.id, d.nama, d.kategori, d.kode || '', JSON.stringify(d), ex ? ex.Dibuat : now, now];
+      if (ex) writeRow_(sh, ex._row, row); else appendText_(sh, row);
+      const folder = folderKategori_(d.kategori, d.nama);
+      return { def: d, folderUrl: folder.getUrl(), list: api_listTemplates() };
+    } finally {
+      lock.releaseLock();
+    }
+  }
+
+  function api_deleteTemplate(p) {
+    const sh = sheet_('Template');
+    const r = rows_('Template').find(function (x) { return x.ID === p.id; });
+    if (!r) throw new Error('Template tidak ditemukan.');
+    sh.deleteRow(r._row);   // folder & surat yang sudah dibuat tetap disimpan
+    return { list: api_listTemplates() };
+  }
+
+  function api_meta() {
+    return { jenisMasuk: JENIS_MASUK };
+  }
+
+  /** Daftar sub-folder per jenis + jumlah surat (untuk dashboard) */
+  function subFolders_(induk, jenisList) {
+    const count = {};
+    jenisList.forEach(function (j) { if (j) count[j] = (count[j] || 0) + 1; });
+    const out = [];
+    const it = folder_(root_(), induk).getFolders();
+    while (it.hasNext()) {
+      const f = it.next();
+      out.push({ nama: f.getName(), url: f.getUrl(), jumlah: count[f.getName()] || 0 });
+    }
+    out.sort(function (a, b) { return a.nama < b.nama ? -1 : 1; });
+    return out;
+  }
+
+  /* ================================================================
+   *  HELPER
+   * ================================================================ */
+
+
+
+  function sheet_(name) {
+    const ss = db_();
+    let sh = ss.getSheetByName(name);
+    if (!sh) {
+      sh = ss.insertSheet(name);
+      const h = HEAD[name];
+      sh.getRange(1, 1, 1, h.length).setValues([h])
+        .setFontWeight('bold').setBackground('#14532d').setFontColor('#ffffff');
+      sh.setFrozenRows(1);
+    } else if (sh.getLastColumn() < HEAD[name].length) {
+      const h = HEAD[name];
+      sh.getRange(1, 1, 1, h.length).setValues([h])
+        .setFontWeight('bold').setBackground('#14532d').setFontColor('#ffffff');
+    }
+    return sh;
+  }
+
+  function rows_(name) {
+    const sh = sheet_(name);
+    const last = sh.getLastRow();
+    if (last < 2) return [];
+    const h = HEAD[name];
+    const v = sh.getRange(2, 1, last - 1, h.length).getDisplayValues();
+    return v.map(function (r, i) {
+      const o = { _row: i + 2 };
+      h.forEach(function (k, j) { o[k] = r[j]; });
+      return o;
+    }).filter(function (o) { return o[h[0]] !== ''; });
+  }
+
+  function appendText_(sh, row) {
+    const r = sh.getRange(sh.getLastRow() + 1, 1, 1, row.length);
+    r.setNumberFormat('@');
+    r.setValues([row.map(cell_)]);
+  }
+
+  function writeRow_(sh, rowIdx, row) {
+    const r = sh.getRange(rowIdx, 1, 1, row.length);
+    r.setNumberFormat('@');
+    r.setValues([row.map(cell_)]);
+  }
+
+  function cell_(v) {
+    v = v == null ? '' : String(v);
+    return /^[=+@]/.test(v) ? "'" + v : v;
+  }
+
+  function settings_() {
+    const s = {};
+    Object.keys(DEFAULTS).forEach(function (k) { s[k] = DEFAULTS[k]; });
+    rows_('Pengaturan').forEach(function (r) { s[r.Kunci] = r.Nilai; });
+    return s;
+  }
+
+  function setSetting_(k, v) {
+    const sh = sheet_('Pengaturan');
+    const r = rows_('Pengaturan').find(function (x) { return x.Kunci === k; });
+    if (r) writeRow_(sh, r._row, [k, v]); else appendText_(sh, [k, v]);
+  }
+
+  function nextUrut_(tahun, all) {
+    all = all || rows_('SuratKeluar');
+    let max = 0;
+    all.forEach(function (r) {
+      if (r.Tahun === String(tahun)) {
+        const n = Number(r['No Urut']) || 0;
+        if (n > max) max = n;
+      }
+    });
+    return max + 1;
+  }
+
+  function formatNomor_(s, urut, d, kode) {
+    const digit = Number(s.digitUrut) || 3;
+    return String(s.formatNomor || DEFAULTS.formatNomor)
+      .replace(/\{urut\}/g, pad_(urut, digit))
+      .replace(/\{bulan\}/g, ROMAWI[d.getMonth()])
+      .replace(/\{bulanAngka\}/g, pad_(d.getMonth() + 1, 2))
+      .replace(/\{tahun\}/g, String(d.getFullYear()))
+      .replace(/\{kode\}/g, kode || '');
+  }
+
+  function folder_(parent, name) {
+    const it = parent.getFoldersByName(name);
+    return it.hasNext() ? it.next() : parent.createFolder(name);
+  }
+
+  /**
+   * Susunan folder surat keluar:
+   *   kategori = jenis       → 01. Surat Keluar / <Jenis> / <Tahun>
+   *   kategori berisi banyak → 01. Surat Keluar / <Kategori> / <Jenis> / <Tahun>
+   */
+  function folderKategori_(kategori, jenis) {
+    const k = safeName_(kategori || jenis || 'Lainnya');
+    const j = safeName_(jenis || '');
+    const parts = [F.KELUAR, k];
+    if (j && j.toLowerCase() !== k.toLowerCase()) parts.push(j);
+    return folderPath_(parts);
+  }
+
+  function folderKeluar_(kategori, jenis, tahun) {
+    const base = folderKategori_(kategori, jenis);
+    return folder_(base, String(tahun));
+  }
+
+  function folderMasuk_(jenis, tahun) {
+    return folderPath_([F.MASUK, jenisMasuk_(jenis), String(tahun)]);
+  }
+
+  function jenisMasuk_(j) {
+    return JENIS_MASUK.indexOf(j) >= 0 ? j : 'Lainnya';
+  }
+
+  function folderPath_(parts) {
+    let f = root_();
+    parts.forEach(function (p) { f = folder_(f, p); });
+    return f;
+  }
+
+  function parseDate_(s) {
+    const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date();
+  }
+
+  function ymd_(d) { return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd'); }
+  function stamp_() { return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss'); }
+  function pad_(n, len) { n = String(n); while (n.length < len) n = '0' + n; return n; }
+  function uid_() { return Utilities.getUuid().split('-')[0] + Date.now().toString(36); }
+
+  function safeName_(s) {
+    return String(s).replace(/[\/\\:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 150);
+  }
+
+  function ext_(mime, name) {
+    if (name && /\.[a-z0-9]{2,5}$/i.test(name)) return name.match(/\.[a-z0-9]{2,5}$/i)[0].toLowerCase();
+    const map = { 'application/pdf': '.pdf', 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp' };
+    return map[mime] || '';
+  }
+
+  function json_(o) {
+    return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  /**
+   * ================================================================
+   *  AKUN, PERAN, NOTIFIKASI (2 LAPIS), WA, VERIFIKASI QR
+   *  File kedua di proyek Apps Script yang sama dengan Code.gs
+   * ================================================================
+   *  Lapis 1 : Kotak Masuk di aplikasi — SELALU tercatat, tidak bergantung WA
+   *  Lapis 2 : WhatsApp (Wablas / Fonnte) — opsional. Bila token mati / gagal,
+   *            proses surat tetap jalan; status WA hanya dicatat "gagal".
+   * ================================================================
+   */
+
+  const PERAN = {
+    admin: 'Sekretaris / Admin',
+    mudir: 'Mudir (Pimpinan)',
+    kabag: 'Kepala Bagian',
+    bendahara: 'Bendahara',
+    guru: 'Guru / Pembina',
+    wali: 'Wali Santri',
+  };
+  const PENGELOLA = ['admin', 'mudir'];           // boleh mengelola persuratan
+  const SESI_JAM = 24 * 14;                        // token berlaku 14 hari
+  const WA_MAKS_PERCOBAAN = 3;
+
+  /** Aksi yang boleh dipanggil tanpa login */
+  const AKSI_PUBLIK = { login: true, verify: true };
+  /** Aksi yang boleh dipanggil semua pengguna yang login (pembatasan rinci di dalam fungsi) */
+  const AKSI_SEMUA = {
+    ping: true, me: true, changeMyPin: true, getSettings: true,
+    listNotif: true, readNotif: true, getFile: true,
+    listPending: true, approve: true, reject: true,
+    listDisposisiSaya: true, tindakLanjut: true, listTemplates: true,
+  };
+
+  /* ================================================================
+   *  SANDI & TOKEN
+   * ================================================================ */
+  function secret_() {
+    const P = props_();
+    let s = P.getProperty('HMAC_SECRET');
+    if (!s) { s = Utilities.getUuid() + Utilities.getUuid(); P.setProperty('HMAC_SECRET', s); }
+    return s;
+  }
+
+  function hashPin_(pin, salt) {
+    let h = salt + '|' + pin;
+    for (let i = 0; i < 300; i++) {
+      h = Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, h + salt));
+    }
+    return h;
+  }
+
+  function b64w_(s) { return Utilities.base64EncodeWebSafe(s).replace(/=+$/, ''); }
+  function sign_(payload) { return b64w_(Utilities.computeHmacSha256Signature(payload, secret_())); }
+
+
+
+  function randomPin_(n) {
+    let s = '';
+    while (s.length < (n || 6)) s += String(Math.floor(Math.random() * 10));
+    return s;
+  }
+
+  /* ================================================================
+   *  PENGGUNA
+   * ================================================================ */
+
+  function terkait_(u) {
+    try { const t = JSON.parse(u.Terkait || '[]'); return Array.isArray(t) ? t : []; } catch (e) { return []; }
+  }
+
+  function meOut_(u) {
+    return {
+      id: u.ID, nama: u.Nama, username: u.Username, role: u.Peran, peran: PERAN[u.Peran] || u.Peran,
+      terkait: terkait_(u), noWa: u['No WA'], status: u.Status || 'Aktif',
+      wajibGanti: u['Wajib Ganti PIN'] === 'ya', loginTerakhir: u['Login Terakhir'], dibuat: u.Dibuat,
+    };
+  }
+
+  function normUser_(s) { return String(s || '').trim().toLowerCase().replace(/\s+/g, ''); }
+
+  function normPhone_(s) {
+    let d = String(s || '').replace(/\D/g, '');
+    if (!d) return '';
+    if (d.indexOf('0') === 0) d = '62' + d.slice(1);
+    else if (d.indexOf('8') === 0) d = '62' + d;
+    return d.length >= 10 ? d : '';
+  }
+
+  /** Membuat akun admin pertama bila belum ada (dipanggil dari setup) */
+
+
+  function api_me(p, me) {
+    return { user: meOut_(me), unread: unreadCount_(me.ID) };
+  }
+
+
+
+
+
+
+  /** Buat akun wali otomatis dari data santri aktif (satu akun per nomor HP wali; kakak-adik digabung) */
+
+  /** Buat akun guru/pengurus dari data guru aktif */
+
+  /** Akun-akun yang terkait dengan santri / guru tertentu */
+  function usersForPeople_(santriIds, guruIds) {
+    const s = santriIds || [], g = guruIds || [];
+    return users_().filter(function (u) {
+      if (u.Status === 'Nonaktif') return false;
+      const t = terkait_(u);
+      return t.some(function (x) { return s.indexOf(x) >= 0 || g.indexOf(x) >= 0; });
+    });
+  }
+  function usersByRole_(roles) {
+    return users_().filter(function (u) { return u.Status !== 'Nonaktif' && roles.indexOf(u.Peran) >= 0; });
+  }
+
+  /* ================================================================
+   *  NOTIFIKASI — LAPIS 1 (APLIKASI) + LAPIS 2 (WA, OPSIONAL)
+   * ================================================================ */
+  function unreadCount_(uid) {
+    return rows_('Notifikasi').filter(function (n) { return n.Untuk === uid && !n.Dibaca; }).length;
+  }
+
+  /**
+   * Kirim notifikasi ke banyak akun. Lapis 1 SELALU dicatat lebih dulu.
+   * WA hanya dicoba setelahnya; kegagalan WA tidak pernah membatalkan proses.
+   */
+  function notify_(users, n, dari) {
+    const seen = {};
+    users = (users || []).filter(function (u) { if (!u || seen[u.ID] || u.Status === 'Nonaktif') return false; seen[u.ID] = 1; return true; });
+    const hasil = { app: 0, wa: { terkirim: 0, antri: 0, gagal: 0, nonaktif: 0, 'tanpa nomor': 0 } };
+    if (!users.length) return hasil;
+
+    // ---- LAPIS 1: Kotak Masuk aplikasi ----
+    const waOn = waEnabled_();
+    const now = stamp_();
+    const rows = users.map(function (u) {
+      return {
+        ID: 'N' + uid_(), Untuk: u.ID, Judul: n.judul || 'Notifikasi', Pesan: n.pesan || '', Jenis: n.jenis || 'info',
+        Ref: n.ref || '', Dibuat: now, Dibaca: '', Dari: dari ? dari.Nama : 'Sistem',
+        WA: !waOn ? 'nonaktif' : (normPhone_(u['No WA']) ? 'antri' : 'tanpa nomor'), 'Info WA': '', 'Percobaan WA': '0',
+      };
+    });
+    const sh = sheet_('Notifikasi');
+    const start = sh.getLastRow() + 1;
+    const h = HEAD.Notifikasi;
+    const rg = sh.getRange(start, 1, rows.length, h.length);
+    rg.setNumberFormat('@');
+    rg.setValues(rows.map(function (o) { return h.map(function (k) { return cell_(o[k]); }); }));
+    hasil.app = rows.length;
+    // Tambahan WASIAT: surat untuk wali juga dikabarkan lewat notifikasi push aplikasi WASIAT
+    try {
+      if (n.jenis === 'surat') users.forEach(function (u) {
+        if (u.Peran !== 'wali') return;
+        terkait_(u).forEach(function (nisn) { if (String(nisn).indexOf('G:') !== 0) kirimPushKeWali(nisn, n.judul || 'Surat dari pondok', n.pesan || ''); });
+      });
+    } catch (e) { Logger.log('Push wali (persuratan) dilewati: ' + e.message); }
+
+    // ---- LAPIS 2: WA (dicoba langsung untuk sedikit penerima, sisanya lewat antrian) ----
+    try {
+      if (waOn) {
+        if (rows.some(function (o) { return o.WA === 'antri'; }) && rows.length > 5) pastikanPemicuWa_();
+        const langsung = rows.length <= 5;
+        if (langsung) {
+          const colWa = h.indexOf('WA') + 1;
+          const out = rows.map(function (o, i) {
+            if (o.WA !== 'antri') return [o.WA, '', '0'];
+            const r = sendWa_(users[i]['No WA'], waText_(o));
+            return [r.status === 'terkirim' ? 'terkirim' : 'antri', r.info || '', '1'];
+          });
+          sh.getRange(start, colWa, out.length, 3).setValues(out);
+          out.forEach(function (x) { hasil.wa[x[0]] = (hasil.wa[x[0]] || 0) + 1; });
+        } else {
+          rows.forEach(function (o) { hasil.wa[o.WA] = (hasil.wa[o.WA] || 0) + 1; });
+        }
+      } else {
+        hasil.wa.nonaktif = rows.length;
+      }
+    } catch (e) {
+      Logger.log('WA dilewati: ' + e.message);   // tidak pernah menggagalkan proses utama
+    }
+    return hasil;
+  }
+
+  function waText_(o) {
+    const s = settings_();
+    const url = s.appUrl ? '\n\nBuka aplikasi: ' + s.appUrl : '';
+    return '*' + o.Judul + '*\n' + o.Pesan + url + '\n\n_' + (s.namaResmi || 'Pondok Pesantren') + '_';
+  }
+
+
+  /** Kirim satu pesan WA. Tidak pernah melempar error. */
+
+  function catatWa_(ok, info) {
+    try {
+      props_().setProperty('WA_LAST', JSON.stringify({ ok: ok, waktu: stamp_(), info: String(info).slice(0, 200) }));
+    } catch (e) { }
+  }
+
+  /**
+   * Pemicu waktu (dibuat oleh setup): mengirim WA yang masih antri, coba ulang
+   * maksimal 3 kali. Kalau WA tetap gagal, notifikasi tetap ada di aplikasi.
+   */
+  function prosesAntrianWa() {
+    if (!waEnabled_()) return;
+    const lock = kunciSurat_();
+    if (!lock.tryLock(5000)) return;
+    try {
+      const sh = sheet_('Notifikasi');
+      const h = HEAD.Notifikasi;
+      const colWa = h.indexOf('WA') + 1;
+      const list = rows_('Notifikasi').filter(function (n) { return n.WA === 'antri'; }).slice(0, 40);
+      if (!list.length) return;
+      const users = {}; users_().forEach(function (u) { users[u.ID] = u; });
+      let gagalBeruntun = 0;
+      list.forEach(function (n) {
+        if (gagalBeruntun >= 3) return;                       // WA sedang bermasalah → coba lagi nanti
+        const u = users[n.Untuk];
+        const coba = Number(n['Percobaan WA'] || 0) + 1;
+        let st, info;
+        if (!u || !normPhone_(u['No WA'])) { st = 'tanpa nomor'; info = ''; }
+        else {
+          const r = sendWa_(u['No WA'], waText_(n));
+          if (r.status === 'terkirim') { st = 'terkirim'; info = ''; gagalBeruntun = 0; }
+          else { st = coba >= WA_MAKS_PERCOBAAN ? 'gagal' : 'antri'; info = r.info || ''; gagalBeruntun++; }
+        }
+        sh.getRange(n._row, colWa, 1, 3).setValues([[st, info, String(coba)]]);
+      });
+    } finally { lock.releaseLock(); }
+  }
+
+
+  function api_listNotif(p, me) {
+    const all = rows_('Notifikasi').filter(function (n) { return n.Untuk === me.ID; });
+    all.sort(function (a, b) { return a.Dibuat < b.Dibuat ? 1 : -1; });
+    return {
+      unread: all.filter(function (n) { return !n.Dibaca; }).length,
+      list: all.slice(0, Number(p.limit || 100)).map(function (n) {
+        return { id: n.ID, judul: n.Judul, pesan: n.Pesan, jenis: n.Jenis, ref: n.Ref, dibuat: n.Dibuat, dibaca: n.Dibaca, dari: n.Dari, wa: n.WA };
+      }),
+    };
+  }
+
+  function api_readNotif(p, me) {
+    const sh = sheet_('Notifikasi');
+    const col = HEAD.Notifikasi.indexOf('Dibaca') + 1;
+    const now = stamp_();
+    rows_('Notifikasi').forEach(function (n) {
+      if (n.Untuk !== me.ID || n.Dibaca) return;
+      if (p.all || n.ID === p.id || (p.ref && n.Ref === p.ref)) sh.getRange(n._row, col).setNumberFormat('@').setValue(now);
+    });
+    return { unread: unreadCount_(me.ID) };
+  }
+
+  function api_waTest(p) {
+    const r = sendWa_(p.nomor, '*Uji coba notifikasi*\nPesan ini dikirim dari aplikasi persuratan ' + (settings_().namaResmi || '') + '. Jika Anda menerimanya, WA sudah tersambung.');
+    return r;
+  }
+
+
+  /* ================================================================
+   *  VERIFIKASI QR (PUBLIK)
+   * ================================================================ */
+  function api_verify(p) {
+    const k = String(p.kode || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (k.length < 8) return { ditemukan: false };
+    const r = rows_('SuratKeluar').find(function (x) { return String(x['Kode Verifikasi']).replace(/[^A-Z0-9]/g, '') === k; });
+    const s = settings_();
+    if (!r) return { ditemukan: false, lembaga: s.namaResmi };
+    const st = statusOf_(r);
+    return {
+      ditemukan: true, lembaga: s.namaResmi,
+      nomor: r['Nomor Surat'], tanggal: r.Tanggal, jenis: r.Jenis, perihal: r.Perihal,
+      penandatangan: r.Penandatangan, disetujuiPada: r['Disetujui Pada'],
+      sah: !!r['File ID'] && st !== ST.BATAL, status: st === ST.BATAL ? st : 'Terbit',
+    };
+  }
+
+
+  /* ================================================================
+   *  PENYESUAIAN UNTUK WASIAT
+   *  - Akun: memakai akun WASIAT (sheet RoleAkses). Tidak ada akun/PIN terpisah.
+   *  - Data santri & guru: dibaca dari data WASIAT (Santri, Rombel, Guru, RoleAkses);
+   *    isian tambahan (NIS, TTL, asrama, alamat, dll.) disimpan di Buku Agenda.
+   *  - WhatsApp: memakai pengaturan WhatsApp WASIAT (Wablas/Fonnte).
+   *  - Kunci: kunci khusus persuratan, TIDAK menahan kunci transaksi WASIAT
+   *    (kantin/saldo/SPP tetap lancar walau PDF surat sedang dibuat).
+   *  - Properti skrip diberi awalan SURAT_ agar tidak bertabrakan dengan WASIAT.
+   * ================================================================ */
+  function props_() {
+    const P = PropertiesService.getScriptProperties();
+    return {
+      getProperty: function (k) { return P.getProperty('SURAT_' + k); },
+      setProperty: function (k, v) { return P.setProperty('SURAT_' + k, v); },
+      deleteProperty: function (k) { return P.deleteProperty('SURAT_' + k); },
+    };
+  }
+
+  /** Kunci khusus persuratan: kunci skrip hanya dipegang sesaat untuk memasang penanda di cache. */
+  function kunciSurat_() {
+    let dipegang = false;
+    function coba() {
+      const l = LockService.getScriptLock();
+      if (!l.tryLock(10000)) return false;
+      try {
+        const c = CacheService.getScriptCache();
+        if (c.get('SURAT_KUNCI')) return false;
+        c.put('SURAT_KUNCI', '1', 120);
+        return true;
+      } finally { l.releaseLock(); }
+    }
+    function tunggu(ms) {
+      const batas = Date.now() + (ms || 30000);
+      while (true) {
+        if (coba()) { dipegang = true; return true; }
+        if (Date.now() > batas) return false;
+        Utilities.sleep(400);
+      }
+    }
+    return {
+      waitLock: function (ms) { if (!tunggu(ms)) throw new Error('Persuratan sedang memproses surat lain. Coba lagi sebentar.'); },
+      tryLock: function (ms) { return tunggu(ms); },
+      releaseLock: function () { if (dipegang) { try { CacheService.getScriptCache().remove('SURAT_KUNCI'); } catch (e) { } dipegang = false; } },
+    };
+  }
+
+  /* ---------------- Basis data & folder: dibuat otomatis saat pertama dipakai ---------------- */
+  function db_() {
+    let id = props_().getProperty('DB_ID');
+    if (!id) { setup(); id = props_().getProperty('DB_ID'); }
+    if (!_dbMemo || _dbMemoId !== id) { _dbMemo = SpreadsheetApp.openById(id); _dbMemoId = id; }
+    return _dbMemo;
+  }
+  let _dbMemo = null, _dbMemoId = '';
+  function root_() {
+    let id = props_().getProperty('ROOT_ID');
+    if (!id) { setup(); id = props_().getProperty('ROOT_ID'); }
+    return DriveApp.getFolderById(id);
+  }
+
+  function setup() {
+    const kunci = kunciSurat_(); kunci.waitLock(60000);
+    try {
+      const P = props_();
+      let root = null;
+      const rootId = P.getProperty('ROOT_ID');
+      if (rootId) { try { root = DriveApp.getFolderById(rootId); } catch (e) { root = null; } }
+      if (!root) {
+        root = DriveApp.createFolder(CFG.ROOT_NAME);
+        P.setProperty('ROOT_ID', root.getId());
+      }
+      let ss = null;
+      const dbId = P.getProperty('DB_ID');
+      if (dbId) { try { ss = SpreadsheetApp.openById(dbId); } catch (e) { ss = null; } }
+      if (!ss) {
+        ss = SpreadsheetApp.create(CFG.DB_NAME);
+        DriveApp.getFileById(ss.getId()).moveTo(root);
+        P.setProperty('DB_ID', ss.getId());
+      }
+      _dbMemo = ss; _dbMemoId = ss.getId();
+      Object.keys(HEAD).forEach(function (name) { sheet_(name); });
+      const def = ss.getSheetByName('Sheet1') || ss.getSheetByName('Lembar1');
+      if (def && ss.getSheets().length > 1) ss.deleteSheet(def);
+      const sh = sheet_('Pengaturan');
+      const cur = rows_('Pengaturan');
+      Object.keys(DEFAULTS).forEach(function (k) {
+        if (!cur.some(function (r) { return r.Kunci === k; })) appendText_(sh, [k, DEFAULTS[k]]);
+      });
+      [F.KELUAR, F.MASUK, F.SET].forEach(function (n) { folder_(root, n); });
+      JENIS_MASUK.forEach(function (n) { folder_(folder_(root, F.MASUK), n); });
+      KATEGORI_BAWAAN.forEach(function (n) { folder_(folder_(root, F.KELUAR), n); });
+      rows_('SuratKeluar').forEach(function (r) { if (r.Status === 'Diarsipkan') writeObj_('SuratKeluar', r._row, { Status: ST.TERBIT }, r); });
+      secret_();
+      pastikanPemicuWa_();
+      return { folder: root.getUrl(), database: ss.getUrl() };
+    } finally { kunci.releaseLock(); }
+  }
+
+  /** Pakai Buku Agenda & folder PERSURATAN yang sudah ada (dari Simpel Surat versi berdiri sendiri). */
+  function hubungkanArsipLama(idSpreadsheet) {
+    const id = String(idSpreadsheet || '').trim().replace(/^.*\/d\/([A-Za-z0-9_-]+).*$/, '$1');
+    if (!id) throw new Error('Isi ID / link spreadsheet "00. BUKU AGENDA SURAT".');
+    const ss = SpreadsheetApp.openById(id);
+    const induk = DriveApp.getFileById(id).getParents();
+    if (!induk.hasNext()) throw new Error('Folder induk Buku Agenda tidak ditemukan.');
+    const root = induk.next();
+    props_().setProperty('DB_ID', id);
+    props_().setProperty('ROOT_ID', root.getId());
+    _dbMemo = null;
+    const hasil = setup();
+    return { buku: ss.getName(), folder: root.getName(), url: hasil.folder };
+  }
+
+  /* ---------------- AKUN dari WASIAT (RoleAkses) ---------------- */
+  const PETA_PERAN_WASIAT_ = [
+    ['mudir', ['Mudir']],
+    ['admin', ['Admin', 'Sekretaris']],
+    ['kabag', ['KabagPutra', 'KabagPutri', 'Kabag']],
+    ['bendahara', ['Bendahara']],
+    ['guru', ['Guru', 'WaliKelas', 'Pembina', 'PembinaPutra', 'PembinaPutri', 'PemilikBarang', 'Imam']],
+    ['wali', ['WaliSantri']],
+  ];
+  function peranDariWasiat_(level) {
+    const roles = String(level || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    for (let i = 0; i < PETA_PERAN_WASIAT_.length; i++) {
+      if (PETA_PERAN_WASIAT_[i][1].some(function (r) { return roles.indexOf(r) >= 0; })) return PETA_PERAN_WASIAT_[i][0];
+    }
+    return '';
+  }
+  function kunciNama_(s) { return normNama(s).replace(/[^a-z0-9]/g, ''); }
+  function idGuru_(nama) { return 'G:' + kunciNama_(nama); }
+
+  let _usersMemo = null;
+  function users_() {
+    if (_usersMemo) return _usersMemo;
+    const hasil = [];
+    const sh = getAktifSS().getSheetByName(SHEET_ROLE);
+    if (sh && sh.getLastRow() > 1) {
+      const sudah = {};
+      sh.getDataRange().getValues().slice(1).forEach(function (r) {
+        const nama = norm(r[0]); if (!nama) return;
+        const peran = peranDariWasiat_(r[3]); if (!peran) return;
+        const id = 'W' + kunciNama_(nama);
+        if (sudah[id]) return; sudah[id] = 1;
+        const roles = norm(r[3]).split(',').map(function (s) { return s.trim(); });
+        const terkait = [];
+        if (roles.indexOf('WaliSantri') >= 0) norm(r[4]).split(',').map(function (s) { return s.trim(); }).filter(Boolean).forEach(function (n) { terkait.push(n); });
+        if (roles.some(function (x) { return x && x !== 'WaliSantri'; })) terkait.push(idGuru_(nama));
+        hasil.push({
+          ID: id, Nama: nama, Username: norm(r[1]) || nama, Peran: peran, Terkait: JSON.stringify(terkait),
+          'No WA': norm(r[1]), Status: 'Aktif', 'Wajib Ganti PIN': '', 'Login Terakhir': '', Dibuat: '',
+          _pin: norm(r[2]), _level: norm(r[3]),
+        });
+      });
+    }
+    _usersMemo = hasil;
+    return hasil;
+  }
+  /** Versi token mengikuti PIN WASIAT: PIN diganti → sesi persuratan lama otomatis berakhir */
+  function versiUser_(u) {
+    const h = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(u._pin || '') + '|' + u.ID + '|' + secret_());
+    return Utilities.base64EncodeWebSafe(h).slice(0, 10);
+  }
+  function makeToken_(u) {
+    const payload = [u.ID, versiUser_(u), Date.now() + SESI_JAM * 3600 * 1000].join('|');
+    return b64w_(payload) + '.' + sign_(payload);
+  }
+  function readToken_(token) {
+    const parts = String(token || '').split('.');
+    if (parts.length !== 2) return null;
+    let payload;
+    try { payload = Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[0] + '==='.slice((parts[0].length + 3) % 4))).getDataAsString(); }
+    catch (e) { return null; }
+    if (sign_(payload) !== parts[1]) return null;
+    const p = payload.split('|');
+    if (Number(p[2]) < Date.now()) return null;
+    const u = users_().find(function (x) { return x.ID === p[0]; });
+    if (!u || u.Status === 'Nonaktif' || versiUser_(u) !== p[1]) return null;
+    return u;
+  }
+  /** Dipakai login WASIAT: token persuratan untuk akun RoleAkses ini (kosong bila perannya tidak dikenal). */
+  function tokenUntukNama(nama) {
+    const u = users_().find(function (x) { return x.ID === 'W' + kunciNama_(nama); });
+    return u ? makeToken_(u) : '';
+  }
+
+  function api_login(p) {
+    const un = String(p.username || '').trim();
+    const pin = String(p.pin || '').trim();
+    if (!un || !pin) throw new Error('Isi Nama / No WA dan PIN akun WASIAT Anda.');
+    const cache = CacheService.getScriptCache();
+    const ck = 'surat_gagal_' + kunciNama_(un).slice(0, 60);
+    const gagal = Number(cache.get(ck) || 0);
+    if (gagal >= 5) throw new Error('Terlalu banyak percobaan gagal. Coba lagi 10 menit lagi.');
+    const u = users_().find(function (x) { return (normNama(x.Nama) === normNama(un) || (x['No WA'] && x['No WA'] === un)) && x._pin === pin; });
+    if (!u) {
+      cache.put(ck, String(gagal + 1), 600);
+      throw new Error('Nama/No WA atau PIN salah, atau akun ini belum punya peran yang memakai persuratan. Gunakan akun WASIAT Anda.');
+    }
+    cache.remove(ck);
+    if (p.appUrl && PENGELOLA.indexOf(u.Peran) >= 0 && /^https:\/\//.test(p.appUrl)) setSetting_('appUrl', String(p.appUrl).slice(0, 300));
+    return { token: makeToken_(u), user: meOut_(u), unread: unreadCount_(u.ID) };
+  }
+  function api_changeMyPin() { throw new Error('PIN dikelola di WASIAT. Ganti PIN lewat akun WASIAT Anda (atau minta Admin).'); }
+  function api_listUsers() {
+    return users_().map(meOut_).sort(function (a, b) {
+      return (a.role === b.role ? 0 : Object.keys(PERAN).indexOf(a.role) - Object.keys(PERAN).indexOf(b.role)) || a.nama.localeCompare(b.nama);
+    });
+  }
+  function akunDiWasiat_() { throw new Error('Akun dikelola di WASIAT (Dashboard Admin → kelola akun / RoleAkses). Perubahan di sana langsung berlaku di persuratan.'); }
+  function api_saveUser() { akunDiWasiat_(); }
+  function api_resetPin() { akunDiWasiat_(); }
+  function api_deleteUser() { akunDiWasiat_(); }
+  function api_buatAkunWali() { akunDiWasiat_(); }
+  function api_buatAkunGuru() { akunDiWasiat_(); }
+
+  /** Nama pembuat surat lama (akun Simpel Surat sebelum digabung) tetap terbaca */
+  let _userNames = null;
+  function namaUser_(id) {
+    if (!id) return '';
+    if (!_userNames) {
+      _userNames = {};
+      try {
+        const sh = db_().getSheetByName('Pengguna');
+        if (sh && sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, 2).getDisplayValues().forEach(function (r) { if (r[0]) _userNames[r[0]] = r[1]; });
+      } catch (e) { }
+      users_().forEach(function (u) { _userNames[u.ID] = u.Nama; });
+    }
+    return _userNames[id] || '';
+  }
+
+  /** Penandatangan dicocokkan dengan pencocokan nama WASIAT (gelar & ejaan "Ust." tidak mengganggu) */
+  function samaNamaSurat_(a, b) {
+    a = String(a || '').trim(); b = String(b || '').trim();
+    if (!a || !b) return false;
+    if (a.toLowerCase() === b.toLowerCase()) return true;
+    try { return samaGuru_(a, b); } catch (e) { return false; }
+  }
+  function bolehTtd_(me, i, s, signers) {
+    if (!me) return false;
+    if (me.Peran === 'mudir') return true;
+    const sg = signers[i];
+    if (sg && samaNamaSurat_(sg.nama, me.Nama)) return true;
+    return me.Peran === 'admin' && s.wajibPersetujuan === 'tidak';
+  }
+  function approversFor_(r) {
+    let idx = 0;
+    try { idx = Number((JSON.parse(r['Data JSON'] || '{}').values || {})._ttd) || 0; } catch (e) { }
+    const sg = signers_(settings_())[idx];
+    const aktif = users_().filter(function (u) { return u.Status !== 'Nonaktif' && u.Peran !== 'wali'; });
+    const cocok = sg && sg.nama ? aktif.filter(function (u) { return samaNamaSurat_(u.Nama, sg.nama); }) : [];
+    return cocok.length ? cocok : aktif.filter(function (u) { return u.Peran === 'mudir'; });
+  }
+
+  /* ---------------- DATA SANTRI & GURU dari WASIAT ---------------- */
+  function tambahanOrang_(jenis) {
+    const cfg = PEOPLE[jenis];
+    const head = HEAD[cfg.sheet];
+    return rows_(cfg.sheet).map(function (r) {
+      const o = { _row: r._row };
+      cfg.keys.forEach(function (k, i) { o[k] = r[head[i]]; });
+      return o;
+    });
+  }
+  function jkWasiat_(v) {
+    const x = String(v || '').toLowerCase().replace(/[^a-z]/g, '');
+    if (/^(l|lk|laki|lakilaki|putra|pria)$/.test(x)) return 'Laki-laki';
+    if (/^(p|pr|perempuan|putri|wanita)$/.test(x)) return 'Perempuan';
+    return String(v || '');
+  }
+  function people_(jenis) {
+    if (!PEOPLE[jenis]) throw new Error('Jenis data tidak dikenal.');
+    const ex = tambahanOrang_(jenis);
+    const ss = getAktifSS();
+    const pakai = function (a, b) { return String(a || '').trim() ? a : (b || ''); };
+    if (jenis === 'santri') {
+      const kelas = {}, wali = {};
+      try { const sh = ss.getSheetByName(SHEET_ROMBEL); if (sh && sh.getLastRow() > 1) sh.getDataRange().getValues().slice(1).forEach(function (r) { if (norm(r[0])) kelas[norm(r[0])] = norm(r[2]); }); } catch (e) { }
+      users_().forEach(function (u) {
+        if (u._level.split(',').map(function (s) { return s.trim(); }).indexOf('WaliSantri') < 0) return;
+        terkait_(u).forEach(function (n) { if (!wali[n]) wali[n] = { nama: u.Nama, hp: u['No WA'] }; });
+      });
+      const out = [];
+      const sh = ss.getSheetByName(SHEET_SANTRI);
+      if (sh && sh.getLastRow() > 1) sh.getDataRange().getValues().slice(1).forEach(function (r) {
+        const nisn = norm(r[0]); if (!nisn) return;
+        const e = ex.find(function (x) { return x.id === nisn || (x.nisn && x.nisn === nisn) || (x.nis && x.nis === nisn); }) || {};
+        const w = wali[nisn] || {};
+        out.push({
+          id: nisn, nama: norm(r[1]), nis: e.nis || nisn, nisn: nisn, jk: pakai(e.jk, jkWasiat_(r[3])),
+          tempatLahir: e.tempatLahir || '', tglLahir: e.tglLahir || '', kelas: kelas[nisn] || e.kelas || '',
+          asrama: e.asrama || '', wali: pakai(e.wali, w.nama), hubunganWali: e.hubunganWali || '',
+          hpWali: pakai(e.hpWali, pakai(norm(r[4]), w.hp)), alamat: e.alamat || '', status: 'Aktif', diperbarui: e.diperbarui || '',
+          _row: e._row || null,
+        });
+      });
+      return out;
+    }
+    // guru: sheet Guru WASIAT + tambahan (termasuk pengurus yang tidak tercatat di WASIAT)
+    const out = [], sudah = {};
+    const sh = ss.getSheetByName(SHEET_GURU);
+    if (sh && sh.getLastRow() > 1) {
+      const v = sh.getDataRange().getValues();
+      const h = v[0].map(function (x) { return norm(x).toLowerCase(); });
+      const kol = function (nama) { return h.indexOf(nama); };
+      const iWa = kol('no wa'), iJab = kol('jabatan'), iNiy = h.findIndex(function (x) { return /^(niy|nip|niy\/nip|nuptk)$/.test(x); });
+      v.slice(1).forEach(function (r) {
+        const nama = norm(r[0]); if (!nama) return;
+        const id = idGuru_(nama); if (sudah[id]) return; sudah[id] = 1;
+        const e = ex.find(function (x) { return x.id === id || kunciNama_(x.nama) === kunciNama_(nama); }) || {};
+        out.push({
+          id: id, nama: pakai(e.nama, nama), niy: pakai(e.niy, iNiy >= 0 ? norm(r[iNiy]) : ''), jabatan: pakai(e.jabatan, iJab >= 0 ? norm(r[iJab]) : ''),
+          jk: e.jk || '', hp: pakai(e.hp, iWa >= 0 ? norm(r[iWa]) : ''), alamat: e.alamat || '', status: e.status || 'Aktif',
+          diperbarui: e.diperbarui || '', _row: e._row || null,
+        });
+      });
+    }
+    ex.forEach(function (e) {
+      if (!e.nama) return;
+      const id = idGuru_(e.nama);
+      if (sudah[id] || sudah[e.id]) return;
+      sudah[id] = 1;
+      out.push(Object.assign({}, e, { id: e.id && e.id.indexOf('G:') === 0 ? e.id : id, status: e.status || 'Aktif' }));
+    });
+    return out;
+  }
+  function simpanTambahan_(jenis, d, exRow) {
+    const sh = sheet_(PEOPLE[jenis].sheet);
+    const row = personRow_(jenis, d);
+    if (exRow) writeRow_(sh, exRow, row); else appendText_(sh, row);
+  }
+  function api_savePerson(p) {
+    const jenis = p.jenis;
+    if (!PEOPLE[jenis]) throw new Error('Jenis data tidak dikenal.');
+    const d = p.data || {};
+    d.nama = String(d.nama || '').replace(/\s+/g, ' ').trim();
+    const lock = kunciSurat_(); lock.waitLock(30000);
+    try {
+      const all = people_(jenis);
+      if (jenis === 'santri') {
+        const s = all.find(function (x) { return x.id === d.id || (d.nisn && x.nisn === String(d.nisn).trim()); });
+        if (!s) throw new Error('Santri baru ditambahkan lewat WASIAT (Admin → Data Santri). Di sini hanya melengkapi NIS, tempat/tanggal lahir, asrama, wali, dan alamat.');
+        const simpan = Object.assign({}, d, { id: s.id, nama: s.nama, nisn: s.nisn, kelas: s.kelas, status: 'Aktif' });
+        simpanTambahan_(jenis, simpan, s._row);
+      } else {
+        if (!d.nama) throw new Error('Nama wajib diisi.');
+        const g = d.id ? all.find(function (x) { return x.id === d.id; }) : null;
+        const id = g ? g.id : idGuru_(d.nama);
+        if (!g && all.some(function (x) { return x.id === id; })) throw new Error('Nama ' + d.nama + ' sudah ada di data guru.');
+        simpanTambahan_(jenis, Object.assign({}, d, { id: id, status: d.status || 'Aktif' }), g ? g._row : null);
+      }
+      _usersMemo = null;
+      return { id: d.id, list: api_listPeople({ jenis: jenis })[jenis] };
+    } finally { lock.releaseLock(); }
+  }
+  function api_deletePerson(p) {
+    const r = people_(p.jenis).find(function (x) { return x.id === p.id; });
+    if (!r) throw new Error('Data tidak ditemukan.');
+    if (!r._row) throw new Error(p.jenis === 'santri' ? 'Data santri dikelola di WASIAT. Di sini tidak ada isian tambahan untuk dihapus.' : 'Data guru ini berasal dari WASIAT dan tidak bisa dihapus di sini.');
+    sheet_(PEOPLE[p.jenis].sheet).deleteRow(r._row);
+    return { list: api_listPeople({ jenis: p.jenis })[p.jenis] };
+  }
+  /** Impor: hanya MELENGKAPI data yang sudah ada di WASIAT (dicocokkan NISN/NIS, lalu nama) */
+  function api_importPeople(p) {
+    const jenis = p.jenis, cfg = PEOPLE[jenis];
+    if (!cfg) throw new Error('Jenis data tidak dikenal.');
+    const rows = (p.rows || []).filter(function (r) { return r && String(r.nama || '').trim(); });
+    if (!rows.length) throw new Error('Tidak ada data yang bisa diimpor.');
+    if (rows.length > 3000) throw new Error('Maksimal 3000 baris sekali impor.');
+    const lock = kunciSurat_(); lock.waitLock(30000);
+    try {
+      let ubah = 0, tambah = 0, lewat = 0;
+      rows.forEach(function (d) {
+        const all = people_(jenis);
+        d.nama = String(d.nama).replace(/\s+/g, ' ').trim();
+        const kn = kunciNama_(d.nama);
+        const ex = all.find(function (r) {
+          if (jenis === 'santri' && ((d.nisn && r.nisn === String(d.nisn).trim()) || (d.nis && (r.nis === String(d.nis).trim() || r.nisn === String(d.nis).trim())))) return true;
+          return kunciNama_(r.nama) === kn && (!d.kelas || !r.kelas || r.kelas === d.kelas);
+        });
+        if (jenis === 'santri' && !ex) { lewat++; return; }
+        const merged = {};
+        cfg.keys.forEach(function (k) { merged[k] = (d[k] != null && String(d[k]).trim() !== '') ? d[k] : (ex ? ex[k] : ''); });
+        if (jenis === 'santri') { merged.id = ex.id; merged.nama = ex.nama; merged.nisn = ex.nisn; merged.kelas = ex.kelas; merged.status = 'Aktif'; }
+        else { merged.id = ex ? ex.id : idGuru_(d.nama); merged.status = merged.status || 'Aktif'; }
+        simpanTambahan_(jenis, merged, ex ? ex._row : null);
+        if (ex) ubah++; else tambah++;
+      });
+      return { ditambah: tambah, diperbarui: ubah, dilewati: lewat, list: api_listPeople({ jenis: jenis })[jenis] };
+    } finally { lock.releaseLock(); }
+  }
+
+  /* ---------------- WhatsApp lewat pengaturan WASIAT ---------------- */
+  function waEnabled_() {
+    const s = settings_();
+    try { return s.waProvider !== 'none' && waTerkonfigurasi_(); } catch (e) { return false; }
+  }
+  function sendWa_(phone, msg) {
+    try {
+      if (!normPhone_(phone)) return { status: 'tanpa nomor' };
+      if (!waEnabled_()) return { status: 'nonaktif' };
+      const h = kirimWA_(phone, msg, 'persuratan');
+      if (h && h.dilewati) return { status: 'nonaktif', info: h.error || '' };
+      catatWa_(!!(h && h.ok), h && h.ok ? 'terkirim lewat ' + (h.via || 'WA') : (h && h.error) || 'gagal');
+      return { status: h && h.ok ? 'terkirim' : 'gagal', info: h && h.ok ? '' : String((h && h.error) || '').slice(0, 250) };
+    } catch (e) {
+      catatWa_(false, String(e.message || e));
+      return { status: 'gagal', info: String(e.message || e).slice(0, 250) };
+    }
+  }
+  function waStatus_() {
+    let last = null;
+    try { last = JSON.parse(props_().getProperty('WA_LAST') || 'null'); } catch (e) { }
+    let antri = 0;
+    try { antri = rows_('Notifikasi').filter(function (n) { return n.WA === 'antri'; }).length; } catch (e) { }
+    let via = '';
+    try { via = penyediaWAAktif_(); } catch (e) { }
+    return { aktif: waEnabled_(), tokenTersimpan: !!via, secretTersimpan: false, terakhir: last, antri: antri, via: via, dariWasiat: true };
+  }
+  function pastikanPemicuWa_() {
+    try {
+      const ada = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'suratProsesAntrianWa'; });
+      if (!ada) ScriptApp.newTrigger('suratProsesAntrianWa').timeBased().everyMinutes(5).create();
+    } catch (e) { Logger.log('Pemicu WA persuratan belum dibuat: ' + e.message); }
+  }
+
+  /** Ringkasan untuk WASIAT: jumlah pemberitahuan belum dibaca akun ini */
+  function ringkasUntukWasiat(token) {
+    const me = readToken_(token);
+    if (!me) return { ok: false };
+    return { ok: true, unread: unreadCount_(me.ID), menunggu: me.Peran === 'wali' ? 0 : rows_('SuratKeluar').filter(function (r) { return statusOf_(r) === ST.MENUNGGU && bolehSetujui_(me, r); }).length };
+  }
+
+  /* ---------------- Titik masuk dari doPost WASIAT ---------------- */
+  function tangani(req) {
+    _usersMemo = null; _userNames = null;
+    const fn = HANDLERS[req.action];
+    if (!fn) return { ok: false, error: 'Aksi persuratan tidak dikenal: ' + req.action };
+    try {
+      if (AKSI_PUBLIK[req.action]) return { ok: true, data: fn(req.payload || {}) };
+      const me = readToken_(req.token);
+      if (!me) return { ok: false, auth: false, error: 'Sesi berakhir. Silakan masuk kembali dengan akun WASIAT.' };
+      if (!AKSI_SEMUA[req.action] && PENGELOLA.indexOf(me.Peran) < 0) {
+        return { ok: false, error: 'Akun Anda tidak memiliki akses untuk tindakan ini.' };
+      }
+      return { ok: true, data: fn(req.payload || {}, me) };
+    } catch (err) {
+      return { ok: false, error: String(err && err.message ? err.message : err) };
+    }
+  }
+
+  /* ---------------- ARSIP SURAT LAMA (unggah file dari komputer) ----------------
+   * Surat yang dibuat sebelum memakai aplikasi (Word/PDF/scan) dicatat ke Buku Agenda
+   * dan filenya disimpan di folder Drive yang sama dengan surat lain, sehingga bisa
+   * dicari, dibuka, dan dikirim ke wali dari aplikasi.
+   * - Tidak memakai QR (surat lama tidak memuatnya) dan tidak lewat persetujuan.
+   * - Secara bawaan TIDAK memengaruhi nomor urut surat baru (No Urut dikosongkan),
+   *   kecuali "lanjutkanNomor" dicentang.
+   * - Nomor yang sudah ada di arsip ditolak agar unggahan ulang tidak menggandakan data. */
+  function api_arsipSuratLama(p, me) {
+    const jenisArsip = p.kind === 'masuk' ? 'masuk' : 'keluar';
+    const f = p.file || {};
+    if (!f.base64) throw new Error('File surat belum dipilih.');
+    if (String(f.base64).length > 14 * 1024 * 1024) throw new Error('File terlalu besar (maks 10 MB).');
+    const perihal = String(p.perihal || '').trim();
+    if (!perihal) throw new Error('Perihal wajib diisi.');
+    const nomor = String(p.nomor || '').trim();
+    const d = parseDate_(p.tanggal);
+    const tahun = d.getFullYear();
+    const kunciNomor = function (s) { return String(s || '').toUpperCase().replace(/\s+/g, ''); };
+
+    if (jenisArsip === 'masuk') {
+      const pengirim = String(p.pihak || '').trim();
+      if (!pengirim) throw new Error('Pengirim wajib diisi.');
+      if (nomor && nomor !== '-' && rows_('SuratMasuk').some(function (r) {
+        return kunciNomor(r['Nomor Surat']) === kunciNomor(nomor) && normNama(r.Pengirim) === normNama(pengirim);
+      })) throw new Error('Sudah ada di arsip: surat masuk No. ' + nomor + ' dari ' + pengirim + '.');
+      const r = api_saveSuratMasuk({
+        jenis: p.jenis, pengirim: pengirim, nomorSurat: nomor || '-', tanggalSurat: ymd_(d), tanggalTerima: ymd_(d),
+        perihal: perihal, keterangan: String(p.keterangan || 'Arsip lama').slice(0, 500), disposisiKe: '', file: f,
+      }, me);
+      return { kind: 'masuk', id: r.id, nomor: r.noAgenda };
+    }
+
+    const lock = kunciSurat_();
+    lock.waitLock(30000);
+    try {
+      const all = rows_('SuratKeluar');
+      if (nomor && all.some(function (r) { return kunciNomor(r['Nomor Surat']) === kunciNomor(nomor); })) {
+        throw new Error('Nomor ' + nomor + ' sudah ada di arsip surat keluar.');
+      }
+      const jenis = String(p.jenis || '').trim() || 'Arsip Surat Lama';
+      const kategori = String(p.kategori || '').trim() || jenis;
+      const tujuan = String(p.pihak || '').trim();
+      const base = safeName_((nomor || ymd_(d)) + ' - ' + perihal + (tujuan && perihal.indexOf(tujuan) < 0 ? ' - ' + tujuan : ''));
+      const blob = Utilities.newBlob(Utilities.base64Decode(f.base64), f.mime || 'application/octet-stream', base + ext_(f.mime, f.name));
+      const file = folderKeluar_(kategori, jenis, tahun).createFile(blob);
+      const santri = (p.santri || []).map(String).filter(Boolean).slice(0, 50);
+      let urut = '';
+      if (p.lanjutkanNomor && nomor) { const m = nomor.match(/\d+/); if (m) urut = String(Number(m[0])); }
+      const o = {
+        ID: uid_(), 'No Urut': urut, Tahun: String(tahun), 'Nomor Surat': nomor, Tanggal: ymd_(d),
+        Jenis: jenis, Kode: '', Perihal: perihal, Tujuan: tujuan, Penandatangan: String(p.penandatangan || '').trim(),
+        Status: ST.TERBIT, 'File ID': file.getId(), 'Link PDF': file.getUrl(),
+        'Data JSON': JSON.stringify({ arsipLama: true, namaFileAsli: String(f.name || '').slice(0, 200) }),
+        Dibuat: stamp_(), Diperbarui: stamp_(), Kategori: kategori, 'Dibuat Oleh': me.ID,
+        'Disetujui Oleh': '', 'Disetujui Pada': '', 'Catatan Persetujuan': 'Arsip lama (diunggah)', 'Kode Verifikasi': '',
+        'Penerima JSON': JSON.stringify(santri.length ? { santri: santri } : {}), 'Status Kirim': '', 'Revisi JSON': '',
+      };
+      writeObj_('SuratKeluar', null, o);
+      return { kind: 'keluar', id: o.ID, nomor: nomor };
+    } finally {
+      lock.releaseLock();
+    }
+  }
+
+  /** Hapus arsip surat lama yang salah unggah (hanya berlaku untuk arsip lama, bukan surat terbitan aplikasi). */
+  function api_hapusArsipLama(p) {
+    const lock = kunciSurat_();
+    lock.waitLock(30000);
+    try {
+      const r = rows_('SuratKeluar').find(function (x) { return x.ID === p.id; });
+      if (!r) throw new Error('Surat tidak ditemukan.');
+      if (String(r['Data JSON'] || '').indexOf('"arsipLama":true') < 0) throw new Error('Hanya arsip surat lama yang bisa dihapus. Surat terbitan aplikasi gunakan "Batalkan".');
+      if (r['File ID']) { try { DriveApp.getFileById(r['File ID']).setTrashed(true); } catch (e) { } }
+      sheet_('SuratKeluar').deleteRow(r._row);
+      return { id: p.id };
+    } finally {
+      lock.releaseLock();
+    }
+  }
+
+  /** Untuk modul lain di WASIAT (mis. Keuangan): identitas pemilik token sesi WASIAT.
+   *  Mengembalikan null bila token tidak sah / kedaluwarsa / PIN sudah diganti. */
+  function identitasToken(token) {
+    _usersMemo = null;
+    const u = readToken_(token);
+    if (!u) return null;
+    const roles = String(u._level || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    let terkait = [];
+    try { terkait = JSON.parse(u.Terkait || '[]').filter(function (x) { return String(x).indexOf('G:') !== 0; }); } catch (e) { }
+    return { nama: u.Nama, roles: roles, terkait: terkait, noWa: u['No WA'] || '' };
+  }
+  /** Pengaturan kop + logo persuratan (untuk kwitansi & laporan keuangan). */
+  function kopUntukModulLain() {
+    const s = settings_();
+    return { kopKiri: s.kopKiri, kopKanan: s.kopKanan, kopBar: s.kopBar, warnaKop: s.warnaKop, namaResmi: s.namaResmi, kota: s.kota,
+      penandatangan: (function () { try { return JSON.parse(s.penandatangan || '[]'); } catch (e) { return []; } })() };
+  }
+
+  return {
+    tangani: tangani, setup: setup, prosesAntrianWa: prosesAntrianWa, rapikanArsip: rapikanArsip,
+    hubungkanArsipLama: hubungkanArsipLama, tokenUntukNama: tokenUntukNama, ringkasUntukWasiat: ringkasUntukWasiat,
+    identitasToken: identitasToken, kopUntukModulLain: kopUntukModulLain
+  };
+})();
+
+/** Jalankan dari editor bila ingin membuat folder & Buku Agenda persuratan lebih awal (opsional). */
+function suratSetup() { const h = SURAT_.setup(); Logger.log('Persuratan siap: ' + JSON.stringify(h)); return h; }
+/** Pemicu otomatis (tiap 5 menit) untuk WA persuratan yang masih antri. */
+function suratProsesAntrianWa() { SURAT_.prosesAntrianWa(); }
+/** Opsional: rapikan susunan folder arsip surat lama. */
+function suratRapikanArsip() { SURAT_.rapikanArsip(); }
