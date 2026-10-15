@@ -715,7 +715,7 @@
 (function(){
   // >>>>>>>>>>>>>> WAJIB DIISI SETELAH DEPLOY APPS SCRIPT <<<<<<<<<<<<<<
   // Alamat server dibaca dari config.js bila ada; bila tidak, memakai alamat di bawah ini.
-  var WEBAPP_URL = (window.WASIAT_CONFIG && window.WASIAT_CONFIG.webAppUrl) || "https://script.google.com/macros/s/AKfycbyzeGoxlqhsiAAuxAXfI-UXBJQp0QaaOGJ5gg3uz36RIEhs7N5Grck3Fy0x-VjMJRaf/exec";
+  var WEBAPP_URL = (window.WASIAT_CONFIG && window.WASIAT_CONFIG.webAppUrl) || "https://script.google.com/macros/s/AKfycbw4GOypJupB4hlMLAy6VNiqVDSYWu5wMLmZ-QRmKHHs40GY8c7Ut45pZb5ru6SUjePQ/exec";
   // ======================================================================
 
   var WAKTU_HALAQOH = ['Subuh','Duha','Ashar','Maghrib','Isya'];
@@ -1025,7 +1025,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.10.14-a';
+  var VERSI_APP = '2026.10.13-a';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -15823,7 +15823,7 @@
   }
 
   function khgAturan(isi){
-    var KUNCI = ['SPAktif','SPMulaiBerlaku','SPBatasTeguran','SPBatasSP1','SPBatasSP2','SPBatasSP3','SPBatasKlarifikasi','SPMasaBerlakuBulan','SPHitungHalaqoh','SPHariHalaqoh','SPJadwalHalaqoh','SPKodeSurat','SPPenandatangan','SPJabatan','SPKotaSurat','SPWAAktif','SPWAIzinBaru','SPWAIzinDiproses','SPWASPTerbit'];
+    var KUNCI = ['SPAktif','SPMulaiBerlaku','SPBatasTeguran','SPBatasSP1','SPBatasSP2','SPBatasSP3','SPBatasKlarifikasi','SPMasaBerlakuBulan','SPHitungHalaqoh','SPHariHalaqoh','SPKodeSurat','SPPenandatangan','SPJabatan','SPKotaSurat','SPWAAktif','SPWAIzinBaru','SPWAIzinDiproses','SPWASPTerbit'];
     api('getPengaturanBatch', {keys: KUNCI}).then(function(res){
       var d = res.ok ? res.data : {};
       function v(k, def){ return (d[k] === undefined || d[k] === null || d[k] === '') ? def : d[k]; }
@@ -15848,9 +15848,7 @@
         '<label style="margin-top:6px">Hari halaqoh berjalan</label><div style="display:flex;flex-wrap:wrap;gap:10px">' +
           HARI_URUT.map(function(h){ var cek = hariAktif.some(function(x){ return x.replace(/'/g,'').toLowerCase() === h.replace(/'/g,'').toLowerCase(); });
             return '<label style="display:flex;align-items:center;gap:5px;font-weight:400"><input type="checkbox" class="atHari" value="'+esc(h)+'" style="width:auto"'+(cek?' checked':'')+'> '+esc(h)+'</label>'; }).join('') + '</div>' +
-        '<p class="muted" style="font-size:12px">Pastikan sesuai kenyataan &mdash; hari yang dicentang tapi sebenarnya tidak ada halaqoh akan membuat pengampu tercatat tidak masuk. Hari di atas hanya dipakai untuk kelompok halaqoh yang <b>belum</b> diatur di tabel berikut.</p>' +
-        '<label style="margin-top:10px">Jadwal halaqoh per waktu &amp; putra/putri</label>' +
-        '<div id="atJadwalWrap"><p class="muted">Memuat daftar halaqoh...</p></div>' +
+        '<p class="muted" style="font-size:12px">Pastikan sesuai kenyataan &mdash; hari yang dicentang tapi sebenarnya tidak ada halaqoh akan membuat pengampu tercatat tidak masuk.</p>' +
         '<h4 style="margin-top:14px">Kop &amp; tanda tangan surat</h4><div class="grid2">' +
           '<div>'+fieldText('atPenanda','Nama penandatangan', v('SPPenandatangan',''))+'</div>' +
           '<div>'+fieldText('atJabatan','Jabatan penandatangan', v('SPJabatan','Mudir'))+'</div>' +
@@ -15880,70 +15878,6 @@
       document.getElementById('atWA').onchange = perbaruiStatus;
       perbaruiStatus();
 
-      // ---- Jadwal halaqoh per kelompok (waktu + putra/putri) ----
-      // Wajib = dihitung; Tidak rutin = dihitung hanya bila diisi (tidak diisi tidak
-      // membuat guru tercatat tidak masuk); Tidak ada = tidak dihitung sama sekali.
-      var jadwalTersimpan = {};
-      try { jadwalTersimpan = JSON.parse(v('SPJadwalHalaqoh', '') || '{}') || {}; } catch (e) { jadwalTersimpan = {}; }
-      var adaJadwal = Object.keys(jadwalTersimpan).length > 0;
-      var kelompokTampil = [];
-      function gKel(g){ var x = String(g||'').toLowerCase().replace(/[^a-z]/g,''); if (/^(l|lk|laki|lakilaki|putra|ikhwan|pria|banin)$/.test(x)) return 'putra'; if (/^(p|pr|perempuan|putri|akhwat|wanita|banat)$/.test(x)) return 'putri'; return 'umum'; }
-      function wKel(w){ var x = String(w||'').toLowerCase().replace(/[^a-z]/g,''); return x === 'dhuha' ? 'duha' : x; }
-      function usulan(waktu, gender){
-        var SJ = {Senin:'wajib',Selasa:'wajib',Rabu:'wajib',Kamis:'wajib',"Jum'at":'wajib'};
-        if (gender === 'putra' && waktu === 'subuh') return {Sabtu:'opsional'};
-        if ((waktu === 'subuh' || waktu === 'duha') && (gender === 'putra' || gender === 'putri')) return Object.assign({}, SJ);
-        var o = {}; hariAktif.forEach(function(hh){ if (hh) o[hh] = 'wajib'; }); return o;
-      }
-      function nilaiHari(atur, hari){
-        var k = Object.keys(atur||{}).find(function(x){ return x.replace(/'/g,'').toLowerCase() === hari.replace(/'/g,'').toLowerCase(); });
-        return k ? atur[k] : 'tidak';
-      }
-      function gambarJadwal(){
-        var wrap = document.getElementById('atJadwalWrap'); if (!wrap) return;
-        if (!kelompokTampil.length) { wrap.innerHTML = '<p class="muted" style="font-size:12.5px">Belum ada data halaqoh di semester aktif.</p>'; return; }
-        var warna = {wajib:'#dcfce7', opsional:'#fef9c3', tidak:'#f1f5f9'};
-        wrap.innerHTML = (adaJadwal ? '' : '<div style="background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;font-size:12.5px;margin-bottom:6px">&#128161; Belum pernah disimpan. Tabel sudah diisi <b>usulan</b>: Subuh &amp; Duha putri Senin&ndash;Jum\'at, Duha putra Senin&ndash;Jum\'at, Subuh putra hari Sabtu <b>tidak rutin</b>. Periksa lalu tekan <b>Simpan Aturan</b>.</div>') +
-          '<div style="overflow-x:auto"><table class="atJadwalTabel" style="display:table;white-space:nowrap;font-size:12.5px"><tr><th>Halaqoh</th>' + HARI_URUT.map(function(hh){ return '<th style="text-align:center">'+esc(hh)+'</th>'; }).join('') + '</tr>' +
-          kelompokTampil.map(function(k, i){
-            return '<tr><td><b>'+esc(k.label)+'</b><br><span class="muted" style="font-size:11px">'+k.jumlah+' halaqoh</span></td>' + HARI_URUT.map(function(hh){
-              var nv = nilaiHari(k.atur, hh);
-              return '<td style="padding:4px;background:'+warna[nv]+'"><select class="atJadwalSel" data-k="'+i+'" data-h="'+esc(hh)+'" style="margin:0;padding:4px;font-size:12px;width:auto;min-width:92px">' +
-                '<option value="wajib"'+(nv==='wajib'?' selected':'')+'>Wajib</option><option value="opsional"'+(nv==='opsional'?' selected':'')+'>Tidak rutin</option><option value="tidak"'+(nv==='tidak'?' selected':'')+'>Tidak ada</option></select></td>';
-            }).join('') + '</tr>';
-          }).join('') + '</table></div>' +
-          '<p class="muted" style="font-size:12px;margin-top:4px"><b>Wajib</b> = dihitung; tidak diisi akan tercatat tidak masuk. <b>Tidak rutin</b> = kadang ada kadang tidak: bila diisi tercatat hadir, bila tidak diisi <b>tidak</b> dianggap meninggalkan tugas. <b>Tidak ada</b> = tidak dihitung.</p>';
-        wrap.querySelectorAll('.atJadwalSel').forEach(function(s){
-          s.onchange = function(){ var k = kelompokTampil[Number(s.dataset.k)]; k.atur[s.dataset.h] = s.value; s.parentNode.style.background = warna[s.value]; };
-        });
-      }
-      api('getHalaqohList', {}).then(function(r){
-        var peta = {};
-        ((r && r.ok && r.data) || []).forEach(function(hq){
-          var kunci = wKel(hq.waktu) + '|' + gKel(hq.gender);
-          if (!wKel(hq.waktu)) return;
-          if (!peta[kunci]) peta[kunci] = {kunci: kunci, label: (hq.waktu || '-') + ' ' + (gKel(hq.gender) === 'putra' ? 'Putra' : gKel(hq.gender) === 'putri' ? 'Putri' : '(umum)'), jumlah: 0};
-          peta[kunci].jumlah++;
-        });
-        kelompokTampil = Object.keys(peta).sort().map(function(kk){
-          var k = peta[kk], w = kk.split('|');
-          var atur = jadwalTersimpan[kk] ? Object.assign({}, jadwalTersimpan[kk]) : usulan(w[0], w[1]);
-          var bersih = {}; HARI_URUT.forEach(function(hh){ bersih[hh] = nilaiHari(atur, hh); });
-          k.atur = bersih; return k;
-        });
-        gambarJadwal();
-      });
-      function bacaJadwalHalaqohForm(){
-        if (!kelompokTampil.length) return v('SPJadwalHalaqoh', '');
-        var hasil = {};
-        Object.keys(jadwalTersimpan).forEach(function(k){ hasil[k] = jadwalTersimpan[k]; }); // kelompok lain yang sudah tersimpan tetap dipertahankan
-        kelompokTampil.forEach(function(k){
-          var o = {}; HARI_URUT.forEach(function(hh){ if (k.atur[hh] && k.atur[hh] !== 'tidak') o[hh] = k.atur[hh]; });
-          hasil[k.kunci] = o;
-        });
-        return JSON.stringify(hasil);
-      }
-
       document.getElementById('btnSimpanAturan').onclick = function(){
         var el = document.getElementById('pesanAturan');
         var n = function(id){ return Number(document.getElementById(id).value); };
@@ -15960,7 +15894,6 @@
           SPBatasTeguran: t, SPBatasSP1: s1, SPBatasSP2: s2, SPBatasSP3: s3,
           SPBatasKlarifikasi: n('atKlar'), SPMasaBerlakuBulan: n('atMasa'),
           SPHitungHalaqoh: document.getElementById('atHalaqoh').checked ? 'true' : 'false', SPHariHalaqoh: hari,
-          SPJadwalHalaqoh: bacaJadwalHalaqohForm(),
           SPPenandatangan: document.getElementById('atPenanda').value.trim(), SPJabatan: document.getElementById('atJabatan').value.trim() || 'Mudir',
           SPKodeSurat: document.getElementById('atKode').value.trim() || 'PPWU', SPKotaSurat: document.getElementById('atKota').value.trim() || 'Poso',
           SPWAAktif: document.getElementById('atWA').checked ? 'true' : 'false',

@@ -3756,7 +3756,7 @@ function kolomSpp_(sh) {
 
 // Versi kode server -- dipakai aplikasi untuk memastikan Code.gs terbaru sudah di-deploy
 // sebelum menjalankan perubahan struktur (mis. menambah kolom Nama Santri).
-const VERSI_SERVER = '2026.10.14-a';
+const VERSI_SERVER = '2026.10.12-c';
 function apiVersiServer() { return {ok:true, versi: VERSI_SERVER}; }
 
 function apiStatusKolomNamaSpp(p) {
@@ -12434,9 +12434,6 @@ function aturanKehadiranGuru_() {
     batasKlarifikasi: angka(p.SPBatasKlarifikasi, 3),
     hitungHalaqoh: benar(p.SPHitungHalaqoh, true),
     hariHalaqoh: norm(p.SPHariHalaqoh) || "Senin,Selasa,Rabu,Kamis,Jum'at,Sabtu,Minggu",
-    // Jadwal halaqoh per kelompok WAKTU + PUTRA/PUTRI (JSON). Kosong = semua halaqoh
-    // memakai "hari halaqoh berjalan" di atas seperti sebelumnya.
-    jadwalHalaqoh: (function(){ try { const j = JSON.parse(norm(p.SPJadwalHalaqoh) || '{}'); return (j && typeof j === 'object') ? j : {}; } catch (e) { return {}; } })(),
     kodeSurat: norm(p.SPKodeSurat) || 'PPWU',
     penandatangan: norm(p.SPPenandatangan), jabatan: norm(p.SPJabatan) || 'Mudir',
     kota: norm(p.SPKotaSurat) || 'Poso',
@@ -12527,34 +12524,6 @@ function getSuratSPListAtur_() {
 
 // Inti perhitungan: status setiap sesi wajib per guru dalam satu bulan.
 // guruFilter (opsional) = hitung satu guru saja.
-// ---- Jadwal halaqoh per kelompok (waktu + putra/putri) ----
-// Status sebuah halaqoh pada suatu hari:
-//   'wajib'    -> dihitung; tidak diisi = belum tercatat / tanpa izin
-//   'opsional' -> "tidak rutin": bila diisi dihitung Hadir, bila tidak diisi TIDAK dihitung
-//                 (mis. halaqoh Subuh putra hari Sabtu yang kadang ada kadang tidak)
-//   'tidak'    -> tidak ada halaqoh, tidak dihitung sama sekali
-function kelompokGenderHalaqoh_(g) {
-  const x = normNama(g);
-  if (/^(l|lk|laki|lakilaki|putra|ikhwan|pria|banin)$/.test(x.replace(/\s/g,''))) return 'putra';
-  if (/^(p|pr|perempuan|putri|akhwat|wanita|banat)$/.test(x.replace(/\s/g,''))) return 'putri';
-  return 'umum';
-}
-function kelompokWaktuHalaqoh_(w) { return normNama(w).replace(/\s/g,'').replace(/^dhuha$/, 'duha'); }
-function kunciKelompokHalaqoh_(waktu, gender) { return kelompokWaktuHalaqoh_(waktu) + '|' + kelompokGenderHalaqoh_(gender); }
-function statusJadwalHalaqoh_(cfg, halaqoh, namaHari) {
-  const jadwal = cfg.jadwalHalaqoh || {};
-  const atur = jadwal[kunciKelompokHalaqoh_(halaqoh.waktu, halaqoh.gender)];
-  if (atur && typeof atur === 'object') {
-    const nh = normNama(namaHari);
-    let st = 'tidak';
-    Object.keys(atur).forEach(function(h){ if (normNama(h) === nh) st = String(atur[h]); });
-    return (st === 'wajib' || st === 'opsional') ? st : 'tidak';
-  }
-  // Kelompok yang belum diatur: aturan lama (hari halaqoh berjalan untuk semua)
-  const ada = String(cfg.hariHalaqoh || '').split(',').some(function(h){ return norm(h) && normNama(h) === normNama(namaHari); });
-  return ada ? 'wajib' : 'tidak';
-}
-
 function hitungKehadiranGuruAtur_(bulan, tahun, guruFilter, opsiHitung) {
   opsiHitung = opsiHitung || {};
   bulan = Number(bulan); tahun = Number(tahun);
@@ -12630,6 +12599,8 @@ function hitungKehadiranGuruAtur_(bulan, tahun, guruFilter, opsiHitung) {
     });
   }
   const halaqohList = cfg.hitungHalaqoh ? getHalaqohList() : [];
+  const hariHalaqoh = {};
+  cfg.hariHalaqoh.split(',').forEach(function(h){ if (norm(h)) hariHalaqoh[normNama(h)] = true; });
 
   const perGuru = {};
   function catat(guru, sesi) {
@@ -12660,24 +12631,11 @@ function hitungKehadiranGuruAtur_(bulan, tahun, guruFilter, opsiHitung) {
       catat(j.guru, Object.assign({tanggal:t, hari:namaHari, jenis:'Mapel', nama: j.mapel+' - '+j.kelas,
         mapel:j.mapel, kelas:j.kelas, jamKe:j.jamKe, hariJadwal:j.hari}, statusSesi(key, j.guru)));
     });
-    {
+    if (hariHalaqoh[nh]) {
       halaqohList.forEach(function(h){
-        const jadwal = statusJadwalHalaqoh_(cfg, h, namaHari);
-        if (jadwal === 'tidak') return;
         const key = 'H|'+t+'|'+normNama(h.namaHalaqoh)+'|'+normNama(h.waktu);
         const dasar = {tanggal:t, hari:namaHari, jenis:'Halaqoh', nama: h.namaHalaqoh+' ('+h.waktu+')', halaqoh: h.namaHalaqoh, waktu: h.waktu};
         const daftarG = h.pengampuList || [];
-        if (jadwal === 'opsional') {
-          // Halaqoh tidak rutin: hanya dihitung bila memang diisi (dan bukan hari libur).
-          // Tidak diisi = dianggap tidak ada sesi, jadi tidak pernah membuat guru tercatat
-          // tidak masuk. Bila yang mengisi guru pengganti, hanya pengganti yang tercatat.
-          if (!hadir[key] || libur[t] || !daftarG.length) return;
-          dasar.opsional = true;
-          const pengisiO = pengisiHalaqoh[key] || daftarG[0];
-          const siapa = daftarG.find(function(g){ return samaGuru_(g, pengisiO); }) || pengisiO;
-          catat(siapa, Object.assign({}, dasar, {status:'Hadir', ket:'halaqoh tidak rutin' + (samaGuru_(siapa, daftarG[0]) ? '' : ' · menggantikan ' + daftarG[0])}));
-          return;
-        }
         if (daftarG.length <= 1) {
           daftarG.forEach(function(g){ catat(g, Object.assign({}, dasar, statusSesi(key, g))); });
           return;
