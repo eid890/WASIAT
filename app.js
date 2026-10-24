@@ -314,7 +314,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.10.18-a';
+  var VERSI_APP = '2026.10.25-b';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -1334,6 +1334,19 @@
     d.querySelector('#blMasuk').onclick = function(){ d.remove(); _bannerLoginUlang = false; STATE.user = null; hapusSesiTersimpan(); showBeranda(); };
   }
 
+  // Jawaban server dirapikan: sesi kosong -> tampilkan tombol Masuk ulang;
+  // "Aksi tidak dikenal" -> server belum memakai Code.gs terbaru.
+  function rapikanJawabanServer(j){
+    if (j && j.ok === false && /^Aksi tidak dikenal/.test(String(j.error||''))) {
+      j.error = 'Fitur ini belum aktif di server. Admin perlu menempel Code.gs terbaru lalu Deploy versi baru (Kelola deployment \u2192 Edit \u2192 Versi baru).';
+    }
+    return j;
+  }
+  function sesiKosongPerluLogin(){
+    try { tampilkanPerluLoginUlang(); } catch(e){}
+    return {ok:false, perluLogin:true, auth:false, error:'Sesi perlu diperbarui. Tekan tombol "Masuk ulang" di bawah, lalu masuk kembali.'};
+  }
+
   function apiJaringan(action, payload, batasMs){
     if (!WEBAPP_URL || WEBAPP_URL.indexOf('PASTE_URL_WEBAPP') === 0) {
       return Promise.resolve({ok:false, error:'URL Web App belum diisi. Buka index.html dan isi WEBAPP_URL.'});
@@ -1515,6 +1528,22 @@
   function warnBox(msg){ return '<div class="warn">&#8505;&#65039; ' + esc(msg) + '</div>'; }
   function todayStr(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 
+  // Kolom PIN yang TIDAK pernah disimpan browser/HP (tanpa pengelola sandi, tanpa
+  // riwayat isian). Nama kolom diacak tiap kali supaya browser tidak bisa mengaitkan
+  // isian lama. Bila browser sangat lama tidak mendukung penyamaran titik, kembali ke
+  // type=password dengan autocomplete="new-password" (tetap tidak diisi otomatis).
+  var _pinCssDidukung = (function(){ try { return !!(window.CSS && CSS.supports && (CSS.supports('-webkit-text-security','disc') || CSS.supports('text-security','disc'))); } catch(e){ return false; } })();
+  function htmlPinAman(id, placeholder, gayaTambahan){
+    var acak = 'f' + Math.random().toString(36).slice(2, 10);
+    return '<input id="'+id+'" name="'+acak+'" '+(_pinCssDidukung ? 'type="text" class="pin-aman" autocomplete="off"' : 'type="password" autocomplete="new-password"') +
+      ' inputmode="numeric" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-form-type="other"' +
+      ' placeholder="'+esc(placeholder||'')+'"'+(gayaTambahan?' style="'+gayaTambahan+'"':'')+'>';
+  }
+  // Kosongkan PIN & NISN di jendela yang ditutup (bergantian santri di satu HP kasir)
+  function hapusIsianSensitif(wadah){
+    try { (wadah||document).querySelectorAll('input.pin-aman, input[type="password"], input[id$="_nisn"]').forEach(function(i){ i.value=''; }); } catch(e){}
+  }
+
   function openModal(title, fieldsHtml, onSubmit){
     var wrap = document.createElement('div');
     wrap.className = 'overlay';
@@ -1526,7 +1555,7 @@
     // Kalau halaman sempat dirender ulang selagi modal terbuka, wrap tidak lagi
     // menjadi anak root -- removeChild akan melempar error dan modal terkunci di
     // layar (inilah penyebab tombol Batal/Simpan kadang tidak merespons).
-    function tutupModal(){ if (wrap && wrap.remove) wrap.remove(); }
+    function tutupModal(){ hapusIsianSensitif(wrap); if (wrap && wrap.remove) wrap.remove(); }
     wrap.querySelector('#modalBatal').onclick = tutupModal;
     wrap.querySelector('#modalSimpan').onclick = function(){
       var btnSimpan = wrap.querySelector('#modalSimpan');
@@ -2829,9 +2858,10 @@
   function apiKeu(action, payload){
     var token = (STATE.user && STATE.user.tokenSurat) || '';
     if (!WEBAPP_URL) return Promise.resolve({ok:false, error:'Alamat server belum diatur.'});
-    if (!token && action !== 'verifikasi') return Promise.resolve({ok:false, auth:false, error:'Sesi perlu diperbarui. Silakan keluar lalu masuk kembali ke WASIAT.'});
+    if (!token && action !== 'verifikasi') return Promise.resolve(sesiKosongPerluLogin());
     return fetch(WEBAPP_URL, {method:'POST', body: JSON.stringify({modul:'keuangan', action:action, payload:payload||{}, token:token})})
       .then(function(r){ return r.json(); })
+      .then(function(j){ if (j && (j.perluLogin || j.auth === false)) { try { tampilkanPerluLoginUlang(); } catch(e){} } return rapikanJawabanServer(j); })
       .catch(function(){ return {ok:false, error:'Tidak dapat terhubung ke server. Periksa koneksi internet.'}; });
   }
   var BULAN_KEU = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
@@ -3698,10 +3728,10 @@
   function apiPrm(action, payload){
     var token = (STATE.user && STATE.user.tokenSurat) || '';
     if (!WEBAPP_URL) return Promise.resolve({ok:false, error:'Alamat server belum diatur.'});
-    if (!token && !/^ppdb/.test(action)) return Promise.resolve({ok:false, perluLogin:true, error:'Sesi perlu diperbarui. Silakan keluar lalu masuk kembali ke WASIAT.'});
+    if (!token && !/^ppdb/.test(action)) return Promise.resolve(sesiKosongPerluLogin());
     return fetch(WEBAPP_URL, {method:'POST', body: JSON.stringify({modul:'premium', action:action, payload:payload||{}, token:token})})
       .then(function(r){ return r.json(); })
-      .then(function(j){ if (j && j.perluLogin) { try { tampilkanPerluLoginUlang(); } catch(e){} } return j; })
+      .then(function(j){ if (j && j.perluLogin) { try { tampilkanPerluLoginUlang(); } catch(e){} } return rapikanJawabanServer(j); })
       .catch(function(){ return {ok:false, error:'Tidak dapat terhubung ke server. Periksa koneksi internet.'}; });
   }
   function opsiBulanPrm(jumlah){
@@ -4527,7 +4557,7 @@
     opts = opts || {};
     return '<label>'+(opts.label||'NISN Santri')+'</label>' +
       '<div style="display:flex;gap:6px;margin-bottom:6px">' +
-        '<input id="'+id+'_nisn" inputmode="numeric" placeholder="Ketik NISN santri..." autocomplete="off" style="flex:1;margin:0">' +
+        '<input id="'+id+'_nisn" name="n'+Math.random().toString(36).slice(2,10)+'" type="text" inputmode="numeric" placeholder="Ketik NISN santri..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-form-type="other" style="flex:1;margin:0">' +
         '<button type="button" class="secondary" id="'+id+'_scan" title="Pindai kartu QR santri" style="padding:0 12px;margin:0">&#128247;</button>' +
       '</div>' +
       '<div id="'+id+'_info" style="min-height:32px;font-size:13px;padding:6px 0"></div>' +
@@ -4572,7 +4602,7 @@
         elNisn.value = String(s.nisn);
         cariDariNisn();
         // Pindahkan fokus ke PIN supaya santri tinggal mengetik PIN-nya
-        var elPin = modal.querySelector('[type="password"]');
+        var elPin = modal.querySelector('input.pin-aman, input[type="password"]');
         if (elPin) setTimeout(function(){ elPin.focus(); }, 100);
       });
     };
@@ -5585,7 +5615,7 @@
       fieldText('kkKet','Keterangan (opsional)','') +
       '<div id="kkInfoSaldo" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:9px 12px;font-size:13px;margin-bottom:10px"></div>' +
       '<label>PIN Transaksi Santri</label>' +
-      '<input id="kkPin" type="password" inputmode="numeric" placeholder="Diisi oleh santri sendiri">' +
+      htmlPinAman('kkPin', 'Diisi oleh santri sendiri') +
       '<p class="muted" style="margin-top:-6px">Minta santri memasukkan PIN-nya sendiri sebagai tanda persetujuan.</p>';
 
     var pilihKk = null;
@@ -10335,7 +10365,7 @@
           '<table><tr><th>Nama</th><th>Jumlah Bulan</th><th>Total Tunggakan</th><th>Bulan</th><th>Aksi</th></tr>' +
           tunggakan.map(function(t){
             return '<tr class="rowTunggakan" data-nama="'+esc(t.nama.toLowerCase())+'">' +
-              '<td><b>'+esc(t.nama)+'</b></td>' +
+              '<td><b>'+esc(t.nama)+'</b>'+labelStatusSpp(t)+'</td>' +
               '<td style="text-align:center">'+t.jumlahBulan+' bln</td>' +
               '<td style="color:#dc2626;font-weight:700">'+rupiah(t.tunggakanSPP)+'</td>' +
               '<td style="font-size:11.5px;color:#64748b">'+t.bulanTunggak.slice(0,3).join(', ')+(t.bulanTunggak.length>3?'...':'')+'</td>' +
@@ -11192,6 +11222,14 @@
 
 
 
+  // Label kecil di samping nama pada daftar tunggakan SPP (santri lulus/keluar,
+  // tidak terdaftar tahun ini, atau NISN di sheet SPP yang perlu dicek bendahara)
+  function labelStatusSpp(t){
+    if (!t || !t.status) return '';
+    var perlu = t.status === 'Perlu dicek' || t.status === 'Tidak terdaftar tahun ini';
+    return ' <span title="'+(perlu?'NISN di sheet SPP tidak ada di Data Santri tahun ini. Periksa NISN di Data Santri atau sheet SPP.':'')+'" style="font-size:11px;font-weight:600;border-radius:999px;padding:1px 8px;background:'+(perlu?'#fef3c7;color:#92400e':'#e2e8f0;color:#475569')+'">'+esc(t.status)+(perlu && !/^NISN /.test(String(t.nama||''))?' · NISN '+esc(t.nisn):'')+'</span>';
+  }
+
   // ---- DASBOR KEUANGAN ----
   function bendDasbor(){
     var c=getContentEl();
@@ -11226,7 +11264,7 @@
           '<div style="display:flex;justify-content:space-between;font-weight:700;margin-bottom:6px"><span>Total Tunggakan</span><span style="color:#dc2626">'+rupiah(resTg.data.reduce(function(s,t){return s+t.tunggakanSPP;},0))+'</span></div>' +
           resTg.data.slice(0,5).map(function(t){
             return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-top:1px dashed #fca5a5">' +
-              '<span>'+esc(t.nama)+'</span><span style="color:#dc2626;font-weight:600">'+rupiah(t.tunggakanSPP)+' ('+t.jumlahBulan+' bln)</span></div>';
+              '<span>'+esc(t.nama)+labelStatusSpp(t)+'</span><span style="color:#dc2626;font-weight:600">'+rupiah(t.tunggakanSPP)+' ('+t.jumlahBulan+' bln)</span></div>';
           }).join('') +
           (resTg.data.length>5?'<p class="muted" style="margin:6px 0 0">...dan '+(resTg.data.length-5)+' santri lainnya. Lihat lengkap di menu SPP & Tunggakan.</p>':'')+
           '</div></div>':'') +
@@ -11721,7 +11759,7 @@
     if (pinPemilikMasihBerlaku()) { lanjut(); return; }
     var fields =
       warnBox('Menu ini berisi harga produk dan saldo Anda. Masukkan PIN login Anda untuk membukanya.') +
-      '<label>PIN Login Anda</label><input type="password" id="pinPemilikInput" inputmode="numeric" placeholder="PIN akun Anda" autocomplete="off">';
+      '<label>PIN Login Anda</label>' + htmlPinAman('pinPemilikInput', 'PIN akun Anda');
     var modal = openModal('Verifikasi Pemilik', fields, function(m){
       var pin = m.querySelector('#pinPemilikInput').value.trim();
       if (!pin) { alert('PIN wajib diisi.'); return false; }
@@ -11941,7 +11979,7 @@
             }
           }
           var kotakWarn = '<div id="warnSaldoKasir" style="display:none;background:#fee2e2;color:#991b1b;border-radius:8px;padding:8px;font-size:13px;margin-bottom:8px"></div>';
-          var kotakPin = '<label>PIN Transaksi Santri</label><input type="password" id="ktPin" inputmode="numeric" placeholder="PIN Transaksi milik santri">';
+          var kotakPin = '<label>PIN Transaksi Santri</label>' + htmlPinAman('ktPin', 'PIN Transaksi milik santri');
           function gambarMetode(){
             var isi = modal.querySelector('#ktIsi');
             modal.querySelectorAll('.ktMetodeBtn').forEach(function(b){ b.className = 'small ktMetodeBtn' + (b.dataset.m === metode ? '' : ' secondary'); });
@@ -11987,7 +12025,7 @@
         // Memakai pemilih santri yang sama persis dengan kasir: daftar langsung
         // terlihat, bisa dicari, bisa dipindai lewat QR.
         var fieldsHtml = fieldNisnSantri('casSantri', {label:'NISN Santri (atau scan kartu QR)'}) +
-          '<label>PIN Transaksi Santri</label><input type="password" id="casPin" inputmode="numeric" placeholder="PIN Transaksi milik santri">';
+          '<label>PIN Transaksi Santri</label>' + htmlPinAman('casPin', 'PIN Transaksi milik santri');
         var pilihCas = null;
         var modalCas = openModal('Masuk Akun Santri', fieldsHtml, function(m){
           var found = pilihCas.nilai();
@@ -12029,9 +12067,9 @@
 
     document.getElementById('as-ganti-pin').innerHTML = '<div class="card"><h3>Ganti PIN Transaksi Saya</h3>' +
       warnBox('PIN ini terpisah dari PIN login akun orang tua -- hanya dipakai untuk konfirmasi belanja/cek akun di kantin.') +
-      '<label>PIN Transaksi Lama</label><input type="password" id="pinLamaSantri" placeholder="PIN yang sekarang dipakai">' +
-      '<label>PIN Transaksi Baru</label><input type="password" id="pinBaruSantri" placeholder="PIN baru">' +
-      '<label>Ulangi PIN Baru</label><input type="password" id="pinUlangSantri" placeholder="Ketik PIN baru sekali lagi">' +
+      '<label>PIN Transaksi Lama</label>' + htmlPinAman('pinLamaSantri', 'PIN yang sekarang dipakai') +
+      '<label>PIN Transaksi Baru</label>' + htmlPinAman('pinBaruSantri', 'PIN baru') +
+      '<label>Ulangi PIN Baru</label>' + htmlPinAman('pinUlangSantri', 'Ketik PIN baru sekali lagi') +
       '<button id="btnSimpanPinSantri">Simpan PIN Baru</button><div id="pesanPinSantri"></div></div>';
     document.getElementById('btnSimpanPinSantri').onclick = function(){
       var pinLama  = document.getElementById('pinLamaSantri').value.trim();
@@ -12108,7 +12146,7 @@
         // yang mungkin dilakukan beberapa menit sebelumnya.
         var fields =
           warnBox('Anda akan mengajukan penarikan sebesar Rp' + (Number(String(nominal).replace(/[^\d]/g,'')) || 0).toLocaleString('id-ID') + '. Masukkan PIN login Anda untuk mengonfirmasi.') +
-          '<label>PIN Login Anda</label><input type="password" id="pinTarikInput" inputmode="numeric" placeholder="PIN akun Anda" autocomplete="off">';
+          '<label>PIN Login Anda</label>' + htmlPinAman('pinTarikInput', 'PIN akun Anda');
         var modalTarik = openModal('Konfirmasi Penarikan', fields, function(m){
           var pin = m.querySelector('#pinTarikInput').value.trim();
           if (!pin) { alert('PIN wajib diisi.'); return false; }

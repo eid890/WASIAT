@@ -10,7 +10,7 @@
 //
 // CACHE_VERSION diisi otomatis saat build — ubah ini kalau mau paksa re-cache semua.
 
-const CACHE_VERSION = 'wasiat-offline-v27'; // diupdate otomatis tiap build
+const CACHE_VERSION = 'wasiat-offline-v37'; // diupdate otomatis tiap build
 const CACHE_NAME = CACHE_VERSION;
 // Cache foto (produk kantin, galeri, logo) SENGAJA tidak diberi nomor versi aplikasi.
 // Kalau ikut versi, setiap kali aplikasi diperbarui semua foto akan terhapus dan
@@ -21,6 +21,7 @@ const CACHE_IMG = 'wasiat-img-v1';
 const APP_SHELL = [
   '/',
   '/index.html',
+  '/app.js?v=2026.10.25-b',
   '/manifest.json',
   '/config.js',
   '/icon-192.png',
@@ -121,6 +122,11 @@ self.addEventListener('fetch', function(e) {
     url.hostname.indexOf('onesignal.com') !== -1 ||
     url.hostname.indexOf('jsdelivr.net') !== -1 ||
     url.pathname.indexOf('/push/onesignal/') === 0 ||
+    // Aplikasi Persuratan (/surat/) selalu langsung dari jaringan: tidak di-cache, dan
+    // tidak pernah tertukar dengan halaman WASIAT.
+    url.pathname.indexOf('/surat/') === 0 || url.pathname === '/surat' ||
+    // Halaman pendaftaran santri baru (/ppdb/) juga selalu langsung dari jaringan
+    url.pathname.indexOf('/ppdb/') === 0 || url.pathname === '/ppdb' ||
     req.method !== 'GET'
   ) return;
 
@@ -135,10 +141,11 @@ self.addEventListener('fetch', function(e) {
     // offline sudah ada. Sebelumnya tanpa batas: di sinyal lemah layar bisa putih lama
     // sebelum akhirnya memakai salinan offline. Unduhan tetap berlanjut di belakang
     // untuk memperbarui salinan.
+    var halamanUtama = url.pathname === '/' || url.pathname === '/index.html';
     function dariCache() {
       return caches.match(req)
-        .then(function(c) { return c || caches.match('/index.html'); })
-        .then(function(c) { return c || caches.match('/'); });
+        .then(function(c) { return c || (halamanUtama ? caches.match('/index.html') : null); })
+        .then(function(c) { return c || (halamanUtama ? caches.match('/') : null); });
     }
     var dariJaringan = fetch(req, { cache: 'no-cache' }).then(function(resp) {
       if (resp && resp.status === 200) {
@@ -146,8 +153,9 @@ self.addEventListener('fetch', function(e) {
         caches.open(CACHE_NAME).then(function(cache) {
           cache.put(req, salinan1);
           // Simpan juga sebagai /index.html supaya alamat dengan parameter apa pun
-          // tetap punya cadangan saat offline
-          cache.put('/index.html', salinan2);
+          // tetap punya cadangan saat offline -- HANYA untuk halaman utama WASIAT,
+          // supaya halaman lain (mis. /jam-sholat/) tidak menimpa salinan WASIAT.
+          if (url.pathname === '/' || url.pathname === '/index.html') cache.put('/index.html', salinan2);
         });
       }
       return resp;
