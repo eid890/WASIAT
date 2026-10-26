@@ -314,7 +314,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.10.25-d';
+  var VERSI_APP = '2026.10.26-a';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -17111,6 +17111,10 @@
         '<label>NISN baru</label><input id="gnBaru" inputmode="numeric" placeholder="Ketik NISN baru" autocomplete="off">' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button id="gnPeriksa">Periksa Dampak</button></div>' +
         '<div id="gnHasil" style="margin-top:12px"></div></div>' +
+        '<div class="card"><h4 style="margin-top:0">&#48;&#65039;&#8419; Perbaiki NISN Berawalan 0</h4>' +
+          '<p style="font-size:13px;margin-top:0">Google Sheets kadang mengubah NISN seperti <b>0125198445</b> menjadi angka <b>125198445</b> (nol di depan hilang), sehingga absensi, kelas, hafalan, dan data lain santri itu <b>tidak terbaca</b> di aplikasi dan akun wali. Tombol ini mengembalikan NISN tersebut di semua spreadsheet (termasuk arsip) dan mengunci kolom NISN sebagai teks agar tidak terulang.</p>' +
+          '<p class="muted" style="font-size:12px">Aman: hanya kolom NISN yang diubah, hanya angka yang persis sama dengan NISN resmi tanpa nol depannya, dan dilewati bila ada dua santri yang bisa cocok. Pemeriksaan ini juga berjalan otomatis tiap jam selama Penjaga NISN aktif.</p>' +
+          '<button id="gnNol">Perbaiki NISN berawalan 0 sekarang</button><div id="gnNolHasil" style="margin-top:8px"></div></div>' +
         '<div class="card"><h4 style="margin-top:0">&#128737; Ubah NISN Langsung di Spreadsheet</h4>' +
           '<p style="font-size:13px;margin-top:0">Bila NISN diubah <b>langsung di sheet Santri</b>, aplikasi otomatis memindahkan seluruh riwayatnya ke NISN baru (proses sama seperti di atas), asalkan <b>Penjaga NISN</b> aktif.</p>' +
           '<ul style="font-size:12.5px;margin:0 0 8px 18px;padding:0"><li>Ubah <b>satu sel NISN</b> saja per santri, di baris santri itu. Nama santri jangan diubah bersamaan.</li>' +
@@ -17118,6 +17122,25 @@
           '<li>Perubahan yang meragukan (NISN dobel, nama ikut berubah, baris dipindah) <b>tidak diproses otomatis</b>, tetapi tampil di bawah untuk Anda konfirmasi.</li></ul>' +
           '<div id="gnPenjaga"><p class="muted">Memuat status...</p></div></div>' +
         '<div class="card"><h4 style="margin-top:0">Riwayat Penggantian NISN</h4><div id="gnRiwayat"><p class="muted">Memuat...</p></div></div>';
+
+      // ---- Perbaikan NISN berawalan 0 ----
+      var bNol = document.getElementById('gnNol');
+      if (bNol) bNol.onclick = function(){
+        if (!confirm('Perbaiki NISN berawalan 0 di semua spreadsheet?\n\nProses bisa memakan waktu hingga 1-2 menit. Jangan tutup halaman ini.')) return;
+        var el = document.getElementById('gnNolHasil');
+        loadingBtn(bNol, 'Memperbaiki...');
+        el.innerHTML = '<p class="muted">Memindai semua spreadsheet...</p>';
+        apiJaringan('penjagaNisn', {oleh: STATE.user.nama, aksi: 'perbaikiNol'}, 330000).then(function(r){
+          resetBtn(bNol, 'Perbaiki NISN berawalan 0 sekarang');
+          if (!r.ok) { el.innerHTML = errBox(r.error); return; }
+          var h = r.perbaikanNol || {};
+          if (h.tidakAda) { el.innerHTML = '<p style="font-size:13px;color:#166534">&#9989; Tidak ada santri dengan NISN berawalan 0. Tidak ada yang perlu diperbaiki.</p>'; return; }
+          el.innerHTML = h.total
+            ? '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 10px;font-size:13px">&#9989; <b>'+h.total+' baris</b> diperbaiki untuk '+(h.jumlahNisn||0)+' NISN berawalan 0:<br>' +
+                (h.rincian||[]).map(function(x){ return esc(x.spreadsheet)+' / '+esc(x.sheet)+': '+x.jumlah; }).join('<br>') + '</div>'
+            : '<p style="font-size:13px;color:#166534">&#9989; Semua NISN berawalan 0 sudah benar'+(h.kolomDikunci?' ('+h.kolomDikunci+' kolom NISN kini dikunci sebagai teks)':'')+'.</p>';
+        }).catch(function(){ resetBtn(bNol, 'Perbaiki NISN berawalan 0 sekarang'); el.innerHTML = errBox('Koneksi terputus. Proses mungkin tetap berjalan di server; tekan lagi beberapa saat kemudian untuk memastikan.'); });
+      };
 
       // ---- Penjaga NISN (ubah langsung di spreadsheet) ----
       function muatPenjaga(aksi, tombol){

@@ -3814,7 +3814,7 @@ function kolomSpp_(sh) {
 
 // Versi kode server -- dipakai aplikasi untuk memastikan Code.gs terbaru sudah di-deploy
 // sebelum menjalankan perubahan struktur (mis. menambah kolom Nama Santri).
-const VERSI_SERVER = '2026.10.25-c';
+const VERSI_SERVER = '2026.10.26-a';
 function apiVersiServer() { return {ok:true, versi: VERSI_SERVER}; }
 
 function apiStatusKolomNamaSpp(p) {
@@ -13813,6 +13813,8 @@ function periksaPerubahanNisn_() {
 function jalankanPenjagaNisn() {
   try { pastikanPemicuNisn_(); } catch (e) { Logger.log('Pasang pemicu NISN gagal: ' + e.message); }
   try { periksaPerubahanNisn_(); } catch (e) { Logger.log('Periksa NISN gagal: ' + e.message); }
+  // NISN berawalan 0 yang kehilangan nolnya di catatan baru (spreadsheet aktif saja)
+  try { perbaikiNisnNolDepan_({semua: false, oleh: 'Sistem (penjaga NISN)'}); } catch (e) { Logger.log('Perbaikan NISN nol gagal: ' + e.message); }
 }
 function pastikanPemicuNisn_() {
   const props = PropertiesService.getScriptProperties();
@@ -13845,6 +13847,12 @@ function apiPenjagaNisn(p) {
   }
   if (aksi === 'periksa') periksa = periksaPerubahanNisn_();
   if (aksi === 'abaikan') hapusPerluCekNisn_(norm(p.nisnLama), norm(p.nisnBaru));
+  let perbaikanNol = null;
+  if (aksi === 'perbaikiNol') {
+    let kunci;
+    try { kunci = LockService.getScriptLock(); kunci.waitLock(20000); } catch (e) { return {ok:false, error:'Sistem sedang sibuk, coba lagi sebentar.'}; }
+    try { perbaikanNol = perbaikiNisnNolDepan_({semua: true, oleh: norm(p.oleh)}); } finally { try { kunci.releaseLock(); } catch (e) {} }
+  }
   let terpasang = false;
   try {
     const idAktif = getAktifSS().getId();
@@ -13852,7 +13860,104 @@ function apiPenjagaNisn(p) {
   } catch (e) {}
   let perluCek = [];
   try { perluCek = JSON.parse(PropertiesService.getScriptProperties().getProperty(PROP_NISN_PERLU_CEK) || '[]'); } catch (e) {}
-  return {ok:true, terpasang: terpasang, periksa: periksa, perluCek: perluCek.reverse(), galat: galat};
+  return {ok:true, terpasang: terpasang, periksa: periksa, perbaikanNol: perbaikanNol, perluCek: perluCek.reverse(), galat: galat};
+}
+
+// ======================================================================
+// PERBAIKAN NISN BERAWALAN 0
+// Google Sheets mengubah teks "0125198445" menjadi angka 125198445 saat ditulis ke sel
+// berformat biasa, sehingga absensi/rombel/hafalan/dll. santri itu tidak lagi cocok dengan
+// Data Santri ("datanya kosong"). Fungsi ini:
+//  1. Mengembalikan sel NISN yang kehilangan nol di depan menjadi NISN resmi (teks).
+//  2. Mengunci kolom NISN sebagai teks (format @) agar catatan baru tidak kehilangan nol.
+// Hanya menyentuh kolom berjudul NISN, hanya nilai yang PERSIS sama dengan NISN resmi
+// tanpa nol di depannya, dan tidak pernah menebak bila ada dua santri yang bisa cocok.
+// ======================================================================
+function perbaikiNisnNolDepan_(opsi) {
+  opsi = opsi || {};
+  const santri = getAktifSS().getSheetByName(SHEET_SANTRI);
+  if (!santri || santri.getLastRow() < 2) return {ok:true, total:0, rincian:[], kolomDikunci:0};
+  const iN = kolomNisnSantri_(santri.getRange(1, 1, 1, santri.getLastColumn()).getValues()[0]);
+  const resmi = santri.getRange(2, iN + 1, santri.getLastRow() - 1, 1).getValues().map(function(r){ return norm(r[0]).replace(/^'+/, ''); }).filter(Boolean);
+  const ada = {}; resmi.forEach(function(n){ ada[n] = true; });
+  const peta = {}, ganda = {};
+  resmi.forEach(function(n){
+    if (!/^0+[0-9A-Za-z]/.test(n)) return;
+    const tanpaNol = n.replace(/^0+/, '');
+    if (ada[tanpaNol]) return;                       // ada santri lain yang memang ber-NISN itu
+    if (peta[tanpaNol] && peta[tanpaNol] !== n) ganda[tanpaNol] = true; else peta[tanpaNol] = n;
+  });
+  Object.keys(ganda).forEach(function(k){ delete peta[k]; });
+  if (!Object.keys(peta).length) return {ok:true, total:0, rincian:[], kolomDikunci:0, tidakAda:true};
+
+  const AKTIF = {'Master':1, 'Semester berjalan':1, 'Kantin':1, 'SPP':1, 'Pelanggaran':1};
+  const rincian = []; let total = 0, kolomDikunci = 0;
+  // Pemeriksaan berkala cukup spreadsheet aktif (tanpa membuka arsip); tombol Admin memindai semuanya
+  const daftarSS = opsi.semua ? daftarSpreadsheetAplikasi_() : (function(){
+    const h = [], sudah = {};
+    [['Master', getMasterSS], ['Semester berjalan', getAktifSS], ['Kantin', getAktifKantinSS], ['SPP', getAktifSppSS], ['Pelanggaran', getPelanggaranAktifSS]].forEach(function(x){
+      try { const ss = x[1](); if (ss && !sudah[ss.getId()]) { sudah[ss.getId()] = true; h.push({label: x[0], ss: ss}); } } catch (e) {}
+    });
+    return h;
+  })();
+  daftarSS.forEach(function(item){
+    const aktif = !!AKTIF[item.label];
+    item.ss.getSheets().forEach(function(sh){
+      if (SHEET_TIDAK_DIGANTI_NISN_.indexOf(sh.getName()) !== -1) return;
+      const baris = sh.getLastRow(), kolom = sh.getLastColumn();
+      if (baris < 2 || kolom < 1) return;
+      const judul = sh.getRange(1, 1, 1, kolom).getValues()[0];
+      judul.forEach(function(j, i){
+        if (!/nisn/i.test(norm(j))) return;
+        // Kunci kolom sebagai teks di spreadsheet aktif (tempat catatan baru ditulis)
+        if (aktif) {
+          try {
+            const sel = sh.getRange(2, i + 1);
+            if (sel.getNumberFormat() !== '@') { sh.getRange(2, i + 1, sh.getMaxRows() - 1, 1).setNumberFormat('@'); kolomDikunci++; }
+          } catch (e) {}
+        }
+        const rng = sh.getRange(2, i + 1, baris - 1, 1);
+        const nilai = rng.getValues();
+        const ubah = [];
+        nilai.forEach(function(r, k){
+          const t = norm(r[0]).replace(/^'+/, '');
+          if (!t) return;
+          if (peta[t]) { ubah.push({k: k, lama: r[0], baru: peta[t]}); return; }
+          if (/[,;]/.test(t)) {
+            let berubah = false;
+            const bagian = t.split(/\s*[,;]\s*/).map(function(x){ if (peta[x]) { berubah = true; return peta[x]; } return x; });
+            if (berubah) ubah.push({k: k, lama: r[0], baru: bagian.join(', ')});
+          }
+        });
+        if (!ubah.length) return;
+        // Tulis per blok baris berurutan; blok diperiksa ulang dulu supaya tidak menimpa
+        // baris yang bergeser/berubah selama pemindaian.
+        let ditulis = 0;
+        for (let a = 0; a < ubah.length; ) {
+          let b = a;
+          while (b + 1 < ubah.length && ubah[b + 1].k === ubah[b].k + 1) b++;
+          const blokRng = sh.getRange(2 + ubah[a].k, i + 1, b - a + 1, 1);
+          const kini = blokRng.getValues();
+          const sama = kini.every(function(r, x){ return norm(r[0]) === norm(ubah[a + x].lama); });
+          // Format teks dulu, baru tulis NISN apa adanya (tanpa tanda ') supaya nol di depan bertahan
+          if (sama) { try { blokRng.setNumberFormat('@'); } catch (e) {} blokRng.setValues(ubah.slice(a, b + 1).map(function(u){ return [u.baru]; })); ditulis += b - a + 1; }
+          a = b + 1;
+        }
+        if (ditulis) { total += ditulis; rincian.push({spreadsheet: item.label, sheet: sh.getName(), kolom: norm(j), jumlah: ditulis}); }
+      });
+    });
+  });
+  if (total) {
+    try {
+      const ms = getMasterSS();
+      let shLog = ms.getSheetByName(SHEET_RIWAYAT_GANTI_NISN);
+      if (!shLog) { shLog = ms.insertSheet(SHEET_RIWAYAT_GANTI_NISN); shLog.appendRow(['Waktu','Oleh','NISN Lama','NISN Baru','Nama Santri','Jumlah Baris','Rincian','Status']); shLog.setFrozenRows(1); }
+      shLog.appendRow([new Date(), norm(opsi.oleh) || 'Sistem', '(nol di depan hilang)', '(dikembalikan)', Object.keys(peta).length + ' NISN berawalan 0', total,
+        '[Perbaikan nol di depan] ' + rincian.map(function(x){ return x.spreadsheet + ' / ' + x.sheet + ': ' + x.jumlah; }).join('; ').slice(0, 45000), 'Selesai']);
+    } catch (e) {}
+    try { const shSpp = getAktifSppSS().getSheetByName(SHEET_SPP); if (shSpp) { const k = kolomSpp_(shSpp); if (k.nama) isiNamaSpp_(shSpp, k.nama); } } catch (e) {}
+  }
+  return {ok:true, total: total, rincian: rincian, kolomDikunci: kolomDikunci, jumlahNisn: Object.keys(peta).length};
 }
 
 function riwayatGantiNisn_() {
