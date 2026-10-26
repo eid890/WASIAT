@@ -314,7 +314,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.10.25-b';
+  var VERSI_APP = '2026.10.25-d';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -13847,62 +13847,227 @@
 
   var _waliNisn = ''; // NISN anak yang sedang dilihat, disimpan antar tab
 
+  // ---------- Ikon garis untuk akun wali (SVG, tajam di semua layar) ----------
+  var IKON_WALI = {
+    ringkasan:'<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/>',
+    laporan:'<rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 16.5v-3M12 16.5V8M16 16.5v-5.5"/>',
+    kehadiran:'<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/><path d="m9 15.2 2 2 4-4"/>',
+    hafalan:'<path d="M12 6.5C10.3 5 7.8 4.5 4 4.5v14c3.8 0 6.3.5 8 2 1.7-1.5 4.2-2 8-2v-14c-3.8 0-6.3.5-8 2Z"/><path d="M12 6.5v14"/>',
+    nilai:'<circle cx="12" cy="9" r="5.5"/><path d="m8.6 13.6-1.6 7 5-2.6 5 2.6-1.6-7"/>',
+    spp:'<rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6.5 15h4"/>',
+    keuangan:'<path d="M19 7.5V6a1.5 1.5 0 0 0-1.5-1.5h-12A2.5 2.5 0 0 0 3 7v10.5A2.5 2.5 0 0 0 5.5 20h13a2.5 2.5 0 0 0 2.5-2.5V10a2.5 2.5 0 0 0-2.5-2.5H5.5"/><circle cx="16.5" cy="13.8" r="1.2"/>',
+    pelanggaran:'<path d="M12 3 5 6v5.5c0 4.3 3 8 7 9.5 4-1.5 7-5.2 7-9.5V6l-7-3Z"/><path d="m9.2 12.2 2 2 3.8-4"/>',
+    surat:'<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m3.5 7 8.5 6 8.5-6"/>',
+    lonceng:'<path d="M6 16v-5a6 6 0 1 1 12 0v5l1.5 2h-15Z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+    keluar:'<path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="m10 16-4-4 4-4M6 12h10"/>',
+    mata:'<path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
+    mataTutup:'<path d="m3 3 18 18"/><path d="M10.6 5.6c.5-.1.9-.1 1.4-.1 6.4 0 10 6.5 10 6.5a18 18 0 0 1-3.2 3.9M6.6 6.7C3.8 8.4 2 12 2 12s3.6 6.5 10 6.5c1.7 0 3.2-.4 4.4-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+    salin:'<rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+    akun:'<circle cx="12" cy="8" r="4"/><path d="M4 20.5c1.2-3.8 4.3-5.5 8-5.5s6.8 1.7 8 5.5"/>',
+    bayar:'<path d="M12 15V3.5M7.5 8 12 3.5 16.5 8"/><path d="M4 14.5v3.5A2.5 2.5 0 0 0 6.5 20.5h11A2.5 2.5 0 0 0 20 18v-3.5"/>',
+    kembali:'<path d="M15 18 9 12l6-6"/>',
+    lanjut:'<path d="m9 6 6 6-6 6"/>',
+    hati:'<path d="M12 20s-7.5-4.6-7.5-10A4.3 4.3 0 0 1 12 7.4 4.3 4.3 0 0 1 19.5 10c0 5.4-7.5 10-7.5 10Z"/>',
+    pasang:'<rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M12 7v7M9 11.5l3 3 3-3"/><path d="M10.5 18.5h3"/>'
+  };
+  function svgWali(nama, ukuran){
+    var u = ukuran || 24;
+    return '<svg viewBox="0 0 24 24" width="'+u+'" height="'+u+'" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(IKON_WALI[nama]||'')+'</svg>';
+  }
+  // Warna menu: tetap dalam keluarga hijau-teal WASIAT dengan aksen emas
+  var WARNA_MENU_WALI = {
+    ringkasan:['#0f766e','#d5f5ee'], laporan:['#0d9488','#d5f5ee'], kehadiran:['#0e7490','#d3f1f8'], hafalan:['#4d7c0f','#e6f4d4'],
+    nilai:['#b7791f','#fbf0d5'], spp:['#0f766e','#dff3ef'], keuangan:['#15803d','#dcf5e3'], pelanggaran:['#9f1239','#fbe3e8'], surat:['#3f5d58','#e4ecea']
+  };
+  function pasangGayaWali(){
+    if (document.getElementById('dwGaya')) return;
+    var st = document.createElement('style'); st.id = 'dwGaya';
+    st.textContent =
+      '#absensi-app .dw{max-width:760px;margin:0 auto;min-height:100vh;background:#f2f6f5;padding-bottom:96px;font-family:inherit}' +
+      '#absensi-app .dw .dw-hero{position:relative;padding:14px 18px 92px;color:#fff;border-radius:0 0 30px 30px;overflow:hidden;' +
+        'background:radial-gradient(120% 90% at 100% 0%,rgba(233,196,106,.55) 0%,rgba(233,196,106,0) 45%),linear-gradient(150deg,#0b3d35 0%,#0f766e 45%,#14a38f 100%)}' +
+      '#absensi-app .dw .dw-hero:after{content:"";position:absolute;right:-60px;top:-70px;width:220px;height:220px;border-radius:50%;border:28px solid rgba(255,255,255,.06)}' +
+      '#absensi-app .dw .dw-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;position:relative;z-index:1}' +
+      '#absensi-app .dw .dw-merek{display:flex;align-items:center;gap:10px;min-width:0}' +
+      '#absensi-app .dw .dw-merek .lg{width:38px;height:38px;border-radius:12px;background:rgba(255,255,255,.95);display:flex;align-items:center;justify-content:center;overflow:hidden;flex:none}' +
+      '#absensi-app .dw .dw-merek .lg img{width:32px;height:32px;object-fit:contain}' +
+      '#absensi-app .dw .dw-merek b{display:block;font-size:18px;letter-spacing:2.5px;font-weight:800;line-height:1}' +
+      '#absensi-app .dw .dw-merek small{display:block;font-size:10.5px;opacity:.85;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:52vw}' +
+      '#absensi-app .dw .dw-ikonbtn{width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.14);color:#fff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;margin:0;padding:0;position:relative}' +
+      '#absensi-app .dw .dw-ikonbtn:hover{background:rgba(255,255,255,.24)}' +
+      '#absensi-app .dw .dw-sapa{display:flex;align-items:center;gap:12px;margin-top:20px;position:relative;z-index:1}' +
+      '#absensi-app .dw .dw-avatar{width:46px;height:46px;border-radius:50%;background:linear-gradient(145deg,#e9c46a,#c99a2e);color:#0b3d35;font-weight:800;font-size:19px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 3px rgba(255,255,255,.25)}' +
+      '#absensi-app .dw .dw-sapa small{display:block;font-size:12px;opacity:.85}#absensi-app .dw .dw-sapa b{font-size:17px;font-weight:700}' +
+      '#absensi-app .dw .dw-kartu{position:relative;margin:-74px 16px 0;background:#fff;border-radius:22px;padding:18px 18px 16px;box-shadow:0 14px 34px rgba(11,61,53,.16);overflow:hidden;z-index:2}' +
+      '#absensi-app .dw .dw-kartu .seni{position:absolute;right:-30px;top:-34px;width:230px;height:150px;pointer-events:none}' +
+      '#absensi-app .dw .dw-kartu .lbl{display:flex;align-items:center;gap:4px;font-size:13px;color:#0f766e;font-weight:700;position:relative}' +
+      '#absensi-app .dw .dw-kartu .nm{font-size:19px;font-weight:800;color:#0f2a26;margin:6px 0 2px;position:relative;max-width:70%}' +
+      '#absensi-app .dw .dw-kartu .kls{font-size:12.5px;color:#5b6f6b;position:relative}' +
+      '#absensi-app .dw .dw-kartu .nisn{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#8a9a97;margin-top:8px;position:relative;letter-spacing:.5px}' +
+      '#absensi-app .dw .dw-kartu .nisn button{border:0;background:none;color:#8a9a97;padding:2px;margin:0;cursor:pointer;display:inline-flex}' +
+      '#absensi-app .dw .dw-saldo{display:flex;align-items:center;justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1px dashed #d9e6e3;position:relative}' +
+      '#absensi-app .dw .dw-saldo small{display:block;font-size:11.5px;color:#7b8c89}#absensi-app .dw .dw-saldo b{font-size:20px;color:#0f2a26;letter-spacing:.5px}' +
+      '#absensi-app .dw .dw-saldo button{border:0;background:#eef6f4;color:#0f766e;width:36px;height:36px;border-radius:50%;margin:0;padding:0;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}' +
+      '#absensi-app .dw .dw-anak{display:flex;gap:8px;overflow-x:auto;padding:14px 16px 0;scrollbar-width:none}' +
+      '#absensi-app .dw .dw-anak button{flex:none;border:1.5px solid #cfe3df;background:#fff;color:#3f5d58;border-radius:999px;padding:7px 14px;font-size:13px;font-weight:600;margin:0;cursor:pointer}' +
+      '#absensi-app .dw .dw-anak button.aktif{background:#0f766e;border-color:#0f766e;color:#fff}' +
+      '#absensi-app .dw .dw-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px 6px;margin:18px 16px 0;background:#fff;border-radius:20px;padding:18px 8px 14px;box-shadow:0 2px 10px rgba(11,61,53,.05)}' +
+      '#absensi-app .dw .dw-menu{border:0;background:none;margin:0;padding:0;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer;color:#33504b;font-size:12px;font-weight:600;line-height:1.2;text-align:center}' +
+      '#absensi-app .dw .dw-menu .bul{width:54px;height:54px;border-radius:18px;display:flex;align-items:center;justify-content:center;transition:transform .15s,box-shadow .15s}' +
+      '#absensi-app .dw .dw-menu:hover .bul,#absensi-app .dw .dw-menu:focus-visible .bul{transform:translateY(-2px);box-shadow:0 8px 18px rgba(11,61,53,.14)}' +
+      '#absensi-app .dw .dw-judul{display:flex;align-items:center;justify-content:space-between;margin:22px 18px 10px;font-size:15px;font-weight:800;color:#0f2a26}' +
+      '#absensi-app .dw .dw-judul a{font-size:12.5px;font-weight:700;color:#b7791f;cursor:pointer;text-decoration:none}' +
+      '#absensi-app .dw .dw-ring{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:10px;padding:0 16px 4px}' +
+      '#absensi-app .dw .dw-ring .it{min-width:0;background:#fff;border-radius:18px;padding:12px;box-shadow:0 2px 10px rgba(11,61,53,.05);cursor:pointer;border:0;margin:0;text-align:left;color:inherit;font:inherit}' +
+      '#absensi-app .dw .dw-ring .it .ik{width:34px;height:34px;border-radius:11px;display:flex;align-items:center;justify-content:center;margin-bottom:10px}' +
+      '#absensi-app .dw .dw-ring .it b{display:block;font-size:clamp(13.5px,3.9vw,17px);color:#0f2a26;overflow-wrap:anywhere;line-height:1.25}#absensi-app .dw .dw-ring .it small{display:block;font-size:11.5px;color:#7b8c89;margin-top:2px}' +
+      '#absensi-app .dw .dw-slidewrap{margin:0 16px;border-radius:20px;overflow:hidden}#absensi-app .dw .dw-slidewrap:empty{display:none}' +
+      '#absensi-app .dw .dw-ingat{margin:14px 16px 0;background:#fff7e6;border:1px solid #f3d9a4;color:#7a5512;border-radius:14px;padding:10px 12px;font-size:13px}' +
+      '#absensi-app .dw .dw-pagebar{position:sticky;top:0;z-index:60;display:flex;align-items:center;gap:8px;padding:10px 12px;color:#fff;background:linear-gradient(150deg,#0b3d35,#0f766e 70%,#14a38f)}' +
+      '#absensi-app .dw .dw-pagebar b{font-size:16px}' +
+      '#absensi-app .dw .dw-nav{position:fixed;left:0;right:0;bottom:0;z-index:95;display:flex;justify-content:center;pointer-events:none}' +
+      '#absensi-app .dw .dw-nav .isi{pointer-events:auto;width:100%;max-width:760px;background:#fff;border-radius:22px 22px 0 0;box-shadow:0 -6px 24px rgba(11,61,53,.10);display:grid;grid-template-columns:repeat(5,1fr);align-items:end;padding:8px 6px calc(8px + env(safe-area-inset-bottom))}' +
+      '#absensi-app .dw .dw-nav button{border:0;background:none;margin:0;padding:4px 0;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;font-weight:600;color:#8a9a97;cursor:pointer;position:relative}' +
+      '#absensi-app .dw .dw-nav button.aktif{color:#0f766e}#absensi-app .dw .dw-nav button.aktif:before{content:"";position:absolute;top:-8px;width:28px;height:3px;border-radius:3px;background:#0f766e}' +
+      '#absensi-app .dw .dw-nav .tengah .bul{width:58px;height:58px;margin-top:-30px;border-radius:50%;background:linear-gradient(145deg,#e9c46a,#c99a2e);color:#0b3d35;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 20px rgba(201,154,46,.45);border:4px solid #fff}' +
+      '#absensi-app .dw .dw-nav .tengah{color:#9a7420}' +
+      '#absensi-app .dw .dw-akun{margin:16px;background:#fff;border-radius:20px;padding:18px;box-shadow:0 2px 10px rgba(11,61,53,.05)}' +
+      '#absensi-app .dw .dw-akun .baris{display:flex;align-items:center;gap:12px;width:100%;border:0;background:none;margin:0;padding:12px 4px;border-top:1px solid #eef3f2;cursor:pointer;font-size:14px;color:#0f2a26;text-align:left}' +
+      '#absensi-app .dw .dw-akun .baris .ik{width:36px;height:36px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#eef6f4;color:#0f766e;flex:none}' +
+      '@media (min-width:761px){#absensi-app .dw .dw-hero{border-radius:0 0 30px 30px}#absensi-app .dw{box-shadow:0 0 0 1px #e3ecea}}' +
+      '#absensi-app .dw #dw-body>div{padding:14px 16px 8px !important}' +
+      '#absensi-app .dw #dw-body .card{border:0;border-radius:20px;padding:18px;margin-bottom:14px;box-shadow:0 2px 12px rgba(11,61,53,.06)}' +
+      '#absensi-app .dw #dw-body h3{font-size:16px;font-weight:800;color:#0f2a26;display:flex;align-items:center;gap:6px;flex-wrap:wrap}' +
+      '#absensi-app .dw #dw-body h4{font-size:14px;font-weight:700;color:#0f766e}' +
+      '#absensi-app .dw #dw-body button{background:linear-gradient(150deg,#0f766e,#14a38f);border-radius:999px;font-weight:600;padding:10px 18px;box-shadow:0 4px 12px rgba(15,118,110,.18)}' +
+      '#absensi-app .dw #dw-body button:hover{background:linear-gradient(150deg,#0b3d35,#0f766e)}' +
+      '#absensi-app .dw #dw-body button.small{padding:7px 14px}' +
+      '#absensi-app .dw #dw-body button.secondary{background:#eef6f4;color:#0f766e;box-shadow:none}' +
+      '#absensi-app .dw #dw-body button.secondary:hover{background:#dff0ec}' +
+      '#absensi-app .dw #dw-body button.danger{background:#fbe3e8;color:#9f1239;box-shadow:none}' +
+      '#absensi-app .dw #dw-body input,#absensi-app .dw #dw-body select,#absensi-app .dw #dw-body textarea{border-radius:14px;border-color:#d4e4e0;background:#fbfdfc}' +
+      '#absensi-app .dw #dw-body label{color:#3f5d58;font-weight:600}' +
+      '#absensi-app .dw #dw-body table{border-radius:14px;border:1px solid #e3eeeb;border-collapse:separate;border-spacing:0}' +
+      '#absensi-app .dw #dw-body th{background:#eef6f4;color:#0f4c45;border:0;border-bottom:1px solid #e3eeeb}' +
+      '#absensi-app .dw #dw-body td{border:0;border-bottom:1px solid #eef3f2}' +
+      '#absensi-app .dw #dw-body tr:last-child td{border-bottom:0}' +
+      '#absensi-app .dw #dw-body .warn{background:#f1f8f6;border:0;border-left:4px solid #14a38f;border-radius:14px;color:#2f5650;padding:11px 13px}' +
+      '#absensi-app .dw #dw-body .err{background:#fdecef;border:0;border-left:4px solid #be123c;border-radius:14px;color:#8a1631;padding:11px 13px}' +
+      '#absensi-app .dw #dw-body .grid2{gap:10px}' +
+      'body:has(#dwApp) #btnInstallPWA{display:none !important}' +
+      '#absensi-app .dw #dw-body .grid2:not(:has(input,select,textarea)){grid-template-columns:1fr 1fr}' +
+      '#absensi-app .dw #dw-body input[type=date]{min-width:0;max-width:100%}' +
+      '#absensi-app .dw .dw-pasang{display:flex;align-items:center;gap:12px;width:calc(100% - 32px);margin:14px 16px 0;border:0;background:#fff;border-radius:18px;padding:12px 14px;box-shadow:0 2px 10px rgba(11,61,53,.05);cursor:pointer;color:#0f2a26;text-align:left;font-size:13.5px}' +
+      '#absensi-app .dw .dw-pasang:hover{background:#f7fbfa}' +
+      '#absensi-app .dw .dw-pasang .ik{width:38px;height:38px;border-radius:12px;background:linear-gradient(145deg,#e9c46a,#c99a2e);color:#0b3d35;display:flex;align-items:center;justify-content:center;flex:none}' +
+      '#absensi-app .dw .dw-pasang small{display:block;color:#7b8c89;font-size:11.5px;font-weight:400}' +
+      '@media (max-width:360px){#absensi-app .dw .dw-menu .bul{width:48px;height:48px;border-radius:16px}#absensi-app .dw .dw-grid{gap:14px 2px}}';
+    document.head.appendChild(st);
+  }
+  function waliSudahTerpasang(){ try { return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; } catch(e){ return false; } }
+  function htmlPasangWali(id){
+    if (waliSudahTerpasang() || !document.getElementById('btnInstallPWA')) return '';
+    return '<button type="button" class="dw-pasang" id="'+id+'"><span class="ik">'+svgWali('pasang',20)+'</span><span><b>Pasang WASIAT di HP</b><small>Buka lebih cepat langsung dari layar utama</small></span></button>';
+  }
+  function ikatPasangWali(id){ var b = document.getElementById(id); if (b) b.onclick = function(){ var x = document.getElementById('btnInstallPWA'); if (x) x.click(); }; }
+  function saldoWaliTerlihat(){ try { return localStorage.getItem('wasiatWaliSaldoTampil') === '1'; } catch(e){ return false; } }
+  function aturSaldoWaliTerlihat(v){ try { localStorage.setItem('wasiatWaliSaldoTampil', v ? '1' : '0'); } catch(e){} }
+
   function dashboardWali(activeNisn){
     var listAnak = STATE.user.nisnAnakList || (STATE.user.nisnAnak ? [STATE.user.nisnAnak] : []);
     activeNisn = activeNisn || listAnak[0] || '';
     _waliNisn = activeNisn;
+    pasangGayaWali();
+    var namaWali = String(STATE.user.nama || '');
+    var inisial = (namaWali.replace(/^(bapak|ibu|bpk\.?|ibu\.?)\s+/i,'').trim().charAt(0) || 'W').toUpperCase();
+    var seniKartu = '<svg class="seni" viewBox="0 0 230 150" aria-hidden="true"><defs>' +
+      '<linearGradient id="dwG1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e9c46a"/><stop offset="1" stop-color="#c99a2e"/></linearGradient>' +
+      '<linearGradient id="dwG2" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#14a38f"/><stop offset="1" stop-color="#0f766e"/></linearGradient></defs>' +
+      '<path d="M40 150C70 92 120 60 230 44V0H95C120 40 90 90 40 150Z" fill="url(#dwG2)" opacity=".9"/>' +
+      '<path d="M78 150C104 104 150 82 230 74V40C140 54 96 92 78 150Z" fill="url(#dwG1)" opacity=".95"/>' +
+      '<path d="M120 150C138 120 172 104 230 100V82C168 90 134 112 120 150Z" fill="#0b3d35" opacity=".85"/>' +
+      '<g fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="1.2"><path d="M60 150C88 100 135 72 230 58"/><path d="M98 150C122 112 160 92 230 86"/></g></svg>';
 
-    render('<div id="dw-top" style="position:sticky;top:0;z-index:90;background:#fff;border-bottom:1px solid #e2e8f0"></div>' +
-           '<div id="dw-slide"></div>' +
-           '<div id="dw-pilihanak"></div>' +
-           '<div id="dw-nav" style="position:sticky;top:52px;z-index:80;background:#fff;border-bottom:1px solid #e2e8f0;padding:0 16px"></div>' +
-           '<div id="dw-body" style="padding-bottom:32px"></div>');
-
-    // Topbar dengan tombol Keluar
-    document.getElementById('dw-top').innerHTML =
-      '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px">' +
-        '<div style="display:flex;align-items:center;gap:8px">' +
-          '<div id="logoTopWali"></div>' +
-          '<span style="font-weight:700;color:#0f766e;font-size:15px">WASIAT</span>' +
+    render(
+      '<div class="dw" id="dwApp">' +
+        '<div id="dw-home">' +
+          '<div class="dw-hero" id="dw-top">' +
+            '<div class="dw-bar">' +
+              '<div class="dw-merek"><div class="lg" id="logoTopWali"><span style="color:#0f766e;font-weight:800">W</span></div><div><b>WASIAT</b><small id="dwNamaPondok">Akun Wali Santri</small></div></div>' +
+              '<span style="display:flex;gap:8px"><button class="dw-ikonbtn" id="btnNotifWali" title="Pengaturan notifikasi" aria-label="Pengaturan notifikasi">'+svgWali('lonceng',21)+'</button>' +
+              '<button class="dw-ikonbtn" id="btnLogoutWali" title="Keluar" aria-label="Keluar">'+svgWali('keluar',21)+'</button></span>' +
+            '</div>' +
+            '<div class="dw-sapa"><div class="dw-avatar">'+esc(inisial)+'</div><div><small>Assalamu\'alaikum,</small><b>'+esc(namaWali)+'</b></div></div>' +
+          '</div>' +
+          '<div class="dw-kartu" id="dwKartu">'+seniKartu +
+            '<div class="lbl">Ananda '+svgWali('lanjut',15)+'</div>' +
+            '<div class="nm" id="dwNamaAnak">'+(activeNisn ? 'Memuat...' : '-')+'</div>' +
+            '<div class="kls" id="dwKelasAnak"></div>' +
+            (activeNisn ? '<div class="nisn">NISN '+esc(activeNisn)+' <button type="button" id="dwSalinNisn" title="Salin NISN" aria-label="Salin NISN">'+svgWali('salin',15)+'</button></div>' : '') +
+            '<div class="dw-saldo" id="dwSaldoBox" style="display:none"><div><small>Saldo kantin</small><b id="dwSaldo">Rp &bull;&bull;&bull;&bull;&bull;&bull;</b></div>' +
+              '<button type="button" id="dwMata" aria-label="Tampilkan saldo">'+svgWali(saldoWaliTerlihat()?'mataTutup':'mata',19)+'</button></div>' +
+          '</div>' +
+          '<div id="dw-pilihanak"></div>' +
+          '<div id="dw-peringatan"></div>' +
+          '<div class="dw-grid" id="dw-nav"></div>' +
+          '<div id="dw-ringkas"></div>' + htmlPasangWali('dwPasang') +
+          '<div class="dw-judul" id="dwJudulKabar" style="display:none">Kabar Pondok</div>' +
+          '<div class="dw-slidewrap" id="dw-slide"></div>' +
+          '<p style="text-align:center;color:#9aaba7;font-size:11.5px;margin:22px 0 0">'+svgWali('hati',12)+' Bersama mendampingi ananda</p>' +
         '</div>' +
-        '<span style="display:flex;gap:6px"><button class="secondary small" id="btnNotifWali" style="padding:7px 12px" title="Pengaturan notifikasi">&#128276;</button>' +
-        '<button class="secondary small" id="btnLogoutWali" style="padding:7px 14px">&#128682; Keluar</button></span>' +
-      '</div>';
+        '<div id="dw-page" style="display:none">' +
+          '<div class="dw-pagebar"><button class="dw-ikonbtn" id="dwKembali" aria-label="Kembali ke beranda">'+svgWali('kembali',22)+'</button><b id="dwJudulHal"></b></div>' +
+          '<div id="dw-body" style="padding-bottom:16px"></div>' +
+        '</div>' +
+        '<nav class="dw-nav" aria-label="Navigasi akun wali"><div class="isi" id="dwBawah"></div></nav>' +
+      '</div>');
+
     document.getElementById('btnNotifWali').onclick = bukaPengaturanNotifSaya;
+    ikatPasangWali('dwPasang');
     document.getElementById('btnLogoutWali').onclick = function(){
       STATE.user = null; hapusSesiTersimpan(); showBeranda();
     };
-    // Logo kecil
+    var btnSalin = document.getElementById('dwSalinNisn');
+    if (btnSalin) btnSalin.onclick = function(){
+      var t = String(activeNisn);
+      function ok(){ btnSalin.innerHTML = '&#10003;'; setTimeout(function(){ if (btnSalin) btnSalin.innerHTML = svgWali('salin',15); }, 1400); }
+      try { navigator.clipboard.writeText(t).then(ok, function(){}); } catch(e) {}
+    };
+    // Logo & nama pondok
     api('getPengaturan',{}).then(function(r){
-      if (r.ok && r.data.LogoUrl) {
-        var el = document.getElementById('logoTopWali');
-        if (el) el.innerHTML = '<img src="'+esc(r.data.LogoUrl)+'" style="height:28px;width:28px;object-fit:contain;border-radius:4px">';
-      }
+      if (!r || !r.ok) return;
+      var el = document.getElementById('logoTopWali');
+      if (el && r.data.LogoUrl) el.innerHTML = '<img src="'+esc(r.data.LogoUrl)+'" alt="">';
+      var np = document.getElementById('dwNamaPondok');
+      if (np && r.data.NamaPesantren) np.textContent = r.data.NamaPesantren;
     });
 
-    // Slideshow di bawah topbar (wadah terpisah agar tidak menimpa tombol Keluar)
+    // Slideshow pondok (wadah tetap bernama dw-slide)
     renderSlideBar('dw-slide');
+    setTimeout(function(){ var s = document.getElementById('dw-slide'), j = document.getElementById('dwJudulKabar'); if (s && j && s.innerHTML.trim()) j.style.display = ''; }, 2500);
 
-    // Tab pilih anak
+    // NISN anak yang belum cocok dengan Data Santri
+    var asing = (STATE.user.nisnAnakTidakDikenal || []);
+    if (asing.length) document.getElementById('dw-peringatan').innerHTML = '<div class="dw-ingat">&#9888;&#65039; NISN ananda <b>'+esc(asing.join(', '))+'</b> belum cocok dengan Data Santri di pondok, jadi sebagian data belum bisa ditampilkan. Mohon hubungi admin pondok untuk mencocokkan NISN.</div>';
+
+    // Pilih anak (bila lebih dari satu)
     if (listAnak.length > 1) {
       api('getMasterData', {sheet:'Santri'}).then(function(resNama){
         var namaMap = {};
         if (resNama.ok) resNama.data.data.forEach(function(s){ namaMap[String(s.NISN)] = s.Nama; });
-        document.getElementById('dw-pilihanak').innerHTML =
-          '<div style="padding:10px 16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:#f8fafc;border-bottom:1px solid #e2e8f0">' +
-          '<span class="muted" style="font-size:12.5px">Anak:</span>' +
-          listAnak.map(function(n){
-            var aktif = n === activeNisn;
-            return '<button class="anakTabBtn" data-nisn="'+esc(n)+'" style="padding:6px 14px;border-radius:18px;cursor:pointer;font-size:13px;font-weight:600;border:1.5px solid '+(aktif?'#0d9488':'#e2e8f0')+';background:'+(aktif?'#0d9488':'#fff')+';color:'+(aktif?'#fff':'#475569')+'">'+esc(namaMap[String(n)] || n)+'</button>';
+        var el = document.getElementById('dw-pilihanak'); if (!el) return;
+        el.innerHTML = '<div class="dw-anak">' + listAnak.map(function(n){
+            return '<button class="anakTabBtn'+(n === activeNisn ? ' aktif' : '')+'" data-nisn="'+esc(n)+'">'+esc(namaMap[String(n)] || n)+'</button>';
           }).join('') + '</div>';
-        document.querySelectorAll('.anakTabBtn').forEach(function(btn){
+        el.querySelectorAll('.anakTabBtn').forEach(function(btn){
           btn.onclick = function(){ dashboardWali(btn.dataset.nisn); };
         });
       });
     }
 
     if (!activeNisn) {
-      document.getElementById('dw-body').innerHTML = '<div class="card">'+warnBox('Akun ini belum terhubung ke data santri. Minta Admin mengisi NISN Anak di RoleAkses.')+'</div>';
+      document.getElementById('dwNamaAnak').textContent = 'Belum terhubung';
+      document.getElementById('dw-ringkas').innerHTML = '<div class="dw-ingat">Akun ini belum terhubung ke data santri. Minta Admin mengisi NISN Anak di RoleAkses.</div>';
       return;
     }
 
@@ -13916,43 +14081,51 @@
       var pw = pwRes.ok ? pwRes.data : {};
       function boleh(k){ return pw[k] !== false; }
 
-      // Bangun daftar tab yang boleh ditampilkan
       var TABS = [
-        {id:'ringkasan', label:'&#127968; Ringkasan',  aktif: boleh('WaliTampilRingkasan')},
-        {id:'laporan',   label:'&#128202; Laporan',     aktif: true},
-        {id:'kehadiran', label:'&#128197; Kehadiran',   aktif: boleh('WaliTampilKehadiran') || boleh('WaliTampilRekap')},
-        {id:'hafalan',   label:'&#128218; Hafalan',     aktif: boleh('WaliTampilHafalan')},
-        {id:'nilai',     label:'&#128203; Nilai',       aktif: boleh('WaliTampilNilai') || boleh('WaliIzinLihatNilai') || boleh('WaliTampilRapor')},
-        {id:'spp',       label:'&#128179; SPP',         aktif: true},
-        {id:'keuangan',  label:'&#128176; Keuangan',    aktif: boleh('WaliTampilKantin') || boleh('WaliTampilMutasiSaldo')},
-        {id:'pelanggaran',label:'&#9888;&#65039; Sikap',aktif: boleh('WaliTampilPelanggaran')},
-        {id:'surat',     label:'&#128232; Surat',       aktif: true},
+        {id:'laporan',   label:'Laporan',   aktif: true},
+        {id:'kehadiran', label:'Kehadiran', aktif: boleh('WaliTampilKehadiran') || boleh('WaliTampilRekap')},
+        {id:'hafalan',   label:'Hafalan',   aktif: boleh('WaliTampilHafalan')},
+        {id:'nilai',     label:'Nilai',     aktif: boleh('WaliTampilNilai') || boleh('WaliIzinLihatNilai') || boleh('WaliTampilRapor')},
+        {id:'spp',       label:'SPP',       aktif: true},
+        {id:'keuangan',  label:'Keuangan',  aktif: boleh('WaliTampilKantin') || boleh('WaliTampilMutasiSaldo')},
+        {id:'pelanggaran',label:'Sikap',    aktif: boleh('WaliTampilPelanggaran')},
+        {id:'surat',     label:'Surat',     aktif: true}
       ].filter(function(t){ return t.aktif; });
-
+      var JUDUL = {ringkasan:'Beranda', laporan:'Laporan Perkembangan', kehadiran:'Kehadiran', hafalan:'Hafalan', nilai:'Nilai & Rapor', spp:'SPP & Pembayaran', keuangan:'Keuangan & Kantin', pelanggaran:'Sikap & Prestasi', surat:'Surat dari Pondok', akun:'Akun Saya'};
       var activeTab = 'ringkasan';
       var _pw = pw;
 
-      function renderNav(){
-        document.getElementById('dw-nav').innerHTML =
-          '<div style="display:flex;overflow-x:auto;gap:2px;padding:6px 0">' +
-          TABS.map(function(t){
-            var aktif = t.id === activeTab;
-            return '<button class="waliTabBtn" data-tab="'+t.id+'" style="white-space:nowrap;padding:8px 14px;border:none;border-bottom:3px solid '+(aktif?'#0d9488':'transparent')+';background:transparent;font-size:13px;font-weight:'+(aktif?'700':'500')+';color:'+(aktif?'#0d9488':'#64748b')+';cursor:pointer">'+t.label+'</button>';
-          }).join('') + '</div>';
-        document.querySelectorAll('.waliTabBtn').forEach(function(btn){
-          btn.onclick = function(){
-            activeTab = btn.dataset.tab;
-            renderNav();
-            renderTab(activeTab);
-          };
-        });
+      // Menu ikon beranda (penanda .waliTabBtn[data-tab] tetap dipakai)
+      document.getElementById('dw-nav').innerHTML = TABS.map(function(t){
+        var w = WARNA_MENU_WALI[t.id] || ['#0f766e','#d5f5ee'];
+        return '<button class="dw-menu waliTabBtn" data-tab="'+t.id+'"><span class="bul" style="color:'+w[0]+';background:linear-gradient(150deg,'+w[1]+',#ffffff)">'+svgWali(t.id, 25)+'</span>'+esc(t.label)+'</button>';
+      }).join('');
+
+      // Navigasi bawah
+      var BAWAH = [['ringkasan','Beranda','ringkasan'],['laporan','Laporan','laporan'],['spp','Bayar SPP','bayar'],['surat','Surat','surat'],['akun','Akun','akun']];
+      function gambarBawah(){
+        document.getElementById('dwBawah').innerHTML = BAWAH.map(function(b){
+          if (b[0] === 'spp') return '<button class="tengah" data-ke="spp" aria-label="Bayar SPP"><span class="bul">'+svgWali('bayar',25)+'</span>'+b[1]+'</button>';
+          return '<button data-ke="'+b[0]+'" class="'+(activeTab === b[0] ? 'aktif' : '')+'">'+svgWali(b[2],23)+b[1]+'</button>';
+        }).join('');
+        document.querySelectorAll('#dwBawah button').forEach(function(btn){ btn.onclick = function(){ buka(btn.dataset.ke); }; });
+      }
+
+      function buka(tab){
+        activeTab = tab;
+        gambarBawah();
+        var home = document.getElementById('dw-home'), page = document.getElementById('dw-page');
+        if (tab === 'ringkasan') { page.style.display = 'none'; home.style.display = ''; window.scrollTo(0,0); return; }
+        home.style.display = 'none'; page.style.display = '';
+        document.getElementById('dwJudulHal').textContent = JUDUL[tab] || '';
+        window.scrollTo(0,0);
+        renderTab(tab);
       }
 
       function renderTab(tab){
         var body = document.getElementById('dw-body');
         body.innerHTML = '<div style="padding:16px"><p class="muted">Memuat...</p></div>';
-        if (tab === 'ringkasan') renderTabRingkasan(activeNisn, body, _pw);
-        else if (tab === 'laporan') renderTabLaporanWali(activeNisn, body);
+        if (tab === 'laporan') renderTabLaporanWali(activeNisn, body);
         else if (tab === 'kehadiran') renderTabKehadiran(activeNisn, body);
         else if (tab === 'hafalan') renderTabHafalan(activeNisn, body);
         else if (tab === 'nilai') renderTabNilai(activeNisn, body, {izinNilai:boleh('WaliIzinLihatNilai'), izinRapor:boleh('WaliTampilRapor')});
@@ -13960,10 +14133,82 @@
         else if (tab === 'keuangan') renderTabKeuangan(activeNisn, body, {izinTopUp:boleh('WaliIzinAjukanTopUp'), izinGantiLimit:boleh('WaliIzinGantiLimit')});
         else if (tab === 'pelanggaran') renderTabPelanggaran(activeNisn, body);
         else if (tab === 'surat') renderTabSuratWali(body);
+        else if (tab === 'akun') renderAkunWali(body);
+        else if (tab === 'ringkasan') renderTabRingkasan(activeNisn, body, _pw);
       }
 
-      renderNav();
-      renderTab(activeTab);
+      function renderAkunWali(body){
+        var anakHtml = listAnak.map(function(n){ return '<span style="display:inline-block;background:#eef6f4;color:#0f766e;border-radius:999px;padding:3px 10px;font-size:12px;margin:2px 4px 0 0">NISN '+esc(n)+'</span>'; }).join('');
+        body.innerHTML = '<div class="dw-akun">' +
+          '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px"><div class="dw-avatar" style="width:52px;height:52px">'+esc(inisial)+'</div>' +
+          '<div><b style="font-size:16px;color:#0f2a26">'+esc(namaWali)+'</b><div class="muted" style="font-size:12.5px">Wali Santri'+(STATE.user.noWa?' &middot; '+esc(STATE.user.noWa):'')+'</div><div>'+anakHtml+'</div></div></div>' +
+          '<button class="baris" id="dwAkunNotif"><span class="ik">'+svgWali('lonceng',19)+'</span>Pengaturan notifikasi</button>' +
+          '<button class="baris" id="dwAkunSurat"><span class="ik">'+svgWali('surat',19)+'</span>Surat dari pondok</button>' +
+          (waliSudahTerpasang() ? '' : '<button class="baris" id="dwAkunPasang"><span class="ik">'+svgWali('pasang',19)+'</span>Pasang aplikasi di HP</button>') +
+          '<button class="baris" id="dwAkunKeluar" style="color:#9f1239"><span class="ik" style="background:#fbe3e8;color:#9f1239">'+svgWali('keluar',19)+'</span>Keluar dari akun</button>' +
+          '</div>';
+        document.getElementById('dwAkunNotif').onclick = bukaPengaturanNotifSaya;
+        document.getElementById('dwAkunSurat').onclick = function(){ buka('surat'); };
+        ikatPasangWali('dwAkunPasang');
+        document.getElementById('dwAkunKeluar').onclick = function(){ STATE.user = null; hapusSesiTersimpan(); showBeranda(); };
+      }
+
+      document.querySelectorAll('#dw-nav .waliTabBtn').forEach(function(btn){ btn.onclick = function(){ buka(btn.dataset.tab); }; });
+      document.getElementById('dwKembali').onclick = function(){ buka('ringkasan'); };
+      gambarBawah();
+
+      // Kartu ananda + ringkasan di beranda
+      var tampilRingkasan = boleh('WaliTampilRingkasan');
+      Promise.all([
+        api('getJadwalSantri', {nisn:activeNisn}),
+        tampilRingkasan ? api('getKehadiranHarianSantri', {nisn:activeNisn, tglMulai: tglNHariLalu(30), tglAkhir: todayStr()}) : Promise.resolve({ok:false}),
+        tampilRingkasan ? api('getSppSaya', {nisn:activeNisn}) : Promise.resolve({ok:false}),
+        tampilRingkasan ? api('getSaldoSantriKantin', {nisn:activeNisn}) : Promise.resolve({ok:false})
+      ]).then(function(hasil){
+        if (!document.getElementById('dwKartu')) return;
+        var d = hasil[0].ok ? (hasil[0].data || {}) : {};
+        function isiKartu(nama, kelas, halaqoh){
+          var elNama = document.getElementById('dwNamaAnak'); if (!elNama) return;
+          if (nama) {
+            elNama.textContent = nama;
+            document.getElementById('dwKelasAnak').textContent = 'Kelas '+(kelas||'-')+(halaqoh?' · Halaqoh '+halaqoh:'');
+          } else {
+            elNama.textContent = 'Data ananda belum ditemukan';
+            document.getElementById('dwKelasAnak').textContent = 'Mohon hubungi admin pondok untuk mencocokkan NISN ananda.';
+          }
+        }
+        if (d.nama) isiKartu(d.nama, d.kelas, d.halaqoh);
+        else {
+          // Cadangan: daftar anak milik akun wali ini
+          apiPrm('daftarSantriSaya', {}).then(function(r){
+            var daftar = (r && r.ok && r.data) || [];
+            var x = daftar.find(function(s){ return String(s.nisn) === String(activeNisn); }) || (daftar.length === 1 ? daftar[0] : null);
+            isiKartu(x && x.nama, x && x.kelas, '');
+          }, function(){ isiKartu('', '', ''); });
+        }
+        if (!tampilRingkasan) return;
+        var k = hasil[1].ok ? hasil[1].rekap : null;
+        var spp = (hasil[2].ok && hasil[2].data) ? hasil[2].data : null;
+        var saldo = (hasil[3].ok && hasil[3].data) ? (hasil[3].data.saldo || 0) : null;
+        if (saldo !== null) {
+          var box = document.getElementById('dwSaldoBox'), elS = document.getElementById('dwSaldo'), mata = document.getElementById('dwMata');
+          var tampil = saldoWaliTerlihat();
+          function gambarSaldo(){ elS.innerHTML = tampil ? rupiah(saldo) : 'Rp &bull;&bull;&bull;&bull;&bull;&bull;'; mata.innerHTML = svgWali(tampil ? 'mataTutup' : 'mata', 19); mata.setAttribute('aria-label', tampil ? 'Sembunyikan saldo' : 'Tampilkan saldo'); }
+          box.style.display = ''; gambarSaldo();
+          mata.onclick = function(){ tampil = !tampil; aturSaldoWaliTerlihat(tampil); gambarSaldo(); };
+        }
+        var item = [];
+        if (k) item.push({ke:'kehadiran', ik:'kehadiran', nilai:(k.persen||0)+'%', ket:'Kehadiran 30 hari'+(k.alpa?' · '+k.alpa+' alpa':''), warna: (k.persen>=80?'#15803d':k.persen>=60?'#b7791f':'#9f1239')});
+        if (spp) item.push({ke:'spp', ik:'spp', nilai: spp.bebas ? 'Bebas' : (spp.totalTunggakan>0 ? rupiah(spp.totalTunggakan) : 'Lunas'), ket: spp.bebas ? 'Dibebaskan dari SPP' : (spp.totalTunggakan>0 ? 'Tunggakan SPP ('+(spp.bulanTunggakan||[]).length+' bln)' : 'SPP ananda'), warna: (!spp.bebas && spp.totalTunggakan>0) ? '#9f1239' : '#15803d'});
+        item.push({ke:'laporan', ik:'laporan', nilai:'Lihat', ket:'Laporan bulan ini', warna:'#0d9488'});
+        document.getElementById('dw-ringkas').innerHTML = '<div class="dw-judul">Ringkasan Ananda<a id="dwLihatLap">Lihat laporan</a></div>' +
+          '<div class="dw-ring">' + item.map(function(x){
+            return '<button class="it" data-ke="'+x.ke+'"><span class="ik" style="color:'+x.warna+';background:'+x.warna+'14">'+svgWali(x.ik,19)+'</span><b style="color:'+x.warna+'">'+x.nilai+'</b><small>'+esc(x.ket)+'</small></button>';
+          }).join('') + '</div>' +
+          (spp && !spp.bebas && spp.totalTunggakan > 0 ? '<div class="dw-ingat" style="background:#fdecef;border-color:#f6c2cc;color:#8a1631">Tunggakan SPP <b>'+rupiah(spp.totalTunggakan)+'</b>'+((spp.bulanTunggakan||[]).length?' ('+esc(spp.bulanTunggakan.join(', '))+')':'')+'. Tekan <b>Bayar SPP</b> untuk mengirim bukti transfer.</div>' : '');
+        document.querySelectorAll('#dw-ringkas .it').forEach(function(b){ b.onclick = function(){ buka(b.dataset.ke); }; });
+        var ll = document.getElementById('dwLihatLap'); if (ll) ll.onclick = function(){ buka('laporan'); };
+      });
     });
   }
 
@@ -14068,8 +14313,8 @@
           kartuRingkasan('&#128308;', k.alpa+' hari', 'Alpa', '#dc2626') +
           '</div>' +
           '<div style="margin-top:12px;background:#f1f5f9;border-radius:20px;height:12px;overflow:hidden">' +
-          '<div style="width:'+k.persen+'%;height:100%;background:linear-gradient(90deg,#16a34a,#0891b2);border-radius:20px"></div></div>' +
-          '<p style="text-align:center;font-size:13px;margin:6px 0">Kehadiran: <b>'+k.persen+'%</b> dari <b>'+k.total+'</b> hari</p></div>';
+          '<div style="width:'+(k.persen||0)+'%;height:100%;background:linear-gradient(90deg,#16a34a,#0891b2);border-radius:20px"></div></div>' +
+          '<p style="text-align:center;font-size:13px;margin:6px 0">Kehadiran: <b>'+(k.persen||0)+'%</b> dari <b>'+(k.total||0)+'</b> hari</p></div>';
 
         // Detail hari
         if (resK.detailHari && resK.detailHari.length) {

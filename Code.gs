@@ -3814,7 +3814,7 @@ function kolomSpp_(sh) {
 
 // Versi kode server -- dipakai aplikasi untuk memastikan Code.gs terbaru sudah di-deploy
 // sebelum menjalankan perubahan struktur (mis. menambah kolom Nama Santri).
-const VERSI_SERVER = '2026.10.25-a';
+const VERSI_SERVER = '2026.10.25-c';
 function apiVersiServer() { return {ok:true, versi: VERSI_SERVER}; }
 
 function apiStatusKolomNamaSpp(p) {
@@ -5387,13 +5387,17 @@ function apiLogin(loginId, pin) {
   // untuk >1 anak). nisnAnak (tunggal, string mentah) tetap dipertahankan apa adanya
   // supaya bagian kode lama yang mungkin masih membacanya langsung tidak berubah
   // perilakunya. nisnAnakList adalah pecahannya sebagai array, dipakai fitur ganti anak.
-  const nisnAnakList = norm(found[4]).split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+  const nisnAnakMentah = norm(found[4]).split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+  // Dicocokkan ke NISN resmi di Data Santri, supaya semua menu wali menemukan data ananda
+  const nisnAnakList = nisnAnakMentah.length ? nisnResmiSantri_(nisnAnakMentah) : [];
+  const nisnAnakTidakDikenal = (nisnAnakList.tidakDikenal || []).slice();
 
   return {ok:true, user: {
     nama: norm(found[0]), noWa: norm(found[1]),
     roles: roles, level: roles[0],
-    nisnAnak: norm(found[4]),
-    nisnAnakList: nisnAnakList,
+    nisnAnak: nisnAnakList.length ? nisnAnakList.join(', ') : norm(found[4]),
+    nisnAnakList: nisnAnakList.slice(),
+    nisnAnakTidakDikenal: nisnAnakTidakDikenal,
     waliKelas: waliKelas,  // kelas yang ditangani sebagai Wali Kelas
     tokenSurat: tokenSuratWasiat_(norm(found[0]))  // masuk otomatis ke aplikasi Persuratan (/surat/)
   }};
@@ -6783,10 +6787,17 @@ function getMasterData(sheetName) {
 function apiSaveMasterRow(p) {
   const sh = getAktifSS().getSheetByName(p.sheet);
   const header = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
+  // Akun wali: NISN Anak dirapikan ke NISN resmi di Data Santri (mencegah "data santri tidak ditemukan")
+  let peringatanNisn = '';
+  if (p.sheet === SHEET_ROLE && p.values && p.values['NISN Anak'] !== undefined && norm(p.values['NISN Anak'])) {
+    const resmi = nisnResmiSantri_(String(p.values['NISN Anak']).split(',').map(function(s){ return s.trim(); }).filter(Boolean));
+    p.values['NISN Anak'] = resmi.join(', ');
+    if (resmi.tidakDikenal.length) peringatanNisn = 'NISN ' + resmi.tidakDikenal.join(', ') + ' belum ada di Data Santri. Akun tetap disimpan, tetapi wali belum bisa melihat data anak itu sampai NISN-nya cocok.';
+  }
   const rowVals = header.map(h => (p.values[h] !== undefined ? p.values[h] : ''));
   if (p.rowIndex && Number(p.rowIndex) > 1) sh.getRange(Number(p.rowIndex),1,1,rowVals.length).setValues([rowVals]);
   else sh.appendRow(rowVals);
-  return {ok:true};
+  return peringatanNisn ? {ok:true, peringatan: peringatanNisn} : {ok:true};
 }
 
 function apiDeleteMasterRow(p) {
@@ -8458,7 +8469,9 @@ function apiCekSesiAktif(p) {
       }
     }
   } catch(e) {}
-  const nisnAnakListSesi = norm(found[4]).split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+  const nisnAnakMentahSesi = norm(found[4]).split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+  const nisnAnakListSesi = nisnAnakMentahSesi.length ? nisnResmiSantri_(nisnAnakMentahSesi) : [];
+  const nisnAnakTidakDikenalSesi = (nisnAnakListSesi.tidakDikenal || []).slice();
   // Token sesi hanya DIPERBARUI bila permintaan membawa token sah milik akun yang sama.
   // (Sebelumnya cukup menyebut nama -- siapa pun bisa memperoleh token akun lain.)
   let tokenBaru;
@@ -8466,7 +8479,7 @@ function apiCekSesiAktif(p) {
     const meSesi = (typeof AMAN_ !== 'undefined' && p._token) ? AMAN_.identitas(p._token) : null;
     if (meSesi && normNama(meSesi.nama) === normNama(norm(found[0]))) tokenBaru = tokenSuratWasiat_(norm(found[0])) || undefined;
   } catch (e) {}
-  return {ok:true, user:{nama:norm(found[0]), noWa:norm(found[1]), roles:roles, level:roles[0], nisnAnak:norm(found[4]), nisnAnakList:nisnAnakListSesi, waliKelas:waliKelas, tokenSurat: tokenBaru}};
+  return {ok:true, user:{nama:norm(found[0]), noWa:norm(found[1]), roles:roles, level:roles[0], nisnAnak: nisnAnakListSesi.length ? nisnAnakListSesi.join(', ') : norm(found[4]), nisnAnakList:nisnAnakListSesi.slice(), nisnAnakTidakDikenal: nisnAnakTidakDikenalSesi, waliKelas:waliKelas, tokenSurat: tokenBaru}};
 }
 
 // Kumpulkan semua spreadsheet yang dipakai sistem untuk ditampilkan ke Admin/Mudir
@@ -9990,6 +10003,31 @@ function kunciNisnLonggar_(v) {
   const t = norm(v).replace(/^'+/, '').replace(/\.0+$/, '').replace(/\s+/g, '');
   const tanpaNol = t.replace(/^0+/, '');
   return tanpaNol || t;
+}
+
+// Ubah daftar NISN (mis. dari kolom "NISN Anak" akun wali) menjadi NISN resmi di sheet
+// Santri. NISN yang ditulis beda format (nol di depan, tanda ', ".0") ikut dikenali.
+// NISN yang memang tidak ada dikembalikan apa adanya, dan dicatat di .tidakDikenal.
+function nisnResmiSantri_(daftar) {
+  const ada = {}, longgar = {};
+  try {
+    const sh = getAktifSS().getSheetByName(SHEET_SANTRI);
+    if (sh && sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues().forEach(function(r){
+      const n = norm(r[0]); if (!n) return;
+      ada[n] = true; const k = kunciNisnLonggar_(n); if (k && !longgar[k]) longgar[k] = n;
+    });
+  } catch (e) {}
+  const tidakDikenal = [];
+  const hasil = (daftar || []).map(function(x){
+    const n = norm(x).replace(/^'+/, '');
+    if (!n) return n;
+    if (ada[n]) return n;
+    const resmi = longgar[kunciNisnLonggar_(n)];
+    if (resmi) return resmi;
+    tidakDikenal.push(n); return n;
+  });
+  hasil.tidakDikenal = tidakDikenal;
+  return hasil;
 }
 
 function apiGetTopSantriBulan(p) {
@@ -14410,7 +14448,8 @@ var AMAN_ = (function () {
     const kolom = MILIK_ANAK[action];
     if (kolom && hanyaWali_(me)) {
       const nisn = String((p && p[kolom]) || '').replace(/^'/, '').trim();
-      if (nisn && me.terkait.indexOf(nisn) === -1) return { ok: false, error: 'Data santri ini bukan milik akun Anda.' };
+      const milik = me.terkait.some(function (t) { return t === nisn || (typeof kunciNisnLonggar_ === 'function' && kunciNisnLonggar_(t) === kunciNisnLonggar_(nisn)); });
+      if (nisn && !milik) return { ok: false, error: 'Data santri ini bukan milik akun Anda.' };
     }
     return null;
   }
@@ -14819,6 +14858,8 @@ var KEU_ = (function () {
     if (!nisn) return null;
     const rows = getAktifSS().getSheetByName(SHEET_SANTRI).getDataRange().getValues();
     for (let i = 1; i < rows.length; i++) if (norm(rows[i][0]) === nisn) return { nisn: nisn, nama: norm(rows[i][1]), tahunMasuk: rows[i][2], noWa: norm(rows[i][4]) };
+    // NISN beda format (nol di depan, tanda ', ".0"): kembalikan NISN resmi di Data Santri
+    for (let i = 1; i < rows.length; i++) if (samaNisn_(rows[i][0], nisn)) return { nisn: norm(rows[i][0]), nama: norm(rows[i][1]), tahunMasuk: rows[i][2], noWa: norm(rows[i][4]) };
     return null;
   }
   function akunPeran_(peran) {
@@ -15016,7 +15057,8 @@ var KEU_ = (function () {
     rows_(SH_KWT).forEach(function (r) { if (r['Ref Kas'] && r.Status === 'Sah') hasil[r['Ref Kas']] = { id: r.ID, nomor: r['No Kwitansi'] }; });
     return hasil;
   }
-  function bolehNisn_(me, nisn) { return isStaf_(me) || me.terkait.map(String).indexOf(String(nisn)) >= 0; }
+  function samaNisn_(a, b) { a = String(a == null ? '' : a).replace(/^'+/, '').trim(); b = String(b == null ? '' : b).replace(/^'+/, '').trim(); return !!a && (a === b || (typeof kunciNisnLonggar_ === 'function' && kunciNisnLonggar_(a) === kunciNisnLonggar_(b))); }
+  function bolehNisn_(me, nisn) { return isStaf_(me) || me.terkait.some(function (t) { return samaNisn_(t, nisn); }); }
   function api_kwitansiSantri(p, me) {
     wajib_(bolehNisn_(me, p.nisn), 'Anda tidak memiliki akses ke data santri ini.');
     return rows_(SH_KWT).filter(function (r) { return String(r.NISN) === String(p.nisn); })
@@ -15679,7 +15721,16 @@ var PRM_ = (function () {
   function wajib_(ok, pesan) { if (!ok) throw new Error(pesan || 'Akun Anda tidak memiliki akses untuk tindakan ini.'); }
   function punya_(me, list) { return me.roles.some(function (r) { return list.indexOf(r) >= 0; }); }
   function hanyaWali_(me) { return me.roles.length > 0 && me.roles.every(function (r) { return r === 'WaliSantri'; }); }
-  function bolehNisn_(me, nisn) { return !hanyaWali_(me) ? !!me.roles.length : me.terkait.map(String).indexOf(String(nisn)) >= 0; }
+  // NISN dibandingkan longgar (nol di depan, tanda ', ".0") supaya akun wali tetap terhubung ke anaknya
+  function samaNisn_(a, b) { a = String(a == null ? '' : a).replace(/^'+/, '').trim(); b = String(b == null ? '' : b).replace(/^'+/, '').trim(); return !!a && (a === b || (typeof kunciNisnLonggar_ === 'function' && kunciNisnLonggar_(a) === kunciNisnLonggar_(b))); }
+  function bolehNisn_(me, nisn) { return !hanyaWali_(me) ? !!me.roles.length : me.terkait.some(function (t) { return samaNisn_(t, nisn); }); }
+  /** Santri dari peta berdasarkan NISN, termasuk NISN yang ditulis beda format. */
+  function santriDari_(peta, nisn) {
+    const n = String(nisn == null ? '' : nisn).replace(/^'+/, '').trim();
+    if (peta[n]) return peta[n];
+    const k = Object.keys(peta).find(function (x) { return samaNisn_(x, n); });
+    return k ? peta[k] : null;
+  }
   function props_() { return PropertiesService.getScriptProperties(); }
   function cache_() { try { return CacheService.getScriptCache(); } catch (e) { return null; } }
   function ingat_(kunci, detik, f) {
@@ -15761,8 +15812,9 @@ var PRM_ = (function () {
   function hitungLaporan_(nisn, bulan, tahun) {
     const mulai = tahun + '-' + pad_(bulan) + '-01';
     const akhir = tahun + '-' + pad_(bulan) + '-' + pad_(new Date(tahun, bulan, 0).getDate());
-    const s = petaSantri_()[nisn];
-    if (!s) throw new Error('Data santri tidak ditemukan.');
+    const s = santriDari_(petaSantri_(), nisn);
+    if (!s) throw new Error('Data santri dengan NISN ' + nisn + ' tidak ada di Data Santri tahun ajaran ini. Mohon hubungi admin pondok untuk mencocokkan NISN ananda.');
+    nisn = s.nisn; // selanjutnya memakai NISN resmi di Data Santri
     const out = { santri: { nisn: s.nisn, nama: s.nama, kelas: s.kelas, halaqoh: s.halaqoh, jk: s.jk }, bulan: bulan, tahun: tahun,
       namaBulan: BULAN[bulan - 1], mulai: mulai, akhir: akhir, lembaga: namaLembaga_(), waliKelas: waliKelas_()[s.kelas] || '' };
 
@@ -15844,8 +15896,10 @@ var PRM_ = (function () {
   }
 
   function api_laporanSantri(p, me) {
-    const nisn = norm(p.nisn).replace(/^'/, '');
-    wajib_(bolehNisn_(me, nisn), 'Anda tidak memiliki akses ke data santri ini.');
+    const nisnMinta = norm(p.nisn).replace(/^'/, '');
+    wajib_(bolehNisn_(me, nisnMinta), 'Anda tidak memiliki akses ke data santri ini.');
+    const sResmi = santriDari_(petaSantri_(), nisnMinta);
+    const nisn = sResmi ? sResmi.nisn : nisnMinta;
     const n = new Date();
     const bulan = Number(p.bulan) || n.getMonth() + 1, tahun = Number(p.tahun) || n.getFullYear();
     if (tahun > n.getFullYear() || (tahun === n.getFullYear() && bulan > n.getMonth() + 1)) throw new Error('Bulan tersebut belum berjalan.');
@@ -15879,7 +15933,7 @@ var PRM_ = (function () {
   function api_daftarSantriSaya(p, me) {
     const peta = petaSantri_();
     let list = Object.keys(peta).map(function (k) { return peta[k]; });
-    if (hanyaWali_(me)) list = list.filter(function (s) { return me.terkait.indexOf(s.nisn) >= 0; });
+    if (hanyaWali_(me)) list = list.filter(function (s) { return me.terkait.some(function (t) { return samaNisn_(t, s.nisn); }); });
     return list.map(function (s) { return { nisn: s.nisn, nama: s.nama, kelas: s.kelas }; }).sort(function (a, b) { return (a.kelas + a.nama).localeCompare(b.kelas + b.nama); });
   }
 
@@ -16301,7 +16355,7 @@ var PRM_ = (function () {
   return { tangani: tangani, verifikasi: verifikasi, jalankanJadwal: jalankanJadwal, daftarkan: daftarkan,
     // dipakai bagian lain modul (rapor, PPDB) & pengujian
     _u: { sheet_: sheet_, rows_: rows_, tulis_: tulis_, ubah_: ubah_, HEAD: HEAD, kodeAcak_: kodeAcak_, kodeBersih_: kodeBersih_, wajib_: wajib_, punya_: punya_,
-      hanyaWali_: hanyaWali_, bolehNisn_: bolehNisn_, petaSantri_: petaSantri_, namaLembaga_: namaLembaga_, stamp_: stamp_, ymd_: ymd_, aman_: aman_, props_: props_,
+      hanyaWali_: hanyaWali_, bolehNisn_: bolehNisn_, petaSantri_: petaSantri_, santriDari_: santriDari_, samaNisn_: samaNisn_, namaLembaga_: namaLembaga_, stamp_: stamp_, ymd_: ymd_, aman_: aman_, props_: props_,
       hitungPeringatan_: hitungPeringatan_, perbaruiPeringatan_: perbaruiPeringatan_ } };
 })();
 
@@ -16343,8 +16397,8 @@ function prmJadwalOtomatis() { return PRM_.jalankanJadwal(); }
     const nisn = norm(p.nisn).replace(/^'/, ''), semester = norm(p.semester), kelas = norm(p.kelas);
     if (!nisn || !semester) throw new Error('Data rapor tidak lengkap.');
     if (!p.html || String(p.html).length > 3 * 1024 * 1024) throw new Error('Isi rapor kosong atau terlalu besar.');
-    const s = U.petaSantri_()[nisn];
-    if (!s) throw new Error('Santri tidak ditemukan.');
+    const s = U.santriDari_(U.petaSantri_(), nisn);
+    if (!s) throw new Error('Santri dengan NISN ' + nisn + ' tidak ada di Data Santri.');
     const kode = U.kodeBersih_(p.kodeVerifikasi).length === 10 && /^R/.test(U.kodeBersih_(p.kodeVerifikasi)) ? U.kodeBersih_(p.kodeVerifikasi) : U.kodeAcak_('R');
     const isi = String(p.html).split('{{KODE}}').join(kode.replace(/^(.{4})(.{4})(.*)$/, '$1-$2-$3'));
     const lock = LockService.getScriptLock(); lock.waitLock(20000);
