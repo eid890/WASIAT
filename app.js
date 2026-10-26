@@ -314,7 +314,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.10.26-a';
+  var VERSI_APP = '2026.10.26-b';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -17111,6 +17111,11 @@
         '<label>NISN baru</label><input id="gnBaru" inputmode="numeric" placeholder="Ketik NISN baru" autocomplete="off">' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button id="gnPeriksa">Periksa Dampak</button></div>' +
         '<div id="gnHasil" style="margin-top:12px"></div></div>' +
+        '<div class="card"><h4 style="margin-top:0">&#128269; Periksa Data Santri</h4>' +
+          '<p style="font-size:13px;margin-top:0">Dipakai bila absensi, kelas, hafalan, atau laporan seorang santri tampil <b>kosong</b> padahal sudah dicatat. Pemeriksaan ini menunjukkan di sheet mana catatannya tersimpan dan dengan NISN apa. Hanya membaca, tidak mengubah data.</p>' +
+          '<label>Santri</label><select id="cdSantri"><option value="">-- pilih santri --</option>' +
+            santri.map(function(s){ return '<option value="'+esc(String(s.NISN).trim())+'">'+esc(s.Nama)+' &mdash; '+esc(String(s.NISN).trim())+'</option>'; }).join('') + '</select>' +
+          '<button id="cdPeriksa" style="margin-top:8px">Periksa</button><div id="cdHasil" style="margin-top:10px"></div></div>' +
         '<div class="card"><h4 style="margin-top:0">&#48;&#65039;&#8419; Perbaiki NISN Berawalan 0</h4>' +
           '<p style="font-size:13px;margin-top:0">Google Sheets kadang mengubah NISN seperti <b>0125198445</b> menjadi angka <b>125198445</b> (nol di depan hilang), sehingga absensi, kelas, hafalan, dan data lain santri itu <b>tidak terbaca</b> di aplikasi dan akun wali. Tombol ini mengembalikan NISN tersebut di semua spreadsheet (termasuk arsip) dan mengunci kolom NISN sebagai teks agar tidak terulang.</p>' +
           '<p class="muted" style="font-size:12px">Aman: hanya kolom NISN yang diubah, hanya angka yang persis sama dengan NISN resmi tanpa nol depannya, dan dilewati bila ada dua santri yang bisa cocok. Pemeriksaan ini juga berjalan otomatis tiap jam selama Penjaga NISN aktif.</p>' +
@@ -17122,6 +17127,55 @@
           '<li>Perubahan yang meragukan (NISN dobel, nama ikut berubah, baris dipindah) <b>tidak diproses otomatis</b>, tetapi tampil di bawah untuk Anda konfirmasi.</li></ul>' +
           '<div id="gnPenjaga"><p class="muted">Memuat status...</p></div></div>' +
         '<div class="card"><h4 style="margin-top:0">Riwayat Penggantian NISN</h4><div id="gnRiwayat"><p class="muted">Memuat...</p></div></div>';
+
+      // ---- Periksa data santri ----
+      var bCd = document.getElementById('cdPeriksa');
+      function periksaDataSantri(){
+        var nisn = document.getElementById('cdSantri').value, el = document.getElementById('cdHasil');
+        if (!nisn) { el.innerHTML = errBox('Pilih santri dulu.'); return; }
+        loadingBtn(bCd, 'Memeriksa...'); el.innerHTML = '<p class="muted">Memeriksa semua sheet...</p>';
+        apiJaringan('cekDataSantri', {oleh: STATE.user.nama, nisn: nisn}, 120000).then(function(r){
+          resetBtn(bCd, 'Periksa');
+          if (!r.ok) { el.innerHTML = errBox(r.error); return; }
+          var adaBeda = r.data.some(function(x){ return x.bedaFormat; });
+          var html = '<p style="font-size:13px;margin:0 0 6px"><b>'+esc(r.nama)+'</b> &mdash; NISN resmi <b>'+esc(r.nisn)+'</b></p>';
+          html += r.data.length ? '<div style="overflow-x:auto"><table style="font-size:12.5px"><tr><th>Spreadsheet / Sheet</th><th>Cocok</th><th>NISN beda format</th></tr>' +
+              r.data.map(function(x){ return '<tr><td>'+esc(x.spreadsheet)+' / '+esc(x.sheet)+'</td><td>'+x.cocok+'</td><td>'+(x.bedaFormat?'<b style="color:#b45309">'+x.bedaFormat+'</b> <span class="muted" style="font-size:11px">('+esc(x.contoh)+')</span>':'0')+'</td></tr>'; }).join('') + '</table></div>'
+            : '<p style="font-size:13px;color:#b91c1c">Tidak ada satu pun catatan dengan NISN ini (atau versi tanpa nol depannya) di spreadsheet aktif.</p>';
+          if (adaBeda) html += '<div style="margin-top:8px"><button class="small" id="cdPerbaikiFormat">Kembalikan ke NISN '+esc(r.nisn)+'</button></div>';
+          if (r.nisnLain && r.nisnLain.length) {
+            html += '<div style="margin-top:10px;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:8px 10px;font-size:13px"><b>Catatan atas nama '+esc(r.nama)+' tetapi ber-NISN lain:</b>' +
+              r.nisnLain.map(function(x, i){ return '<div style="margin-top:6px">NISN <b>'+esc(x.nisn)+'</b>: '+x.jumlah+' baris <span class="muted" style="font-size:11.5px">('+esc(x.sheet.join(', '))+')</span> <button class="small cdPindah" data-i="'+i+'">Pindahkan ke '+esc(r.nisn)+'</button></div>'; }).join('') +
+              '<p class="muted" style="font-size:11.5px;margin:6px 0 0">Pastikan baris itu memang milik santri ini (bukan santri lain yang namanya sama) sebelum dipindahkan.</p></div>';
+          }
+          if (!adaBeda && !(r.nisnLain && r.nisnLain.length) && r.data.length) html += '<p style="font-size:12.5px;color:#166534;margin-top:6px">&#9989; Semua catatan sudah memakai NISN resmi.</p>';
+          el.innerHTML = html;
+          var bF = document.getElementById('cdPerbaikiFormat');
+          if (bF) bF.onclick = function(){
+            if (!confirm('Kembalikan semua catatan ber-NISN beda format ke '+r.nisn+'?')) return;
+            loadingBtn(bF, 'Memperbaiki...');
+            apiJaringan('pindahkanDataSantri', {oleh: STATE.user.nama, nisnLama: r.nisn.replace(/^0+/, ''), nisnBaru: r.nisn, jalankan: true}, 330000).then(function(h){
+              if (!h.ok) { resetBtn(bF, 'Kembalikan ke NISN '+r.nisn); alert(h.error); return; }
+              alert('Selesai. ' + (h.pesan || '')); periksaDataSantri();
+            });
+          };
+          el.querySelectorAll('.cdPindah').forEach(function(b){ b.onclick = function(){
+            var x = r.nisnLain[Number(b.dataset.i)];
+            loadingBtn(b, 'Menghitung...');
+            apiJaringan('pindahkanDataSantri', {oleh: STATE.user.nama, nisnLama: x.nisn, nisnBaru: r.nisn, jalankan: false}, 330000).then(function(pv){
+              resetBtn(b, 'Pindahkan ke '+r.nisn);
+              if (!pv.ok) { alert(pv.error); return; }
+              if (!confirm('Pindahkan '+pv.total+' baris ber-NISN '+x.nisn+' ke NISN '+r.nisn+' ('+r.nama+')?\n\n'+(pv.rincian||[]).map(function(z){ return z.spreadsheet+' / '+z.sheet+': '+z.jumlah; }).join('\n'))) return;
+              loadingBtn(b, 'Memindahkan...');
+              apiJaringan('pindahkanDataSantri', {oleh: STATE.user.nama, nisnLama: x.nisn, nisnBaru: r.nisn, jalankan: true}, 330000).then(function(h){
+                if (!h.ok) { resetBtn(b, 'Pindahkan ke '+r.nisn); alert(h.error); return; }
+                alert('Selesai: '+(h.total||0)+' baris dipindahkan ke NISN '+r.nisn+'.'); periksaDataSantri();
+              });
+            });
+          }; });
+        }).catch(function(){ resetBtn(bCd, 'Periksa'); el.innerHTML = errBox('Koneksi terputus. Coba lagi.'); });
+      }
+      if (bCd) bCd.onclick = periksaDataSantri;
 
       // ---- Perbaikan NISN berawalan 0 ----
       var bNol = document.getElementById('gnNol');
