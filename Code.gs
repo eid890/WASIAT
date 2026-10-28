@@ -541,6 +541,8 @@ function route(action, p) {
     case 'penjagaNisn': return apiPenjagaNisn(p);
     case 'cekDataSantri': return apiCekDataSantri(p);
     case 'pindahkanDataSantri': return apiPindahkanDataSantri(p);
+    case 'daftarNisnLama': return apiDaftarNisnLama(p);
+    case 'catatKeluarNisnLama': return apiCatatKeluarNisnLama(p);
     case 'prosesMutasiSantri': return apiProsesMutasiSantri(p);
     case 'batalkanMutasi': return apiBatalkanMutasi(p);
     case 'ubahCatatanMutasi': return apiUbahCatatanMutasi(p);
@@ -1019,7 +1021,8 @@ function getTunggakanSantri() {
     if (tunggakanSPP > 0) result.push({
       nisn:s.nisn, nama:s.nama, noWa:s.noWa,
       tunggakanSPP, bulanTunggak, jumlahBulan:bulanTunggak.length,
-      status: s.status || ''   // 'Lulus' / 'Mutasi Keluar' bila sudah bukan santri aktif
+      status: s.status || '',  // 'Lulus' / 'Mutasi Keluar' bila sudah bukan santri aktif
+      nisnSeharusnya: s.nisnSeharusnya || '', namaSeharusnya: s.namaSeharusnya || ''
     });
   });
   return result.sort((a,b) => b.tunggakanSPP - a.tunggakanSPP);
@@ -3816,7 +3819,7 @@ function kolomSpp_(sh) {
 
 // Versi kode server -- dipakai aplikasi untuk memastikan Code.gs terbaru sudah di-deploy
 // sebelum menjalankan perubahan struktur (mis. menambah kolom Nama Santri).
-const VERSI_SERVER = '2026.10.26-d';
+const VERSI_SERVER = '2026.10.28-a';
 function apiVersiServer() { return {ok:true, versi: VERSI_SERVER}; }
 
 function apiStatusKolomNamaSpp(p) {
@@ -3911,6 +3914,96 @@ function cariSantriTahunLalu_(daftarKunci) {
   });
   try { if (cache) cache.put(kunciCache, JSON.stringify(hasil), 21600); } catch (e) {}
   return hasil;
+}
+
+// ----------------------------------------------------------------------------------
+// NISN LAMA / SEMENTARA
+// Santri yang dulu dicatat dengan NISN sementara (mis. 1234567) lalu NISN-nya diganti
+// langsung di sheet Santri: catatan lamanya (SPP, absensi, kelas, halaqoh, hafalan)
+// masih ber-NISN lama. Fungsi di bawah HANYA MEMBACA -- untuk menampilkan nama yang
+// benar dan menyarankan santri pemiliknya. Pemindahan tetap lewat konfirmasi Admin.
+// ----------------------------------------------------------------------------------
+const SHEET_CARI_NAMA_NISN_ = ['Rombel', 'HalaqohAnggota', 'RekapNilai', 'AbsensiHarian', 'Hafalan', 'Absensi', 'Nilai'];
+function kolomNisnNama_(judul) {
+  const j = (judul || []).map(function(h){ return norm(h); });
+  return {iN: j.findIndex(function(h){ return /^nisn$/i.test(h); }), iNama: j.findIndex(function(h){ return /^nama( santri)?$/i.test(h); })};
+}
+// Nama yang tercatat untuk NISN-NISN tertentu di catatan semester aktif. Hanya dua
+// kolom (NISN & Nama) yang dibaca; sheet kecil dulu, berhenti begitu semua ketemu.
+function cariNamaNisnDiCatatan_(daftarKunci) {
+  const hasil = {};
+  if (!daftarKunci || !daftarKunci.length) return hasil;
+  const urut = daftarKunci.slice().sort().join(',');
+  let h = 0; for (let i = 0; i < urut.length; i++) { h = ((h << 5) - h + urut.charCodeAt(i)) | 0; }
+  const kunciCache = 'NISN_NAMA_CATATAN_' + h + '_' + daftarKunci.length;
+  let cache = null;
+  try { cache = CacheService.getScriptCache(); const c = cache.get(kunciCache); if (c) return JSON.parse(c); } catch (e) {}
+  const dicari = {}; daftarKunci.forEach(function(k){ dicari[k] = true; });
+  let ss = null; try { ss = getAktifSS(); } catch (e) {}
+  if (ss) SHEET_CARI_NAMA_NISN_.forEach(function(nama){
+    if (!daftarKunci.some(function(k){ return !hasil[k]; })) return;
+    try {
+      const sh = ss.getSheetByName(nama);
+      if (!sh || sh.getLastRow() < 2 || sh.getLastColumn() < 2) return;
+      const ix = kolomNisnNama_(sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0]);
+      if (ix.iN < 0 || ix.iNama < 0) return;
+      const n = sh.getLastRow() - 1;
+      const vN = sh.getRange(2, ix.iN + 1, n, 1).getValues(), vNama = sh.getRange(2, ix.iNama + 1, n, 1).getValues();
+      for (let i = 0; i < n; i++) {
+        const k = kunciNisnLonggar_(vN[i][0]);
+        if (k && dicari[k] && !hasil[k] && norm(vNama[i][0])) hasil[k] = {nama: norm(vNama[i][0]), sheet: nama};
+      }
+    } catch (e) {}
+  });
+  try { if (cache) cache.put(kunciCache, JSON.stringify(hasil), 21600); } catch (e) {}
+  return hasil;
+}
+function kunciNamaRapat_(s) { return normNama(s).replace(/[^a-z0-9]/g, ''); }
+function jarakEditMaks_(a, b, maks) {
+  if (Math.abs(a.length - b.length) > maks) return maks + 1;
+  let prev = []; for (let j = 0; j <= b.length; j++) prev[j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i]; let terkecil = i;
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1));
+      if (cur[j] < terkecil) terkecil = cur[j];
+    }
+    if (terkecil > maks) return maks + 1;
+    prev = cur;
+  }
+  return prev[b.length];
+}
+// Daftar santri tahun ini {nisn, nama, k} untuk pencocokan nama.
+function daftarSantriUntukNama_() {
+  const out = [];
+  try {
+    const v = getAktifSS().getSheetByName(SHEET_SANTRI).getDataRange().getValues();
+    for (let i = 1; i < v.length; i++) { const n = norm(v[i][0]).replace(/^'+/, ''); if (n && norm(v[i][1])) out.push({nisn: n, nama: norm(v[i][1]), k: kunciNamaRapat_(v[i][1])}); }
+  } catch (e) {}
+  return out;
+}
+// Santri tahun ini yang namanya sama (pasti) atau hampir sama (beda 1-2 huruf, hanya bila
+// satu-satunya kandidat). null bila tidak ada / lebih dari satu kandidat.
+function saranSantriUntukNama_(nama, daftar) {
+  const k = kunciNamaRapat_(nama);
+  if (!k) return null;
+  const persis = daftar.filter(function(s){ return s.k === k; });
+  if (persis.length === 1) return {nisn: persis[0].nisn, nama: persis[0].nama, pasti: true};
+  if (persis.length > 1 || k.length < 8) return null;
+  const dekat = daftar.filter(function(s){ return s.k && jarakEditMaks_(s.k, k, 2) <= 2; });
+  if (dekat.length === 1) return {nisn: dekat[0].nisn, nama: dekat[0].nama, pasti: false};
+  return null;
+}
+// Versi untuk daftar NISN lama: bila nama yang tercatat hanya nama depan (mis. "Walid")
+// dan hanya SATU santri yang namanya diawali kata itu, disarankan (tidak pasti).
+function saranSantriLonggar_(nama, daftar) {
+  const s = saranSantriUntukNama_(nama, daftar);
+  if (s) return s;
+  const kata = normNama(nama).split(/\s+/).filter(Boolean);
+  if (kata.length !== 1 || kata[0].replace(/[^a-z]/g, '').length < 4) return null;
+  const awal = kata[0].replace(/[^a-z0-9]/g, '');
+  const cocok = daftar.filter(function(x){ return normNama(x.nama).split(/\s+/)[0].replace(/[^a-z0-9]/g, '') === awal; });
+  return cocok.length === 1 ? {nisn: cocok[0].nisn, nama: cocok[0].nama, pasti: false} : null;
 }
 
 // Isi / selaraskan kolom Nama Santri dengan sheet Santri. Hanya menulis bila ada yang
@@ -4023,9 +4116,13 @@ function getSppList(){
     if (!santriMap[n] && !santriLonggar[kk] && !kel[n] && !kelLonggar[kk] && belumKetemu.indexOf(kk) === -1) belumKetemu.push(kk);
   });
   const santriLalu = belumKetemu.length ? cariSantriTahunLalu_(belumKetemu) : {};
+  // Yang masih belum ketemu: nama dari catatan semester ini (kelas, halaqoh, absensi...)
+  const belumJuga = belumKetemu.filter(function(kk){ return !santriLalu[kk]; });
+  let dariCatatan = {}; try { dariCatatan = belumJuga.length ? cariNamaNisnDiCatatan_(belumJuga) : {}; } catch (e) {}
+  let _daftarNama = null;
   return rows.filter(function(r){ return r[0]; }).map(function(r){
     const nisn = norm(r[0]), kunci = kunciNisnLonggar_(nisn);
-    let info = santriMap[nisn] || santriLonggar[kunci], status = '', tanggalKeluar = '';
+    let info = santriMap[nisn] || santriLonggar[kunci], status = '', tanggalKeluar = '', saran = null;
     const mut = kel[nisn] || kelLonggar[kunci];
     if (!info && mut) {
       // Santri sudah keluar/lulus: data diambil dari salinan saat mutasi
@@ -4041,14 +4138,20 @@ function getSppList(){
       status = 'Tidak terdaftar tahun ini';
     }
     if (!info) {
-      // Tidak ditemukan di mana pun: pakai nama yang tertulis di sheet SPP bila ada
+      // Tidak ada di Data Santri: pakai nama yang tertulis di sheet SPP, atau nama yang
+      // tercatat untuk NISN ini di kelas/halaqoh/absensi semester ini.
       const namaKolom = k.nama ? norm(r[k.nama - 1]) : '';
-      info = { nama: (namaKolom && namaKolom.charAt(0) !== '(') ? namaKolom : ('NISN ' + nisn), tahunMasuk: new Date().getFullYear(), noWa:'' };
-      status = 'Perlu dicek';
+      const C = dariCatatan[kunci];
+      const namaTampil = (namaKolom && namaKolom.charAt(0) !== '(') ? namaKolom : (C ? C.nama : '');
+      if (namaTampil) { try { if (!_daftarNama) _daftarNama = daftarSantriUntukNama_(); saran = saranSantriUntukNama_(namaTampil, _daftarNama); } catch (e) { saran = null; } }
+      if (saran && kunciNisnLonggar_(saran.nisn) === kunci) saran = null;
+      info = { nama: namaTampil || ('NISN ' + nisn), tahunMasuk: new Date().getFullYear(), noWa:'' };
+      status = saran ? 'NISN lama' : 'Perlu dicek';
     }
     return { nisn: nisn, nama: info.nama, noWa: info.noWa, tahunMasuk: info.tahunMasuk, biaya: Number(r[k.biaya-1])||0,
              months: r.slice(k.bulan1-1, k.bulan1-1+36), bebas: String(r[k.bebas-1]).toUpperCase() === 'TRUE',
-             status: status, tanggalKeluar: tanggalKeluar };
+             status: status, tanggalKeluar: tanggalKeluar,
+             nisnSeharusnya: saran ? saran.nisn : '', namaSeharusnya: saran ? saran.nama : '', saranPasti: saran ? !!saran.pasti : false };
   });
 }
 
@@ -13525,6 +13628,42 @@ function gantiNisnDalamSel_(nilai, lama, baru) {
 }
 
 const SHEET_TIDAK_DIGANTI_NISN_ = ['RiwayatGantiNISN', 'JejakNISN'];
+
+// Rencana menggabung baris SPP ber-NISN lama ke baris SPP ber-NISN baru di sheet yang
+// sama. null bila tidak perlu (salah satunya tidak ada). Hanya membaca -- penulisan
+// dilakukan apiGantiNisn setelah riwayat dicatat. Bila ada bulan yang terisi BERBEDA di
+// kedua baris, tidak digabung sama sekali (.bentrok) supaya tidak ada catatan tertimpa.
+function rencanaGabungSpp_(sh, judul, lama, baru) {
+  const baris = sh.getLastRow(), lebar = sh.getLastColumn();
+  if (baris < 3) return null;
+  const v = sh.getRange(2, 1, baris - 1, lebar).getValues();
+  const iL = [], iB = [];
+  v.forEach(function(r, i){ const t = norm(r[0]).replace(/^'+/, ''); if (t === lama) iL.push(i); else if (t === baru) iB.push(i); });
+  if (!iL.length || !iB.length) return null;
+  const h = judul.map(function(x){ return norm(x); });
+  const iNama = h.indexOf('Nama Santri');
+  let iBiaya = h.indexOf('Biaya SPP'); if (iBiaya < 0) iBiaya = h.findIndex(function(x){ return /biaya/i.test(x); });
+  let iB1 = h.indexOf('Bulan1'); if (iB1 < 0) iB1 = iBiaya > -1 ? iBiaya + 1 : -1;
+  const iBebas = h.indexOf('BebasSPP');
+  if (iBiaya < 0 || iB1 < 0) return {lewati: iL, bentrok: 'kolom SPP tidak dikenali, baris NISN ' + lama + ' dibiarkan'};
+  const tujuan = v[iB[0]].slice();
+  const bentrok = [];
+  iL.forEach(function(i){
+    const src = v[i];
+    for (let b = 0; b < 36; b++) {
+      const c = iB1 + b; if (c >= lebar) break;
+      const a = norm(src[c]), t = norm(tujuan[c]);
+      if (!a) continue;
+      if (!t) tujuan[c] = src[c];
+      else if (a !== t) bentrok.push('Bulan' + (b + 1));
+    }
+    if (!(Number(tujuan[iBiaya]) > 0) && Number(src[iBiaya]) > 0) tujuan[iBiaya] = src[iBiaya];
+    if (iBebas > -1 && !norm(tujuan[iBebas]) && norm(src[iBebas])) tujuan[iBebas] = src[iBebas];
+  });
+  if (bentrok.length) return {lewati: iL, bentrok: 'baris NISN ' + lama + ' dan ' + baru + ' sama-sama terisi berbeda di ' + bentrok.slice(0, 6).join(', ') + ' -- tidak digabung, periksa manual'};
+  return {sh: sh, lewati: iL, barisTujuan: iB[0] + 2, isiTujuan: tujuan, hapus: iL.map(function(i){ return i + 2; }),
+    salinan: iL.map(function(i){ return v[i].map(function(x){ return x instanceof Date ? x.toISOString() : x; }); })};
+}
 let _gantiNisnInternal_ = false; // true hanya saat dipanggil penjaga NISN (bukan dari aplikasi)
 function apiGantiNisn(p) {
   if (!_gantiNisnInternal_ && !adminAtauMudir(p.oleh)) return {ok:false, error:'Hanya Admin/Mudir yang boleh mengganti NISN.'};
@@ -13565,6 +13704,8 @@ function apiGantiNisn(p) {
     const tulisan = [];   // dikumpulkan dulu, ditulis setelah semua pemindaian selesai
     let total = 0;
     const idSantriUtama = getAktifSS().getId();
+    const gabungSpp = [];  // baris SPP NISN lama yang digabung ke baris SPP NISN baru
+    const catatanSpp = []; // baris SPP yang sengaja tidak digabung (bulan bentrok)
     daftarSpreadsheetAplikasi_().forEach(function(item){
       item.ss.getSheets().forEach(function(sh){
         // Catatan audit penggantian NISN & jejak penjaga TIDAK ikut diubah -- isinya memang
@@ -13573,12 +13714,25 @@ function apiGantiNisn(p) {
         const baris = sh.getLastRow(), kolom = sh.getLastColumn();
         if (baris < 2 || kolom < 1) return;
         const judul = sh.getRange(1, 1, 1, kolom).getValues()[0];
+        // SPP: bila NISN baru SUDAH punya baris SPP, baris NISN lama tidak diganti NISN-nya
+        // (nanti jadi dua baris untuk satu santri) melainkan digabung ke baris itu.
+        const lewati = {};
+        if (sh.getName() === SHEET_SPP) {
+          const rencana = rencanaGabungSpp_(sh, judul, lama, baru);
+          if (rencana) {
+            rencana.lewati.forEach(function(i){ lewati[i] = true; });
+            if (rencana.bentrok) catatanSpp.push(item.label + ' / ' + sh.getName() + ': ' + rencana.bentrok);
+            else { rencana.label = item.label; gabungSpp.push(rencana); total += rencana.lewati.length;
+              rincian.push({spreadsheet: item.label, sheet: sh.getName(), kolom: 'digabung ke baris SPP ' + baru, jumlah: rencana.lewati.length}); }
+          }
+        }
         judul.forEach(function(j, i){
           if (!/nisn/i.test(norm(j))) return;
           const rng = sh.getRange(2, i + 1, baris - 1, 1);
           const nilai = rng.getValues();
           let jumlah = 0;
-          const baruNilai = nilai.map(function(r){
+          const baruNilai = nilai.map(function(r, iBaris){
+            if (lewati[iBaris]) return [r[0]];
             const g = gantiNisnDalamSel_(r[0], lama, baru);
             if (g === null) return [r[0]];
             jumlah++; return [g];
@@ -13608,6 +13762,16 @@ function apiGantiNisn(p) {
       // NISN berawalan 0: kolom diformat teks dulu supaya nolnya tidak hilang
       function tulisKolom(t){ if (t.teks) { try { t.rng.setNumberFormat('@'); } catch (e) {} } t.rng.setValues(t.nilai); }
       tulisan.filter(function(t){ return !t.terakhir; }).forEach(tulisKolom);
+      // Gabung SPP: baris tujuan diisi bulan yang kosong, salinan baris lama dicatat di
+      // riwayat, lalu baris lama dihapus (dari bawah ke atas). Sheet Santri tetap terakhir.
+      gabungSpp.forEach(function(gb){
+        try {
+          gb.sh.getRange(gb.barisTujuan, 1, 1, gb.isiTujuan.length).setValues([gb.isiTujuan]);
+          shLog.getRange(barisLog, 7).setValue(String(shLog.getRange(barisLog, 7).getValue() || '').slice(0, 40000) +
+            ' | Salinan baris SPP lama (' + gb.label + '): ' + JSON.stringify(gb.salinan).slice(0, 8000));
+          gb.hapus.slice().sort(function(a, b){ return b - a; }).forEach(function(r){ gb.sh.deleteRow(r); });
+        } catch (e) { catatanSpp.push('Gagal menggabung SPP (' + gb.label + '): ' + e.message); }
+      });
       tulisan.filter(function(t){ return t.terakhir; }).forEach(tulisKolom);
       try {
         shLog.getRange(barisLog, 8).setValue('Selesai');
@@ -13622,7 +13786,7 @@ function apiGantiNisn(p) {
       } catch (e) {}
       try { const shSpp = getAktifSppSS().getSheetByName(SHEET_SPP); if (shSpp) { const k = kolomSpp_(shSpp); if (k.nama) isiNamaSpp_(shSpp, k.nama); } } catch (e) {}
     }
-    return {ok:true, dijalankan: jalankan && total > 0, sapuUlang: sapuUlang, nama: norm(dataLama[1]), nisnLama: lama, nisnBaru: baru, total: total, rincian: rincian};
+    return {ok:true, dijalankan: jalankan && total > 0, sapuUlang: sapuUlang, nama: norm(dataLama[1]), nisnLama: lama, nisnBaru: baru, total: total, rincian: rincian, catatanSpp: catatanSpp};
   } finally {
     if (jalankan) lock.releaseLock();
   }
@@ -14039,6 +14203,111 @@ function apiCekDataSantri(p) {
   });
   return {ok:true, nisn: resmi, nama: nama, data: hasil,
     nisnLain: Object.keys(lain).map(function(k){ return {nisn: lain[k].nisn, jumlah: lain[k].jumlah, sheet: Object.keys(lain[k].sheet)}; }).sort(function(a, b){ return b.jumlah - a.jumlah; })};
+}
+
+// Semua NISN di catatan yang TIDAK ada di Data Santri tahun ini (dan bukan santri yang
+// sudah keluar/lulus), beserta nama yang tercatat dan saran santri pemiliknya.
+// Hanya membaca. Dipakai kartu "NISN Lama / Sementara" di menu Ganti NISN.
+function apiDaftarNisnLama(p) {
+  if (!adminAtauMudir(p.oleh)) return {ok:false, error:'Hanya Admin/Mudir.'};
+  const shS = getAktifSS().getSheetByName(SHEET_SANTRI);
+  const vS = shS.getDataRange().getValues();
+  const resmi = {};
+  vS.slice(1).forEach(function(r){ const n = norm(r[0]).replace(/^'+/, ''); if (n) resmi[kunciNisnLonggar_(n)] = true; });
+  let kel = {}; try { kel = petaMutasiKeluar_(); } catch (e) {}
+  const keluar = {}; Object.keys(kel).forEach(function(n){ keluar[kunciNisnLonggar_(n)] = true; });
+  const asing = {};
+  const daftar = [['Semester berjalan', getAktifSS], ['Kantin', getAktifKantinSS], ['SPP', getAktifSppSS], ['Pelanggaran', getPelanggaranAktifSS]];
+  const sudah = {};
+  daftar.forEach(function(x){
+    let ss; try { ss = x[1](); } catch (e) { return; }
+    if (!ss) return;
+    let id = ''; try { id = ss.getId(); } catch (e) { id = x[0]; }
+    if (sudah[id]) return; sudah[id] = true;
+    ss.getSheets().forEach(function(sh){
+      if (SHEET_TIDAK_DIGANTI_NISN_.indexOf(sh.getName()) !== -1 || sh.getName() === SHEET_SANTRI) return;
+      const br = sh.getLastRow(), kl = sh.getLastColumn();
+      if (br < 2 || kl < 1) return;
+      const ix = kolomNisnNama_(sh.getRange(1, 1, 1, kl).getValues()[0]);
+      if (ix.iN < 0) return;
+      const vN = sh.getRange(2, ix.iN + 1, br - 1, 1).getValues();
+      const vNama = ix.iNama > -1 ? sh.getRange(2, ix.iNama + 1, br - 1, 1).getValues() : null;
+      vN.forEach(function(r, i){
+        const t = norm(r[0]).replace(/^'+/, '');
+        if (!t || /[,;]/.test(t)) return;
+        const kk = kunciNisnLonggar_(t);
+        if (!kk || resmi[kk] || keluar[kk]) return;
+        if (!asing[t]) asing[t] = {nisn: t, jumlah: 0, sheet: {}, nama: {}};
+        asing[t].jumlah++; asing[t].sheet[x[0] + ' / ' + sh.getName()] = true;
+        const nm = vNama ? norm(vNama[i][0]) : '';
+        if (nm && nm.charAt(0) !== '(') asing[t].nama[nm] = (asing[t].nama[nm] || 0) + 1;
+      });
+    });
+  });
+  const daftarNama = daftarSantriUntukNama_();
+  const hasil = Object.keys(asing).map(function(t){
+    const a = asing[t];
+    const nama = Object.keys(a.nama).sort(function(x, y){ return a.nama[y] - a.nama[x]; })[0] || '';
+    const saran = nama ? saranSantriLonggar_(nama, daftarNama) : null;
+    return {nisn: t, nama: nama, jumlah: a.jumlah, sheet: Object.keys(a.sheet),
+      saranNisn: saran ? saran.nisn : '', saranNama: saran ? saran.nama : '', saranPasti: saran ? !!saran.pasti : false};
+  }).sort(function(a, b){ return (b.saranNisn ? 1 : 0) - (a.saranNisn ? 1 : 0) || b.jumlah - a.jumlah; });
+  return {ok:true, data: hasil, santri: daftarNama.map(function(s){ return {nisn: s.nisn, nama: s.nama}; })};
+}
+
+// Santri ber-NISN lama yang SUDAH KELUAR/PINDAH tetapi barisnya sudah tidak ada di sheet
+// Santri (dihapus tanpa lewat menu Mutasi). Dicatat sebagai "Mutasi Keluar" seperti
+// biasa: seluruh riwayatnya (SPP, absensi, hafalan, nilai) TIDAK diubah; hanya baris
+// kelas & halaqoh yang dilepas supaya namanya tidak muncul lagi di daftar absen. Salinan
+// baris kelas & halaqoh disimpan di catatan mutasi, jadi bisa dibatalkan dari menu Mutasi.
+function apiCatatKeluarNisnLama(p) {
+  p = p || {};
+  if (!adminAtauMudir(p.oleh)) return {ok:false, error:'Hanya Admin/Mudir.'};
+  const daftar = (p.items || []).map(function(x){ return {nisn: norm(x.nisn).replace(/^'+/, ''), nama: norm(x.nama)}; }).filter(function(x){ return x.nisn; });
+  if (!daftar.length) return {ok:false, error:'Tidak ada santri yang dipilih.'};
+  const tz = Session.getScriptTimeZone();
+  const tanggal = /^\d{4}-\d{2}-\d{2}$/.test(norm(p.tanggal)) ? norm(p.tanggal) : Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  let kunciA;
+  try { kunciA = LockService.getUserLock(); } catch (e) { kunciA = LockService.getScriptLock(); }
+  try { kunciA.waitLock(30000); } catch (e) { return {ok:false, error:'Server sedang sibuk. Data BELUM diproses, silakan coba lagi.'}; }
+  try {
+    const ss = getAktifSS();
+    const shS = ss.getSheetByName(SHEET_SANTRI);
+    const vS = shS.getDataRange().getValues();
+    const iN = kolomNisnSantri_(vS[0]);
+    const aktif = {}; vS.slice(1).forEach(function(r){ const n = norm(r[iN]).replace(/^'+/, ''); if (n) aktif[kunciNisnLonggar_(n)] = true; });
+    const keluar = {}; Object.keys(petaMutasiKeluar_()).forEach(function(n){ keluar[kunciNisnLonggar_(n)] = true; });
+    const shR = ss.getSheetByName(SHEET_ROMBEL), vR = shR ? shR.getDataRange().getValues() : [[]];
+    const shH = ss.getSheetByName(SHEET_HALAQOH_ANGGOTA), vH = shH ? shH.getDataRange().getValues() : [[]];
+    const sem = semesterAktifInfo_();
+    const gagal = [], catatan = [], hapusR = [], hapusH = [], now = new Date();
+    daftar.forEach(function(x){
+      const kk = kunciNisnLonggar_(x.nisn);
+      if (aktif[kk]) { gagal.push((x.nama || x.nisn) + ': masih ada di Data Santri -- gunakan menu Mutasi biasa'); return; }
+      if (keluar[kk]) { gagal.push((x.nama || x.nisn) + ': sudah tercatat keluar'); return; }
+      const sama = function(v){ const t = norm(v).replace(/^'+/, ''); return t && kunciNisnLonggar_(t) === kk; };
+      const rombel = [], halaqoh = [];
+      for (let k = 1; k < vR.length; k++) if (sama(vR[k][0])) { rombel.push(vR[k]); hapusR.push(k + 1); }
+      for (let k = 1; k < vH.length; k++) if (sama(vH[k][0])) { halaqoh.push(vH[k]); hapusH.push(k + 1); }
+      const nama = x.nama || (rombel[0] ? norm(rombel[0][1]) : '') || (halaqoh[0] ? norm(halaqoh[0][1]) : '');
+      const baris = vS[0].map(function(){ return ''; }); baris[iN] = x.nisn; baris[iN === 0 ? 1 : 0] = nama;
+      const salinan = JSON.stringify({header: vS[0], row: baris, rombel: rombel, halaqoh: halaqoh, dariNisnLama: true}, function(k, v){
+        return (this[k] instanceof Date) ? Utilities.formatDate(this[k], tz, 'yyyy-MM-dd') : v; });
+      catatan.push([idMutasiBaru_() + catatan.length, now, tanggal, 'Mutasi Keluar', "'" + x.nisn, nama, '',
+        rombel.map(function(r){ return norm(r[2]); }).filter(Boolean).join(', '), halaqoh.map(function(r){ return norm(r[2]); }).filter(Boolean).join(', '),
+        sem.nama, sem.id, norm(p.keterangan) || 'Sudah pindah (dicatat dari daftar NISN lama)', norm(p.tujuan), norm(p.oleh), 'Aktif', salinan.slice(0, 48000)]);
+      aktif[kk] = false; keluar[kk] = true;
+    });
+    if (!catatan.length) return {ok:false, error: gagal.join('\n') || 'Tidak ada yang diproses.'};
+    // 1) Catat dulu, 2) lepas dari kelas & halaqoh (dari bawah supaya nomor baris tidak bergeser)
+    const shM = shMutasi_();
+    shM.getRange(shM.getLastRow() + 1, 1, catatan.length, HEADER_MUTASI_.length).setValues(catatan);
+    const turun = function(a, b){ return b - a; };
+    hapusH.sort(turun).forEach(function(b){ shH.deleteRow(b); });
+    hapusR.sort(turun).forEach(function(b){ shR.deleteRow(b); });
+    return {ok:true, diproses: catatan.length, gagal: gagal,
+      pesan: catatan.length + ' santri dicatat sudah pindah (Mutasi Keluar).' + (gagal.length ? '\n\nTidak diproses:\n' + gagal.join('\n') : '')};
+  } finally { try { kunciA.releaseLock(); } catch (e) {} }
 }
 
 // Memindahkan catatan ber-NISN lain (beda format / NISN lama) ke NISN resmi santri.
@@ -14592,7 +14861,7 @@ var AMAN_ = (function () {
   atur(ADM, 'createTahunAjaran setTahunAjaranAktif migrasiSkemaLama simpanPengaturan simpanPengaturanBatch ' +
     'pasangTriggerNotif kirimPushManual kirimWATes cekStatusWablas getInfoPengaturanWA ' +
     'getDaftarSpreadsheet getDiagnostikUkuranData saveMasterRow deleteMasterRow importSantriMassal tambahSantriManual ' +
-    'gantiNisn cekDataSantri pindahkanDataSantri prosesMutasiSantri batalkanMutasi ubahCatatanMutasi resetSemuaPoinSantri ' +
+    'gantiNisn cekDataSantri pindahkanDataSantri daftarNisnLama catatKeluarNisnLama prosesMutasiSantri batalkanMutasi ubahCatatanMutasi resetSemuaPoinSantri ' +
     'perbaikiKategoriTransaksi saveSlide deleteSlide saveArtikel deleteArtikel saveFiturBeranda deleteFiturBeranda getLogAktivitas');
 
   // Keuangan & saldo: Bendahara, Admin, Mudir
@@ -16108,6 +16377,46 @@ var PRM_ = (function () {
     return out;
   }
 
+  /* Isi laporan yang boleh ditampilkan diatur Admin/Mudir di menu Pengaturan Akun Wali.
+   * Bagian yang dimatikan DIKOSONGKAN di server (bukan sekadar disembunyikan di layar),
+   * sehingga memang tidak pernah sampai ke HP orang tua. Bawaan: semua tampil. */
+  const KUNCI_LAPORAN = ['LapKehadiranAsrama', 'LapKehadiranKelas', 'LapAlpaMapel', 'LapHafalanPertemuan', 'LapHafalanSetoran',
+    'LapHafalanBaru', 'LapSabaqTerakhir', 'LapTotalHafalan', 'LapRincianSetoran', 'LapNilai', 'LapNilaiRincian',
+    'LapPrestasi', 'LapPelanggaran', 'LapNilaiSikap', 'LapSpp', 'LapIdentitasNisn', 'LapHalaqoh'];
+  function aturanLaporan_() {
+    const P = aman_(function () { return getPengaturan(); }, {}) || {};
+    const t = {};
+    KUNCI_LAPORAN.forEach(function (k) { const v = P[k]; t[k] = !(v === false || String(v).toLowerCase() === 'false'); });
+    return { tampil: t, catatan: String(P.LapCatatanPondok || '').trim().slice(0, 2000), penutup: String(P.LapPenutup || '').trim().slice(0, 600) };
+  }
+  function saringLaporan_(d) {
+    const a = aturanLaporan_(), t = a.tampil;
+    d.tampil = t; d.catatanPondok = a.catatan; d.penutup = a.penutup;
+    if (!t.LapKehadiranAsrama) d.asrama = null;
+    if (d.kelasAbsen) {
+      if (!t.LapAlpaMapel) d.kelasAbsen.alpaMapel = [];
+      if (!t.LapNilaiSikap) d.kelasAbsen.sikap = null;
+      if (!t.LapKehadiranKelas) d.kelasAbsen = { sikap: d.kelasAbsen.sikap, alpaMapel: d.kelasAbsen.alpaMapel };
+    }
+    if (d.hafalan) {
+      if (!t.LapHafalanPertemuan) { delete d.hafalan.pertemuan; delete d.hafalan.hadir; delete d.hafalan.tidakHadir; }
+      if (!t.LapHafalanSetoran) delete d.hafalan.setor;
+      if (!t.LapHafalanBaru) delete d.hafalan.sabaqHalaman;
+      if (!t.LapSabaqTerakhir) d.hafalan.sabaqTerakhir = null;
+      if (!t.LapRincianSetoran) d.hafalan.perJenis = {};
+    }
+    if (!t.LapTotalHafalan) d.progres = null;
+    if (!t.LapNilai) d.nilai = [];
+    else if (!t.LapNilaiRincian) (d.nilai || []).forEach(function (x) { x.rincian = ''; });
+    if (d.perilaku) {
+      if (!t.LapPrestasi) { d.perilaku.prestasi = []; d.perilaku.poinPrestasi = 0; }
+      if (!t.LapPelanggaran) { d.perilaku.pelanggaran = []; d.perilaku.poinPelanggaran = 0; }
+    }
+    if (!t.LapSpp) d.spp = null;
+    if (!t.LapHalaqoh && d.santri) d.santri.halaqoh = '';
+    return d;
+  }
+
   function api_laporanSantri(p, me) {
     const nisnMinta = norm(p.nisn).replace(/^'/, '');
     wajib_(bolehNisn_(me, nisnMinta), 'Anda tidak memiliki akses ke data santri ini.');
@@ -16139,7 +16448,7 @@ var PRM_ = (function () {
       data.kode = r.Kode;
       data.nomor = 'LP/' + pad_(bulan) + '/' + tahun + '/' + nisn;
     }
-    return data;
+    return saringLaporan_(data);
   }
 
   /** Daftar santri yang boleh dilihat akun ini (untuk pemilih santri di halaman laporan). */
