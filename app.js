@@ -314,7 +314,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.10.28-c';
+  var VERSI_APP = '2026.10.30-a';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -10350,6 +10350,57 @@
     }).catch(function(){});
   }
 
+  // ---- Pengecualian tagihan & tampilan SPP per santri ----
+  function pasangPengecualianSpp(data){
+    var wrap = document.getElementById('kcTabel'); if (!wrap) return;
+    var asli = {}, kini = {};
+    (data || []).forEach(function(s){
+      if (s.status === 'Lulus' || s.status === 'Mutasi Keluar') return; // santri yang sudah keluar tidak perlu diatur
+      asli[s.nisn] = {nama: s.nama, tagih: !s.tanpaTagihan, wali: !s.sembunyiWali};
+      kini[s.nisn] = {nama: s.nama, tagih: !s.tanpaTagihan, wali: !s.sembunyiWali};
+    });
+    var urut = Object.keys(kini).sort(function(a, b){ return String(kini[a].nama).localeCompare(String(kini[b].nama)); });
+    function berubah(){ return urut.filter(function(n){ return kini[n].tagih !== asli[n].tagih || kini[n].wali !== asli[n].wali; }); }
+    function info(){
+      var dk = urut.filter(function(n){ return !kini[n].tagih || !kini[n].wali; }).length, bh = berubah().length;
+      document.getElementById('kcInfo').textContent = dk + ' santri dikecualikan' + (bh ? ' · ' + bh + ' perubahan belum disimpan' : '');
+    }
+    function gambar(){
+      var q = (document.getElementById('kcCari').value || '').toLowerCase(), f = document.getElementById('kcFilter').value;
+      var baris = urut.filter(function(n){
+        var x = kini[n];
+        if (q && String(x.nama).toLowerCase().indexOf(q) < 0) return false;
+        if (f === 'dikecualikan' && x.tagih && x.wali) return false;
+        return true;
+      });
+      wrap.innerHTML = baris.length ? '<table style="font-size:13px"><tr><th>Nama Santri</th><th style="text-align:center">Kirim tagihan</th><th style="text-align:center">Tampil di akun wali</th></tr>' +
+        baris.map(function(n){ var x = kini[n];
+          return '<tr><td>'+esc(x.nama)+'<div class="muted" style="font-size:11px">NISN '+esc(n)+'</div></td>' +
+            '<td style="text-align:center"><input type="checkbox" class="kcTagih" data-n="'+esc(n)+'" style="width:18px;height:18px"'+(x.tagih?' checked':'')+'></td>' +
+            '<td style="text-align:center"><input type="checkbox" class="kcWali" data-n="'+esc(n)+'" style="width:18px;height:18px"'+(x.wali?' checked':'')+'></td></tr>'; }).join('') + '</table>'
+        : '<p class="muted">Tidak ada santri yang cocok.</p>';
+      wrap.querySelectorAll('.kcTagih').forEach(function(c){ c.onchange = function(){ kini[c.dataset.n].tagih = c.checked; info(); }; });
+      wrap.querySelectorAll('.kcWali').forEach(function(c){ c.onchange = function(){ kini[c.dataset.n].wali = c.checked; info(); }; });
+      info();
+    }
+    document.getElementById('kcCari').oninput = gambar;
+    document.getElementById('kcFilter').onchange = gambar;
+    var b = document.getElementById('kcSimpan');
+    b.onclick = function(){
+      var ubah = berubah(), el = document.getElementById('kcPesan');
+      if (!ubah.length) { el.innerHTML = '<p class="muted" style="font-size:12.5px">Belum ada perubahan.</p>'; return; }
+      loadingBtn(b, 'Menyimpan...'); el.innerHTML = '';
+      api('simpanPengecualianSpp', {oleh: STATE.user.nama, items: ubah.map(function(n){ return {nisn: n, nama: kini[n].nama, tanpaTagihan: !kini[n].tagih, sembunyiWali: !kini[n].wali}; })}).then(function(r){
+        resetBtn(b, 'Simpan Perubahan');
+        if (!r || !r.ok) { el.innerHTML = errBox((r && r.error) || 'Gagal menyimpan.'); return; }
+        ubah.forEach(function(n){ asli[n].tagih = kini[n].tagih; asli[n].wali = kini[n].wali; });
+        el.innerHTML = '<p style="font-size:12.5px;color:#166534;margin:8px 0 0">&#9989; Tersimpan ('+ubah.length+' santri). Berlaku untuk tagihan dan akun wali mulai sekarang.</p>';
+        info();
+      });
+    };
+    gambar();
+  }
+
   function renderSppSantri(containerId){
     var c = document.getElementById(containerId || STATE._contentId || 'db-content');
     if (!c) { console.error('renderSppSantri: container tidak ditemukan:', containerId); return; }
@@ -10381,13 +10432,13 @@
       var sppTabAktif = 'ringkasan';
       function renderSppTab(tab){
         sppTabAktif = tab;
-        ['ringkasan','tunggakan','tabel','import','biaya'].forEach(function(t){
+        ['ringkasan','tunggakan','tabel','import','biaya','kecuali'].forEach(function(t){
           var el = document.getElementById('sppTab_'+t);
           if(el) el.style.cssText = t===tab
             ? 'background:#0d9488;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap'
             : 'background:#f1f5f9;color:#475569;border:none;border-radius:8px;padding:8px 14px;font-size:12px;cursor:pointer;white-space:nowrap';
         });
-        ['ringkasan','tunggakan','tabel','import','biaya'].forEach(function(s){
+        ['ringkasan','tunggakan','tabel','import','biaya','kecuali'].forEach(function(s){
           var el = document.getElementById('sppSeksi_'+s);
           if(el) el.style.display = s===tab ? '' : 'none';
         });
@@ -10400,6 +10451,7 @@
         '<button id="sppTab_tabel">&#128204; Tabel 36 Bulan</button>' +
         (isBendahara ? '<button id="sppTab_import">&#128196; Import Data</button>' : '') +
         (isBendahara ? '<button id="sppTab_biaya">&#9881;&#65039; Atur Biaya</button>' : '') +
+        (isBendahara ? '<button id="sppTab_kecuali">&#128277; Pengecualian</button>' : '') +
         '</div></div>' +
 
         '<div id="sppSeksi_ringkasan"><div class="card"><h3>SPP Santri</h3>' +
@@ -10427,7 +10479,7 @@
               '<td style="text-align:center">'+t.jumlahBulan+' bln</td>' +
               '<td style="color:#dc2626;font-weight:700">'+rupiah(t.tunggakanSPP)+'</td>' +
               '<td style="font-size:11.5px;color:#64748b">'+t.bulanTunggak.slice(0,3).join(', ')+(t.bulanTunggak.length>3?'...':'')+'</td>' +
-              '<td><button class="small btnKirimWATunggak" data-nisn="'+esc(t.nisn)+'" data-nama="'+esc(t.nama)+'">&#128242; WA</button></td></tr>';
+              '<td>'+(t.tanpaTagihan ? '<span class="muted" style="font-size:11.5px" title="Dikecualikan dari tagihan (menu SPP &gt; Pengecualian)">&#128277; tanpa tagihan</span>' : '<button class="small btnKirimWATunggak" data-nisn="'+esc(t.nisn)+'" data-nama="'+esc(t.nama)+'">&#128242; WA</button>')+'</td></tr>';
           }).join('')+'</table></div></div>';
       }
 
@@ -10446,6 +10498,15 @@
         '<p class="muted" style="font-size:12px;margin-top:-4px">Kalau dicentang, santri ini tidak akan pernah muncul di daftar tunggakan dan wali santrinya tidak akan melihat tagihan SPP apa pun.</p>' +
         '<button id="btnSimpanBiayaSpp" style="margin-top:8px">Simpan</button><div id="pesanBiayaSpp"></div></div>' +
         '</div>'; // tutup sppSeksi_biaya
+      if (isBendahara) html += '<div id="sppSeksi_kecuali" style="display:none"><div class="card"><h3>&#128277; Pengecualian Tagihan &amp; Tampilan SPP</h3>' +
+        '<p style="font-size:13px;margin-top:0">Atur per santri. Bawaan semua santri <b>dikirimi tagihan</b> dan SPP-nya <b>tampil di akun wali</b>. Hilangkan centang untuk santri yang dikecualikan, lalu tekan <b>Simpan</b>.</p>' +
+        '<ul style="font-size:12.5px;margin:0 0 10px 18px;padding:0">' +
+          '<li><b>Kirim tagihan</b>: pengingat SPP otomatis (WA &amp; notifikasi aplikasi) dan tombol Tagih / Kirim ke Semua. Tanpa centang = tidak pernah ditagih; tunggakannya tetap tercatat di sini.</li>' +
+          '<li><b>Tampil di akun wali</b>: menu SPP &amp; Bayar SPP, kartu SPP di beranda wali, bagian SPP di laporan bulanan, dan WA konfirmasi lunas.</li></ul>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"><input id="kcCari" placeholder="&#128269; Cari nama santri..." style="flex:1;min-width:180px;padding:8px;border:1px solid #cbd5e1;border-radius:8px">' +
+        '<select id="kcFilter" style="padding:8px;border:1px solid #cbd5e1;border-radius:8px"><option value="">Semua santri</option><option value="dikecualikan">Hanya yang dikecualikan</option></select></div>' +
+        '<div id="kcTabel" style="overflow-x:auto;max-height:60vh;overflow-y:auto"></div>' +
+        '<div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap"><button id="kcSimpan">Simpan Perubahan</button><span id="kcInfo" class="muted" style="font-size:12.5px"></span></div><div id="kcPesan"></div></div></div>';
 
       html += '<div id="sppSeksi_tabel"><div class="card"><h3>Tabel Pembayaran (36 Bulan)</h3>'+
         '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'+
@@ -10467,10 +10528,11 @@
       kartuKolomNamaSpp(c);
 
       // Binding tab navigasi SPP
-      ['ringkasan','tunggakan','tabel','import','biaya'].forEach(function(tab){
+      ['ringkasan','tunggakan','tabel','import','biaya','kecuali'].forEach(function(tab){
         var el = document.getElementById('sppTab_'+tab);
         if (el) el.onclick = function(){ renderSppTab(tab); };
       });
+      if (isBendahara) pasangPengecualianSpp(data);
       renderSppTab('ringkasan'); // aktifkan tab pertama
 
       // Binding tunggakan
@@ -14140,8 +14202,10 @@
       // Compat: kunci lama tetap dibaca supaya pengaturan yang ada tidak hilang
       'WaliTampilRekap','WaliTampilRapor','WaliTampilNotifAbsen','WaliTampilMutasiSaldo',
       'WaliTampilLaporan','WaliTampilSPP','WaliTampilSurat','WaliBerandaKehadiran','WaliBerandaSpp','WaliBerandaSaldo','WaliBerandaNisn','WaliBerandaKabar'];
-    api('getPengaturanBatch', {keys: WALI_KEYS}).then(function(pwRes){
+    Promise.all([api('getPengaturanBatch', {keys: WALI_KEYS}), api('statusSppWali', {nisn: activeNisn}).catch(function(){ return {ok:false}; })]).then(function(duaHasil){
+      var pwRes = duaHasil[0], stSpp = duaHasil[1] || {};
       var pw = pwRes.ok ? pwRes.data : {};
+      if (stSpp.ok && stSpp.sembunyi) pw = Object.assign({}, pw, {WaliTampilSPP: false, WaliBerandaSpp: false});
       function boleh(k){ return pw[k] !== false; }
       // Beranda: NISN & kabar pondok mengikuti pengaturan Admin
       if (!boleh('WaliBerandaNisn')) { var nn = document.querySelector('#dwKartu .nisn'); if (nn) nn.style.display = 'none'; }
