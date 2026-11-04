@@ -314,7 +314,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.11.04-b';
+  var VERSI_APP = '2026.11.06-a';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -356,6 +356,9 @@
     // santri/kelas milik akun sebelumnya tidak terbaca oleh akun lain yang login
     // di perangkat yang sama.
     try { hapusSemuaCacheBaca(); } catch(e) {}
+    // Penanda "data offline sudah disiapkan" milik akun ini ikut dibuang, supaya akun
+    // berikutnya di HP yang sama otomatis menyiapkan datanya sendiri.
+    try { localStorage.removeItem('wasiatTerakhirSiapOfflineV1'); localStorage.removeItem('wasiatSiapOfflineOlehV1'); localStorage.removeItem('wasiatSiapOfflineCobaV1'); } catch(e) {}
     // Lepaskan pendaftaran notifikasi juga -- kalau tidak, HP ini akan terus
     // menerima pengingat milik akun sebelumnya walau sudah dipakai orang lain.
     try { if (window.OneSignal && _osSiap) window.OneSignal.logout(); } catch(e) {}
@@ -382,6 +385,8 @@
     'simpanTugasPembina',        // centang tugas harian pembina
     'ajukanIzinGuru',            // pengajuan izin guru (lampiran bisa menyusul)
     'simpanRiwayatTasmi',        // catatan tasmi'
+    'centangTugas',              // centang tugas harian pembina (asrama)
+    'saveMasterPelPrestasi',     // jenis pelanggaran/prestasi baru yang ditambah dari form catat
   ];
 
   var OUTBOX_KEY = 'wasiatOutboxV1';
@@ -414,7 +419,9 @@
     'getSOPList', 'getModulAjarList', 'getRPPList', 'getKelompokMapelList',
     // Rekap yang sering dilihat (aman kalau sedikit tertinggal saat offline)
     'getRekapSantri', 'getProgressHafalan', 'getNotifikasiMingguan',
-    'getArtikelList', 'getFiturBerandaList'
+    'getArtikelList', 'getFiturBerandaList',
+    // Pendukung halaman harian guru (widget di atas jadwal & form absen)
+    'getJurnalHariIni', 'getRekapJamMengajarGuru', 'getKehadiranSaya', 'getTiketSusulan'
   ];
 
   function kunciCacheBaca(action, payload){
@@ -453,6 +460,154 @@
     return entri ? entri : null;
   }
   function hapusSemuaCacheBaca(){ try { localStorage.removeItem(CACHE_BACA_KEY); } catch(e){} }
+
+  // Data yang bergantung TANGGAL/SESI: kuncinya memuat tanggal, jadi keesokan harinya
+  // (masih tanpa internet) salinan kemarin tidak cocok lagi dan halaman gagal dibuka.
+  // Untuk aksi di bawah, bila salinan yang persis sama tidak ada, dipakai salinan
+  // terbaru yang isiannya sama KECUALI kolom yang disebut -- lalu bagian yang khusus
+  // hari itu (status sudah diisi, centang, dsb.) dikosongkan di sesuaikanHasilCache().
+  var CACHE_LONGGAR = {
+    getSantriUntukHafalan: ['tanggal'],
+    getTugasHariIni: ['tanggal'],
+    getJurnalHariIni: ['tanggal'],
+    getSantriHarian: ['sesi']
+  };
+  function tanpaKolom_(obj, kolom){
+    var o = {};
+    Object.keys(obj || {}).sort().forEach(function(k){ if (kolom.indexOf(k) === -1 && k !== '_idem') o[k] = obj[k]; });
+    return JSON.stringify(o);
+  }
+  function namaHariTanggal_(tgl){
+    var q = String(tgl || '').split('-').map(Number);
+    if (q.length !== 3 || !q[0]) return '';
+    return HARI_LIST[new Date(q[0], q[1]-1, q[2]).getDay()];
+  }
+  function hariSama_(a, b){
+    var n = function(x){ x = String(x || '').toLowerCase().replace(/[^a-z]/g, ''); return x === 'minggu' ? 'ahad' : x; };
+    return n(a) === n(b);
+  }
+  function tanggalDariWaktu_(ms){
+    var d = new Date(ms || 0);
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+  function ambilCacheLonggar(action, payload){
+    var kolom = CACHE_LONGGAR[action];
+    if (!kolom) return null;
+    var semua = bacaSemuaCache(), target = tanpaKolom_(payload, kolom), awalan = action + '|', terbaik = null;
+    var hariDiminta = payload && payload.tanggal ? namaHariTanggal_(payload.tanggal) : '';
+    Object.keys(semua).forEach(function(k){
+      if (k.indexOf(awalan) !== 0) return;
+      var p;
+      try { p = JSON.parse(k.slice(awalan.length) || '{}'); } catch(e){ return; }
+      if (tanpaKolom_(p, kolom) !== target) return;
+      var e = semua[k];
+      var skor = e.waktu || 0;
+      // Tugas pembina berbeda per hari: utamakan salinan dari hari (Senin, Selasa..) yang sama
+      if (action === 'getTugasHariIni' && hariDiminta && e.hasil && hariSama_(e.hasil.hari, hariDiminta)) skor += 1e13;
+      if (!terbaik || skor > terbaik.skor) terbaik = {skor: skor, entri: e};
+    });
+    return terbaik ? {waktu: terbaik.entri.waktu, hasil: terbaik.entri.hasil, _longgar: true} : null;
+  }
+
+  // Salinan dari hari lain disesuaikan dengan HARI INI, supaya tidak menyesatkan:
+  // jadwal "hari ini" dihitung ulang dari nama hari, penggantian guru (berlaku satu hari)
+  // dibuang, dan tanda "sudah diisi" dikosongkan.
+  function sesuaikanHasilCache(action, payload, hasil, entri){
+    var h;
+    try { h = JSON.parse(JSON.stringify(hasil)); } catch(e){ return hasil; }
+    var hariIniTgl = todayStr(), namaHari = HARI_LIST[new Date().getDay()];
+    var basi = tanggalDariWaktu_(entri && entri.waktu) !== hariIniTgl;
+    try {
+      if (action === 'getJadwalGuru' && basi && Array.isArray(h.data)) {
+        h.data = h.data.filter(function(j){ return !j.pengganti; }).map(function(j){ j.hariIni = hariSama_(j.hari, namaHari); return j; });
+      }
+      if (action === 'getHalaqohGuru' && basi && Array.isArray(h.data)) {
+        h.data = h.data.filter(function(x){ return !x.pengganti; }).map(function(x){ delete x.sudahDiisiOleh; delete x.diisiSendiri; return x; });
+      }
+      if (action === 'getJurnalHariIni' && Array.isArray(h.data) && payload && payload.tanggal) {
+        h.data = h.data.filter(function(x){ return x.tanggal === payload.tanggal; });
+      }
+      if (action === 'getTugasHariIni' && payload && payload.tanggal && h.tanggal !== payload.tanggal && Array.isArray(h.data)) {
+        h.data.forEach(function(t){ t.selesai = false; t.catatan = ''; t.waktu = ''; t.fotoUrl = ''; t.fotoId = ''; t.rowIndexReal = null; });
+        h.tanggal = payload.tanggal;
+        var hr = namaHariTanggal_(payload.tanggal); h.hari = hr === 'Minggu' ? 'Ahad' : hr;
+        hitungUlangTugas_(h);
+      }
+      if (action === 'getSantriHarian' && (basi || (entri && entri._longgar) || h.tanggal !== hariIniTgl)) {
+        h.sudahAbsen = {}; h.tanggal = hariIniTgl;
+      }
+    } catch(e){}
+    return h;
+  }
+  function hitungUlangTugas_(h){
+    var wajib = h.data.filter(function(d){ return !d.opsional; });
+    var opsi = h.data.filter(function(d){ return d.opsional; });
+    h.total = wajib.length;
+    h.selesai = wajib.filter(function(d){ return d.selesai; }).length;
+    h.persen = h.total > 0 ? Math.round(h.selesai / h.total * 100) : 0;
+    h.opsionalTotal = opsi.length;
+    var opsiSelesai = opsi.filter(function(d){ return d.selesai; });
+    h.opsionalSelesai = opsiSelesai.length;
+    h.jamTambahan = Math.round(opsiSelesai.reduce(function(s, d){ return s + (Number(d.durasiJam) || 0); }, 0) * 100) / 100;
+  }
+
+  // Data yang sudah diisi tetapi MASIH di antrian HP (belum sampai server) ikut
+  // ditampilkan, supaya guru tidak bingung "tadi sudah saya isi kok belum tercentang"
+  // dan isian hafalan berikutnya melanjutkan dari setoran terakhir yang benar.
+  function terapkanAntrianKeHasil(action, payload, h){
+    if (!h || !h.ok) return h;
+    var tunggu;
+    try { tunggu = getOutbox().filter(function(x){ return x.status !== 'ditolak'; }); } catch(e){ return h; }
+    if (!tunggu.length) return h;
+    payload = payload || {};
+    try {
+      if (action === 'getTugasHariIni' && Array.isArray(h.data)) {
+        var diubah = false;
+        tunggu.forEach(function(x){
+          var p = x.payload || {};
+          if (x.action !== 'centangTugas' || p.tanggal !== payload.tanggal || p.pembina !== payload.pembina) return;
+          h.data.forEach(function(t){
+            if (String(t.id) !== String(p.idTugas)) return;
+            t.selesai = !!p.selesai; t.catatan = p.catatan || '';
+            t.waktu = p.selesai ? new Date(x.waktu).toTimeString().slice(0,5) : '';
+            t.menungguKirim = true; diubah = true;
+          });
+        });
+        if (diubah) hitungUlangTugas_(h);
+      }
+      if (action === 'getSantriUntukHafalan' && Array.isArray(h.data) && typeof JENIS_HAFALAN_SETOR !== 'undefined') {
+        tunggu.forEach(function(x){
+          var p = x.payload || {};
+          if (x.action !== 'submitHafalan' || p.halaqoh !== payload.namaHalaqoh) return;
+          (p.items || []).forEach(function(it){
+            if (JENIS_HAFALAN_SETOR.indexOf(it.jenisHafalan) === -1) return;
+            var s = h.data.find(function(d){ return String(d.nisn) === String(it.nisn); });
+            if (!s) return;
+            s.terakhirPerJenis = s.terakhirPerJenis || {};
+            var lama = s.terakhirPerJenis[it.jenisHafalan];
+            if (lama && lama.tanggal && p.tanggal && lama.tanggal > p.tanggal) return;
+            s.terakhirPerJenis[it.jenisHafalan] = {tanggal: p.tanggal || todayStr(), surah: it.surah || '', ayat: it.ayat || '',
+              juz: it.juz || '', halamanKe: it.halamanKe || '', nilai: it.nilai || ''};
+          });
+        });
+      }
+      if (action === 'getSantriHarian') {
+        h.sudahAbsen = h.sudahAbsen || {};
+        tunggu.forEach(function(x){
+          var p = x.payload || {};
+          if (x.action !== 'submitAbsensiHarian' || (p.tanggal || todayStr()) !== todayStr()) return;
+          if ((p.sesi || 'Harian') !== (payload.sesi || 'Harian')) return;
+          (p.items || []).forEach(function(it){ h.sudahAbsen[String(it.nisn)] = {status: it.status, ket: it.keterangan || ''}; });
+        });
+      }
+    } catch(e){}
+    return h;
+  }
+  function hasilDariCache(action, payload, entri){
+    var h = sesuaikanHasilCache(action, payload, entri.hasil, entri);
+    h = terapkanAntrianKeHasil(action, payload, h);
+    return Object.assign({}, h, {_dariCache: true, _waktuCache: entri.waktu});
+  }
 
   // ---------------- NOTIFIKASI PUSH (OneSignal) ----------------
   // SDK hanya dimuat kalau Admin sudah mengisi App ID -- kalau belum, tidak ada
@@ -804,7 +959,8 @@
   // tidak akan terpakai. Setiap perubahan payload di fitur harus diikuti di sini.
   var SIAP_OFFLINE_KEY = 'wasiatTerakhirSiapOfflineV1';
 
-  function jalankanSiapkanOffline(lapor){
+  function jalankanSiapkanOffline(lapor, opsi){
+    var paralel = (opsi && opsi.paralel) || 3;
     if (!navigator.onLine) return Promise.resolve({ok:false, error:'Tidak ada koneksi internet. Sambungkan internet dulu untuk menyiapkan data offline.'});
     var nama = STATE.user ? STATE.user.nama : '';
     var roles = (STATE.user && STATE.user.roles) ? STATE.user.roles : [];
@@ -831,15 +987,26 @@
       tahap1.push({label:'Mata pelajaran Anda', aksi:'getMapelGuru', p:{pengampu:nama}});
       tahap1.push({label:'Santri halaqoh Anda', aksi:'getSantriHalaqohGuru', p:{pengampu:nama}});
       tahap1.push({label:'Jurnal mengajar hari ini', aksi:'getJurnalHariIni', p:{tanggal:todayStr(), pengampu:nama}});
-      ['Subuh','Maghrib'].forEach(function(w){
+      WAKTU_HALAQOH.forEach(function(w){
         tahap1.push({label:'Halaqoh '+w, aksi:'getHalaqohGuru', p:{pengampu:nama, waktu:w}});
       });
+      // sama persis dengan halaman Jadwal & Absen (izin absen susulan)
+      tahap1.push({label:'Izin absen susulan', aksi:'getPengaturanBatch', p:{keys:['AbsenSusulanAktif','AbsenSusulanGuru','AbsenSusulanSampai']}});
+      tahap1.push({label:'Izin lupa absen', aksi:'getTiketSusulan', p:{guru:nama}});
     }
     if (punya('PembinaPutra') || punya('PembinaPutri')) {
       var gender = punya('PembinaPutra') ? 'Putra' : 'Putri';
       tahap1.push({label:'Santri asrama '+gender, aksi:'getSantriHarian', p:{gender:gender}});
+      // Halaman Absen Harian meminta per sesi -- payload harus sama persis
+      ['Harian','Pagi','Siang','Malam'].forEach(function(sesi){
+        tahap1.push({label:'Absen harian '+sesi, aksi:'getSantriHarian', p:{gender:gender, sesi:sesi}});
+      });
       tahap1.push({label:'Daftar tugas harian', aksi:'getDaftarTugasPembina', p:{}});
-      tahap1.push({label:'Tugas hari ini', aksi:'getTugasHariIni', p:{pembina:nama, tanggal:todayStr()}});
+      // Hari ini & besok, supaya tetap bisa mencentang walau semalaman tanpa internet
+      var besok = new Date(); besok.setDate(besok.getDate() + 1);
+      var tglBesok = besok.getFullYear()+'-'+String(besok.getMonth()+1).padStart(2,'0')+'-'+String(besok.getDate()).padStart(2,'0');
+      tahap1.push({label:'Tugas hari ini', aksi:'getTugasHariIni', p:{pembina:nama, tanggal:todayStr(), gender:gender}});
+      tahap1.push({label:'Tugas besok', aksi:'getTugasHariIni', p:{pembina:nama, tanggal:tglBesok, gender:gender}});
     }
     if (punya('WaliSantri')) {
       daftarNisnAnakWali().forEach(function(n){
@@ -868,8 +1035,8 @@
       var i = 0;
       function lanjut(){
         if (i >= daftar.length) return Promise.resolve();
-        var kelompok = daftar.slice(i, i+3);
-        i += 3;
+        var kelompok = daftar.slice(i, i+paralel);
+        i += paralel;
         return Promise.all(kelompok.map(ambilSatu)).then(lanjut);
       }
       return lanjut();
@@ -896,7 +1063,7 @@
         });
       }
       // Daftar santri per halaqoh untuk input hafalan hari ini
-      ['Subuh','Maghrib'].forEach(function(w){
+      WAKTU_HALAQOH.forEach(function(w){
         var h = ambilCacheBaca('getHalaqohGuru', {pengampu:nama, waktu:w});
         if (h && h.hasil && h.hasil.data) {
           (h.hasil.data || []).forEach(function(x){
@@ -912,7 +1079,12 @@
       if (lapor) lapor(selesai, total, 'Menyiapkan data kelas & halaqoh...');
       return prosesBerkelompok(tahap2);
     }).then(function(){
-      try { localStorage.setItem(SIAP_OFFLINE_KEY, String(Date.now())); } catch(e){}
+      try {
+        if (!gagalJaringan) {
+          localStorage.setItem(SIAP_OFFLINE_KEY, String(Date.now()));
+          localStorage.setItem('wasiatSiapOfflineOlehV1', nama);
+        }
+      } catch(e){}
       // Catat juga versi data saat ini: data yang baru saja diunduh sudah versi
       // terbaru, jadi jangan sampai notifikasi "tersedia pembaruan" langsung muncul
       // untuk perubahan yang sudah ikut terunduh tadi.
@@ -1022,6 +1194,45 @@
   }
 
 
+  // Persiapan offline OTOMATIS: guru tidak perlu ingat menekan "Siapkan Offline".
+  // Berjalan diam-diam di latar belakang sekali sehari per akun (dan diulang bila ada
+  // bagian yang gagal, paling cepat tiap 3 jam), saat HP sedang online. Diberi jeda
+  // acak supaya puluhan HP guru yang login bersamaan pagi hari tidak menyerbu server.
+  var _soOtomatisJalan = false;
+  function sudahSiapOfflineHariIni(){
+    try {
+      var t = Number(localStorage.getItem(SIAP_OFFLINE_KEY) || 0);
+      var oleh = localStorage.getItem('wasiatSiapOfflineOlehV1') || '';
+      return !!t && tanggalDariWaktu_(t) === todayStr() && (!oleh || (STATE.user && oleh === STATE.user.nama));
+    } catch(e){ return false; }
+  }
+  function siapkanOfflineOtomatis(){
+    if (_soOtomatisJalan || !STATE.user || !navigator.onLine || sedangOffline()) return;
+    if (sedangModeKantin()) return;
+    if (sudahSiapOfflineHariIni()) return;
+    try {
+      var coba = Number(localStorage.getItem('wasiatSiapOfflineCobaV1') || 0);
+      if (coba && Date.now() - coba < 3 * 3600 * 1000) return;
+      localStorage.setItem('wasiatSiapOfflineCobaV1', String(Date.now()));
+    } catch(e){}
+    _soOtomatisJalan = true;
+    var pil = document.createElement('div');
+    pil.id = 'pilSiapOffline';
+    pil.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:9990;background:rgba(15,23,42,.86);color:#fff;border-radius:99px;padding:6px 12px;font-size:11.5px;box-shadow:0 4px 14px rgba(0,0,0,.18);pointer-events:none;font-family:inherit';
+    pil.innerHTML = '&#128229; Menyiapkan mode offline...';
+    document.body.appendChild(pil);
+    jalankanSiapkanOffline(function(selesai, total){
+      pil.innerHTML = '&#128229; Menyiapkan mode offline ' + Math.round(selesai / total * 100) + '%';
+    }, {paralel: 2}).then(function(h){
+      _soOtomatisJalan = false;
+      if (h && h.ok && !h.gagal) {
+        pil.style.background = 'rgba(22,101,52,.92)';
+        pil.innerHTML = '&#9989; Siap dipakai tanpa internet';
+        setTimeout(function(){ pil.remove(); }, 3500);
+      } else { pil.remove(); }
+    }).catch(function(){ _soOtomatisJalan = false; pil.remove(); });
+  }
+
   var _timerBannerOffline = null;
   function tandaiSedangPakaiDataTersimpan(waktuCache){
     var el = document.getElementById('bannerOffline');
@@ -1037,8 +1248,8 @@
       teksWaktu = menit < 1 ? ' (baru saja)' : (menit < 60 ? ' ('+menit+' menit lalu)' : ' ('+Math.round(menit/60)+' jam lalu)');
     }
     el.innerHTML = (navigator.onLine === false)
-      ? '&#128225; Mode offline &mdash; menampilkan data tersimpan di perangkat' + teksWaktu + '. Data baru akan dimuat saat internet kembali.'
-      : '&#9203; Server lambat menjawab &mdash; sementara menampilkan data tersimpan di perangkat' + teksWaktu + '. Data terbaru dimuat otomatis saat halaman dibuka lagi.';
+      ? '&#128225; Mode offline &mdash; aplikasi tetap bisa dipakai. Data yang Anda simpan aman di HP dan dikirim otomatis saat internet kembali.' + (teksWaktu ? ' Data tampil: tersimpan' + teksWaktu + '.' : '')
+      : '&#128246; Internet lemah/terputus &mdash; aplikasi beralih ke mode offline. Data yang Anda simpan aman di HP dan dikirim otomatis begitu sinyal pulih.' + (teksWaktu ? ' Data tampil: tersimpan' + teksWaktu + '.' : '');
     el.style.display = 'block';
     // Sembunyikan otomatis kalau beberapa detik berikutnya tidak ada lagi pembacaan
     // dari cache (artinya koneksi sudah normal kembali).
@@ -1258,12 +1469,13 @@
     submitHafalan:'Setoran hafalan', submitNilai:'Nilai', simpanJurnal:'Jurnal mengajar',
     updateAbsensi:'Edit absensi', updateHafalan:'Edit hafalan', updateNilai:'Edit nilai',
     savePencatatanPelanggaran:'Pelanggaran/prestasi', catatPelanggaranPembina:'Pelanggaran (pembina)',
-    simpanTugasPembina:'Tugas harian pembina', ajukanIzinGuru:'Pengajuan izin guru', simpanRiwayatTasmi:"Catatan Tasmi'"
+    simpanTugasPembina:'Tugas harian pembina', ajukanIzinGuru:'Pengajuan izin guru', simpanRiwayatTasmi:"Catatan Tasmi'",
+    centangTugas:'Centang tugas harian', saveMasterPelPrestasi:'Jenis pelanggaran/prestasi baru'
   };
   function ringkasItemOutbox(x){
     var p = x.payload || {};
     var bagian = [LABEL_AKSI_ANTRI[x.action] || x.action];
-    var detail = [p.mapel, p.kelas, p.halaqoh, p.waktu, p.namaSantri, p.alasan].filter(Boolean).join(' - ');
+    var detail = [p.mapel, p.kelas, p.halaqoh, p.waktu, p.sesi, p.namaSantri, p.nama, p.alasan].filter(Boolean).join(' - ');
     if (detail) bagian.push(detail);
     if (p.tanggal) bagian.push(p.tanggal);
     if (p.items && p.items.length) bagian.push(p.items.length + ' santri');
@@ -1384,12 +1596,18 @@
         if (penanda) clearTimeout(penanda);
         var hasilJson;
         try { hasilJson = JSON.parse(txt); }
-        catch(e) { return {ok:false, error:'Respon server tidak valid', _jaringanGagal:true}; }
+        catch(e) {
+          // Halaman login WiFi (portal) atau jawaban rusak: internet belum benar2 tersambung
+          tandaiJaringanBuruk();
+          return {ok:false, error:'Respon server tidak valid. Bila memakai WiFi pondok, pastikan WiFi sudah login/terhubung ke internet.', _jaringanGagal:true};
+        }
+        tandaiJaringanBaik();
         if (hasilJson && hasilJson.perluLogin) { try { tampilkanPerluLoginUlang(); } catch(e2){} }
         return hasilJson;
       })
       .catch(function(err){
         if (penanda) clearTimeout(penanda);
+        tandaiJaringanBuruk();
         var habisWaktu = err && err.name === 'AbortError';
         var httpStatus = err && err.httpStatus;
         var pesan = (typeof navigator !== 'undefined' && navigator.onLine === false)
@@ -1404,7 +1622,45 @@
   // Batas tunggu: penyimpanan 45 detik (Apps Script bisa lambat saat menulis banyak
   // baris), baca 25 detik -- tapi hanya 10 detik bila salinan tersimpan sudah ada,
   // supaya di sinyal lemah aplikasi cepat beralih ke data di perangkat.
-  var BATAS_TULIS_MS = 45000, BATAS_BACA_MS = 25000, BATAS_BACA_ADA_CACHE_MS = 10000;
+  var BATAS_TULIS_MS = 45000, BATAS_BACA_MS = 25000, BATAS_BACA_ADA_CACHE_MS = 8000;
+  // Penyimpanan yang belum dijawab server dalam 20 detik langsung diamankan ke antrian HP
+  // (guru tidak dibiarkan menunggu), sementara kiriman aslinya tetap berjalan. Kunci
+  // _idem membuat server mengabaikan kiriman ganda, jadi aman dari data dobel.
+  var BATAS_TULIS_LUNAK_MS = 20000;
+
+  // ---------------- PENJAGA JARINGAN ("sinyal lemah") ----------------
+  // navigator.onLine hanya tahu HP tersambung WiFi/data, BUKAN apakah internet benar-
+  // benar jalan. Di pondok sering terjadi WiFi tersambung tetapi internet mati -- tanpa
+  // penjaga ini setiap tombol menunggu sampai batas waktu habis. Begitu satu permintaan
+  // gagal karena jaringan, aplikasi langsung memakai data di HP dan menyimpan isian ke
+  // antrian, sambil diam-diam memeriksa (tiap 20 detik) apakah internet sudah pulih.
+  var JEDA_JARINGAN_BURUK_MS = 60000, JEDA_CEK_PULIH_MS = 20000;
+  var _jaringanBurukSampai = 0, _timerCekPulih = null;
+  function jaringanSedangBuruk(){ return Date.now() < _jaringanBurukSampai; }
+  function sedangOffline(){ return (typeof navigator !== 'undefined' && navigator.onLine === false) || jaringanSedangBuruk(); }
+  function tandaiJaringanBuruk(){
+    _jaringanBurukSampai = Date.now() + JEDA_JARINGAN_BURUK_MS;
+    jadwalkanCekPulih();
+  }
+  function tandaiJaringanBaik(){
+    var tadiBuruk = _jaringanBurukSampai > 0;
+    _jaringanBurukSampai = 0;
+    if (_timerCekPulih) { clearTimeout(_timerCekPulih); _timerCekPulih = null; }
+    if (tadiBuruk) {
+      var bo = document.getElementById('bannerOffline'); if (bo) bo.style.display = 'none';
+      try { if (getOutbox().some(function(x){ return x.status !== 'ditolak'; })) setTimeout(sinkronkanOutbox, 800); } catch(e){}
+      setTimeout(siapkanOfflineOtomatis, 5000);
+    }
+  }
+  function jadwalkanCekPulih(){
+    if (_timerCekPulih) return;
+    _timerCekPulih = setTimeout(function(){
+      _timerCekPulih = null;
+      if (!_jaringanBurukSampai) return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) { jadwalkanCekPulih(); return; } // tunggu event 'online'
+      apiJaringan('versiServer', {}, 9000); // berhasil -> tandaiJaringanBaik, gagal -> dijadwalkan lagi
+    }, JEDA_CEK_PULIH_MS);
+  }
 
   function api(action, payload){
     var bisaDiantre = AKSI_BISA_OFFLINE.indexOf(action) !== -1;
@@ -1418,31 +1674,69 @@
       if (!payload._idem) payload._idem = buatIdIdem();
     }
 
-    if (bisaDiantre && typeof navigator !== 'undefined' && navigator.onLine === false) {
-      return _antrePesan(action, payload, 'offline');
+    var benarOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+    var putus = benarOffline || jaringanSedangBuruk();
+    if (bisaDiantre && putus) {
+      return _antrePesan(action, payload, benarOffline ? 'offline' : 'jaringan_buruk');
     }
 
-    var entriTersimpan = bisaDiCache ? ambilCacheBaca(action, payload) : null;
-    if (entriTersimpan && typeof navigator !== 'undefined' && navigator.onLine === false) {
+    var entriTersimpan = bisaDiCache ? (ambilCacheBaca(action, payload) || ambilCacheLonggar(action, payload)) : null;
+    if (entriTersimpan && putus) {
       tandaiSedangPakaiDataTersimpan(entriTersimpan.waktu);
-      return Promise.resolve(Object.assign({}, entriTersimpan.hasil, {_dariCache:true, _waktuCache:entriTersimpan.waktu}));
+      return Promise.resolve(hasilDariCache(action, payload, entriTersimpan));
     }
 
-    var batas = bisaDiantre ? BATAS_TULIS_MS : (entriTersimpan ? BATAS_BACA_ADA_CACHE_MS : BATAS_BACA_MS);
+    if (bisaDiantre) return kirimTulisDenganBatasLunak(action, payload);
+
+    var batas = entriTersimpan ? BATAS_BACA_ADA_CACHE_MS : (putus ? 12000 : BATAS_BACA_MS);
     return apiJaringan(action, payload, batas).then(function(res){
-      // Gagal karena jaringan (bukan ditolak server): masuk antrian
-      if (bisaDiantre && !res.ok && (res._jaringanGagal || res._sedangDiproses)) {
-        return _antrePesan(action, payload, res._habisWaktu ? 'habis_waktu' : 'jaringan_gagal');
-      }
       if (bisaDiCache && !res.ok && res._jaringanGagal && entriTersimpan) {
         tandaiSedangPakaiDataTersimpan(entriTersimpan.waktu);
-        return Object.assign({}, entriTersimpan.hasil, {_dariCache:true, _waktuCache:entriTersimpan.waktu});
+        return hasilDariCache(action, payload, entriTersimpan);
       }
-      if (bisaDiCache && res && res.ok) simpanCacheBaca(action, payload, res);
-      // Catat waktu penyimpanan sendiri -- dipakai supaya notifikasi "ada pembaruan
-      // data" tidak muncul hanya karena perubahan yang dia sendiri buat.
-      if (bisaDiantre && res && res.ok && !res.offline) _waktuSimpanTerakhirSendiri = Date.now();
+      if (bisaDiCache && res && res.ok) {
+        simpanCacheBaca(action, payload, res);
+        res = terapkanAntrianKeHasil(action, payload, res);
+      }
       return res;
+    });
+  }
+
+  function kirimTulisDenganBatasLunak(action, payload){
+    return new Promise(function(selesai){
+      var dijawab = false, sudahDiantre = false;
+      var penundaan = setTimeout(function(){
+        if (dijawab) return;
+        dijawab = true; sudahDiantre = true;
+        tandaiJaringanBuruk();
+        _antrePesan(action, payload, 'lambat').then(selesai);
+      }, BATAS_TULIS_LUNAK_MS);
+      apiJaringan(action, payload, BATAS_TULIS_MS).then(function(res){
+        if (!sudahDiantre) {
+          dijawab = true; clearTimeout(penundaan);
+          // Gagal karena jaringan (bukan ditolak server): masuk antrian
+          if (!res.ok && (res._jaringanGagal || res._sedangDiproses)) {
+            _antrePesan(action, payload, res._habisWaktu ? 'habis_waktu' : 'jaringan_gagal').then(selesai);
+            return;
+          }
+          // Catat waktu penyimpanan sendiri -- dipakai supaya notifikasi "ada pembaruan
+          // data" tidak muncul hanya karena perubahan yang dia sendiri buat.
+          if (res && res.ok && !res.offline) _waktuSimpanTerakhirSendiri = Date.now();
+          selesai(res);
+          return;
+        }
+        // Sudah diamankan ke antrian karena server lambat: rapikan sesuai jawaban akhirnya
+        var id = payload && payload._idem;
+        if (res && res.ok) {
+          _waktuSimpanTerakhirSendiri = Date.now();
+          if (getOutbox().some(function(x){ return x.id === id; })) {
+            hapusDariOutbox(id);
+            toastAntrian('&#9989; Data yang tadi tertunda sudah sampai ke server.');
+          }
+        } else if (res && !res._jaringanGagal && !res._sedangDiproses && !res.perluLogin) {
+          ubahItemOutbox(id, function(x){ x.status = 'ditolak'; x.galat = res.error || 'Ditolak server'; });
+        }
+      });
     });
   }
 
@@ -1456,7 +1750,9 @@
       return Promise.resolve({ok:false, error:'Penyimpanan HP penuh, data belum bisa disimpan untuk dikirim nanti. Kosongkan sebagian ruang penyimpanan HP, atau simpan saat ada internet.'});
     }
     var jumlah = payload && payload.items ? payload.items.length : 1;
-    var pesan = '&#128225; Tidak ada internet &mdash; '+jumlah+' data tersimpan di HP ini dan akan dikirim otomatis saat online.';
+    var pesan = alasan === 'offline'
+      ? '&#128225; Tidak ada internet &mdash; '+jumlah+' data tersimpan di HP ini dan akan dikirim otomatis saat online.'
+      : '&#128246; Internet sedang lemah &mdash; '+jumlah+' data disimpan dulu di HP ini dan dikirim otomatis begitu sinyal pulih.';
     toastAntrian(pesan);
     return Promise.resolve({ok:true, offline:true, ditambah:jumlah, diupdate:0, pesanOffline:pesan});
   }
@@ -1493,8 +1789,9 @@
           hapusDariOutbox(item.id); berhasil++;
           return berikutnya(i + 1);
         }
-        if (!res || res._jaringanGagal || res._sedangDiproses) {
-          // Sinyal putus lagi: berhenti, SEMUA sisa tetap di antrian (tidak dihitung gagal)
+        if (!res || res._jaringanGagal || res._sedangDiproses || res.perluLogin) {
+          // Sinyal putus lagi (atau sesi perlu diperbarui): berhenti, SEMUA sisa tetap di
+          // antrian (tidak dihitung gagal) -- dikirim lagi setelah internet/sesi kembali.
           ubahItemOutbox(item.id, function(x){ x.percobaan = (x.percobaan||0) + 1; });
           return akhiri();
         }
@@ -1509,7 +1806,9 @@
 
   // Pemicu otomatis
   window.addEventListener('online', function(){
+    _jaringanBurukSampai = 0; // beri kesempatan jaringan dicoba lagi
     setTimeout(sinkronkanOutbox, 1500); // tunggu sebentar agar koneksi stabil
+    setTimeout(siapkanOfflineOtomatis, 8000 + Math.floor(Math.random() * 8000));
     var bo = document.getElementById('bannerOffline');
     if (bo) bo.style.display = 'none';
     setTimeout(cekPembaruanData, 2500);
@@ -1531,10 +1830,15 @@
       setTimeout(sinkronkanOutbox, 1200);
     }
   });
-  // Cek berkala tiap 2 menit selama masih ada data menunggu
+  // Cek berkala tiap 2 menit selama masih ada data menunggu (saat sinyal lemah,
+  // penjaga jaringan yang memeriksa -- begitu pulih, antrian langsung dikirim)
   setInterval(function(){
-    if (navigator.onLine && !SEDANG_SINKRON && getOutbox().some(function(x){ return x.status !== 'ditolak'; })) sinkronkanOutbox();
+    if (navigator.onLine && !jaringanSedangBuruk() && !SEDANG_SINKRON && getOutbox().some(function(x){ return x.status !== 'ditolak'; })) sinkronkanOutbox();
   }, 2 * 60 * 1000);
+  // Saat aplikasi dibuka kembali / internet kembali: siapkan data offline hari ini bila belum
+  document.addEventListener('visibilitychange', function(){
+    if (document.visibilityState === 'visible' && navigator.onLine) setTimeout(siapkanOfflineOtomatis, 4000 + Math.floor(Math.random() * 6000));
+  });
 
   // Cek pembaruan data tiap 3 menit. Jawaban server sendiri di-cache 60 detik, jadi
   // beban ke kuota Apps Script tetap kecil walau dipakai banyak perangkat sekaligus.
@@ -3042,6 +3346,275 @@
         '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><a href="'+url+'" target="_blank" rel="noopener"><button>Buka / Cetak</button></a><a href="'+url+'" download="'+esc(r.data.name)+'"><button class="secondary">Unduh</button></a></div>';
     });
   }
+  // =====================================================================
+  // SURAT UNDANGAN MUSYAWARAH SPP (kartu di dashboard Mudir/Admin/Bendahara/Kabag)
+  // Surat digambar sebagai PNG di HP/komputer pembuat (kanvas, tanpa pustaka luar), lalu server menyimpannya di arsip surat keluar dan mengirimnya ke akun wali
+  // (menu Surat + notifikasi) dan WhatsApp wali (gambar).
+  // =====================================================================
+  var _panggilanCache = null, _panggilanWaktu = 0;
+  var ROLE_PANGGILAN = ['Admin','Mudir','Bendahara','Sekretaris','KabagPutra','KabagPutri','Kabag'];
+  function bolehPanggilanSpp(){
+    var roles = (STATE.user && (STATE.user.roles || [STATE.user.level])) || [];
+    return !!(STATE.user && STATE.user.tokenSurat) && roles.some(function(r){ return ROLE_PANGGILAN.indexOf(r) >= 0; }) && !sedangModeKantin();
+  }
+  function pasangKartuPanggilanSpp(idSetelah){
+    if (!bolehPanggilanSpp()) return;
+    var acuan = document.getElementById(idSetelah); if (!acuan) return;
+    var wrap = document.getElementById('kartuPanggilanSpp');
+    if (!wrap) { wrap = document.createElement('div'); wrap.id = 'kartuPanggilanSpp'; acuan.parentNode.insertBefore(wrap, acuan.nextSibling); }
+    var terbuka = false;
+    function gambar(res){
+      if (!document.body.contains(wrap)) return;
+      if (!res || !res.ok || !res.data || !res.data.tampil) { wrap.innerHTML = ''; return; }
+      var d = res.data, daftar = d.data || [];
+      var cakupan = d.cakupan === 'putra' ? ' (santri putra)' : (d.cakupan === 'putri' ? ' (santri putri)' : '');
+      var kepala = '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
+        '<div><b style="color:#9a3412">&#128232; SPP belum terselesaikan &ge; '+d.minBulan+' bulan'+cakupan+': '+daftar.length+' santri</b>' +
+        '<div class="muted" style="font-size:12px">Kirim surat undangan silaturahmi &amp; musyawarah ke orang tua/wali.</div></div>' +
+        '<div style="display:flex;gap:6px">' + (daftar.length ? '<button class="small secondary" id="kpsBuka">'+(terbuka?'Tutup':'Lihat daftar')+'</button>' : '') +
+        (d.bolehAtur ? '<button class="small secondary" id="kpsAtur" title="Pengaturan surat undangan">&#9881;&#65039; Atur</button>' : '') + '</div></div>';
+      var isi = '';
+      if (terbuka && daftar.length) {
+        isi = '<div style="margin-top:10px;max-height:60vh;overflow:auto">' + daftar.map(function(s, i){
+          var t = s.terakhir;
+          return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px solid #f1f5f9;flex-wrap:wrap">' +
+            '<div style="min-width:200px;flex:1"><b>'+esc(s.nama)+'</b> <span class="muted" style="font-size:12px">'+esc(s.kelas||'')+'</span>' +
+            '<div style="font-size:12.5px;color:#b45309">'+s.jumlahBulan+' bulan &middot; '+rupiah(s.total)+'</div>' +
+            (t ? '<div class="muted" style="font-size:11.5px">&#9993;&#65039; Undangan terakhir '+esc(tglPanjangKeu(t.tanggal))+' (No. '+esc(t.nomor)+')'+(t.pertemuan?' &middot; pertemuan '+esc(tglPanjangKeu(t.pertemuan)):'')+'</div>' : '') +
+            '</div><button class="small kpsKirim" data-i="'+i+'">&#9993;&#65039; Kirim Surat Undangan</button></div>';
+        }).join('') + '</div>';
+      }
+      wrap.innerHTML = '<div class="card" style="border-left:4px solid #ea580c">' + kepala + isi + '</div>';
+      var bB = document.getElementById('kpsBuka'); if (bB) bB.onclick = function(){ terbuka = !terbuka; gambar(res); };
+      var bA = document.getElementById('kpsAtur'); if (bA) bA.onclick = function(){ aturPanggilanSpp(function(){ _panggilanCache = null; muat(); }); };
+      wrap.querySelectorAll('.kpsKirim').forEach(function(b){ b.onclick = function(){ bukaKirimPanggilanSpp(daftar[Number(b.dataset.i)], function(){ _panggilanCache = null; terbuka = true; muat(); }); }; });
+    }
+    function muat(){
+      if (_panggilanCache && Date.now() - _panggilanWaktu < 5*60*1000) { gambar(_panggilanCache); return; }
+      apiSurat('panggilanSppDaftar', {}).then(function(r){ if (r && r.ok) { _panggilanCache = r; _panggilanWaktu = Date.now(); } gambar(r); });
+    }
+    muat();
+  }
+
+  function aturPanggilanSpp(selesai){
+    api('getPengaturanBatch', {keys:['PanggilanSppAktif','PanggilanSppMinBulan','PanggilanSppTempat','PanggilanSppJam','PanggilanSppKontak']}).then(function(r){
+      var pg = (r && r.ok && r.data) || {};
+      var aktif = !(pg.PanggilanSppAktif === false || String(pg.PanggilanSppAktif).toLowerCase() === 'false');
+      var minB = Number(pg.PanggilanSppMinBulan) || 3;
+      var m = keuModal('<h3 style="margin-top:0">&#9881;&#65039; Pengaturan Surat Undangan SPP</h3>' +
+        '<label style="display:flex;gap:8px;align-items:center;font-weight:700"><input type="checkbox" id="apsAktif" style="width:auto"'+(aktif?' checked':'')+'> Tampilkan kartu di dashboard Mudir, Admin, Bendahara &amp; Kabag</label>' +
+        '<label style="margin-top:8px">Tampilkan santri yang menunggak minimal</label><select id="apsMin">' +
+          [1,2,3,4,5,6].map(function(n){ return '<option value="'+n+'"'+(n===minB?' selected':'')+'>'+n+' bulan</option>'; }).join('') + '</select>' +
+        '<label>Tempat pertemuan (bawaan)</label><input id="apsTempat" value="'+esc(pg.PanggilanSppTempat || 'Kantor Pondok Pesantren Wihdatul Ummah Poso')+'">' +
+        '<label>Waktu pertemuan (bawaan)</label><input id="apsJam" value="'+esc(pg.PanggilanSppJam || '09.00 WITA s.d. selesai')+'">' +
+        '<label>Nomor yang dapat dihubungi wali <span class="muted">(kosongkan = nomor di kop surat)</span></label><input id="apsKontak" value="'+esc(pg.PanggilanSppKontak || '')+'" placeholder="mis. 0822 2922 5617">' +
+        '<p class="muted" style="font-size:12px">Kabag Putra hanya melihat santri putra, Kabag Putri hanya santri putri. Santri yang dibebaskan, dikecualikan dari tagihan, atau info SPP-nya disembunyikan dari wali tidak pernah muncul.</p>' +
+        '<div style="display:flex;gap:8px;margin-top:8px"><button id="apsSimpan">Simpan</button><button class="secondary" data-tutup>Batal</button></div><div id="apsPesan"></div>', 460);
+      m.el.querySelector('#apsSimpan').onclick = function(){
+        var b = this;
+        loadingBtn(b, 'Menyimpan...');
+        api('simpanPengaturanBatch', {data:{PanggilanSppAktif: m.el.querySelector('#apsAktif').checked ? 'true' : 'false', PanggilanSppMinBulan: m.el.querySelector('#apsMin').value,
+          PanggilanSppTempat: m.el.querySelector('#apsTempat').value.trim(), PanggilanSppJam: m.el.querySelector('#apsJam').value.trim(), PanggilanSppKontak: m.el.querySelector('#apsKontak').value.trim()}}).then(function(h){
+          resetBtn(b, 'Simpan');
+          if (!h || !h.ok) { m.el.querySelector('#apsPesan').innerHTML = errBox((h && h.error) || 'Gagal menyimpan.'); return; }
+          m.tutup(); if (selesai) selesai();
+        });
+      };
+    });
+  }
+
+  // ---- Penyusun surat langsung di kanvas (tanpa pustaka luar, jalan di semua HP) ----
+  // Ukuran A4 pada 192 dpi: 1588 x 2246 piksel.
+  var SP_FONT = '"Times New Roman","Liberation Serif","Noto Serif",Georgia,serif';
+  var SP_AR = '"Amiri","Noto Naskh Arabic","Traditional Arabic","Times New Roman",serif';
+  function muatGambarSP(src){
+    return new Promise(function(res){ if (!src) return res(null); var im = new Image(); im.onload = function(){ res(im); }; im.onerror = function(){ res(null); }; im.src = src; });
+  }
+  // runs: [{t, b, i}] -> baris-baris kata yang muat di lebar w
+  function bungkusRunsSP(ctx, runs, w, ukuran){
+    var kata = [];
+    runs.forEach(function(r){
+      String(r.t).split(/(\s+)/).forEach(function(p){
+        if (!p) return;
+        if (/^\s+$/.test(p)) { if (kata.length) kata[kata.length-1].spasi = true; return; }
+        kata.push({t:p, b:!!r.b, i:!!r.i, spasi:false});
+      });
+    });
+    kata.forEach(function(k){ ctx.font = (k.i?'italic ':'') + (k.b?'bold ':'') + ukuran + 'px ' + SP_FONT; k.w = ctx.measureText(k.t).width; });
+    ctx.font = ukuran + 'px ' + SP_FONT; var sp = ctx.measureText(' ').width;
+    var baris = [], kini = [], lebar = 0;
+    kata.forEach(function(k){
+      var tambah = (kini.length ? sp : 0) + k.w;
+      if (kini.length && lebar + tambah > w) { baris.push(kini); kini = [k]; lebar = k.w; }
+      else { kini.push(k); lebar += tambah; }
+    });
+    if (kini.length) baris.push(kini);
+    return {baris: baris, spasi: sp};
+  }
+  function gambarSuratKanvas(b, isian){
+    var k = b.kop || {}, sg = b.penandatangan || {}, s = b.santri || {};
+    return Promise.all([muatGambarSP((b.images||{}).logo), muatGambarSP((b.images||{}).ttd)]).then(function(img){
+      var W = 1588, ML = 150, MR = 125, LB = W - ML - MR, U = 30, LH = 43;
+      var ops = [], y = 88;
+      function teks(t, x, yy, f, al, warna, arah){ ops.push(function(c){ c.font = f; c.textAlign = al || 'left'; c.direction = arah || 'ltr'; c.fillStyle = warna || '#000'; c.fillText(t, x, yy); }); }
+      function garis(x1, yy, x2, tebal){ ops.push(function(c){ c.fillStyle = '#000'; c.fillRect(x1, yy, x2 - x1, tebal); }); }
+      // --- kop ---
+      var kiri = String(k.kopKiri||'').split(/\r?\n/), kanan = String(k.kopKanan||'').split(/\r?\n/);
+      var cx1 = ML + LB*0.205, cx2 = ML + LB*0.5, cx3 = ML + LB*0.795, tinggiKop = 200;
+      kiri.forEach(function(l, i){ teks(l, cx1, y + 40 + i*44, 'bold 32px '+SP_FONT, 'center'); });
+      kanan.forEach(function(l, i){ teks(l, cx3, y + 44 + i*54, 'bold 42px '+SP_AR, 'center', '#000', 'rtl'); });
+      var yLogo = y - 8;
+      if (img[0]) ops.push(function(c){ var h = 190, r = img[0].width / img[0].height, w2 = Math.min(h * r, 260); c.drawImage(img[0], cx2 - w2/2, yLogo, w2, w2 / r); });
+      y += tinggiKop;
+      if (k.kopBar) {
+        var yBar = y;
+        ops.push(function(c){ c.fillStyle = k.warnaKop || '#01B0F1'; c.fillRect(ML - 20, yBar, LB + 40, 50); });
+        teks(k.kopBar, W/2, y + 34, 'italic bold 23px Calibri,Arial,sans-serif', 'center', '#fff');
+        y += 62;
+      }
+      garis(ML - 20, y, W - MR + 20, 7); garis(ML - 20, y + 11, W - MR + 20, 2); y += 60;
+      function paragraf(runs, opsi){
+        opsi = opsi || {};
+        var x0 = ML + (opsi.indent || 0), w = LB - (opsi.indent || 0);
+        var hasil = bungkusRunsSP(ctxUkur, runs, w, U);
+        hasil.baris.forEach(function(br, bi){
+          var akhir = bi === hasil.baris.length - 1, total = 0;
+          br.forEach(function(kt){ total += kt.w; });
+          var celah = br.length > 1 && opsi.rata !== false && !akhir ? (w - total) / (br.length - 1) : hasil.spasi;
+          var x = x0, yy = y;
+          br.forEach(function(kt){ var xx = x; teks(kt.t, xx, yy, (kt.i?'italic ':'') + (kt.b?'bold ':'') + U + 'px ' + SP_FONT); x += kt.w + celah; });
+          y += LH;
+        });
+        y += opsi.jarak == null ? 10 : opsi.jarak;
+      }
+      function tabel(baris, opsi){
+        opsi = opsi || {};
+        var x0 = ML + (opsi.indent || 0), lk = opsi.lebarLabel || 380;
+        baris.forEach(function(r){
+          teks(r[0], x0, y, U + 'px ' + SP_FONT); teks(':', x0 + lk, y, U + 'px ' + SP_FONT);
+          var vx = x0 + lk + 26, hasil = bungkusRunsSP(ctxUkur, [{t:r[1], b:r[2]}], LB - (vx - ML), U);
+          hasil.baris.forEach(function(br, i){ var x = vx; br.forEach(function(kt){ teks(kt.t, x, y, (kt.b?'bold ':'') + U + 'px ' + SP_FONT); x += kt.w + hasil.spasi; }); if (i < hasil.baris.length - 1) y += LH; });
+          y += LH;
+        });
+        y += opsi.jarak == null ? 12 : opsi.jarak;
+      }
+      var ctxUkur = document.createElement('canvas').getContext('2d');
+      var nama = String(s.nama || '').toUpperCase();
+      tabel([['Nomor', b.nomor], ['Lampiran', '-'], ['Perihal', 'Undangan Silaturahmi dan Musyawarah Administrasi Pendidikan Ananda', true]], {lebarLabel: 170, jarak: 26});
+      paragraf([{t:'Kepada Yth.'}], {jarak:0, rata:false});
+      paragraf([{t:'Bapak/Ibu Orang Tua/Wali dari Ananda '}, {t:nama, b:true}], {jarak:0, rata:false});
+      paragraf([{t:'di Tempat'}], {jarak:26, rata:false});
+      paragraf([{t:'Assalamu’alaikum warahmatullahi wabarakatuh.', i:true}], {rata:false});
+      paragraf([{t:'Segala puji bagi Allah Subhanahu wa Ta’ala. Semoga Bapak/Ibu beserta keluarga senantiasa dalam keadaan sehat dan dilimpahi keberkahan.'}]);
+      paragraf([{t:'Kami mengucapkan terima kasih atas kepercayaan Bapak/Ibu menitipkan Ananda untuk menuntut ilmu dan dibina di ' + (k.namaResmi || 'Pondok Pesantren Wihdatul Ummah Poso') + '. Semoga Allah menjadikan Ananda anak yang shalih/shalihah dan penyejuk hati kedua orang tuanya.'}]);
+      paragraf([{t:'Dalam rangka menjaga kelancaran pendidikan Ananda, kami bermaksud mengundang Bapak/Ibu untuk bersilaturahmi sekaligus bermusyawarah mengenai administrasi pendidikan Ananda, yaitu:'}], {jarak:6});
+      var bulan = s.bulan || [];
+      // Bulan berurutan ditulis ringkas "Juli 2026 s.d. November 2026 (5 bulan)"; tidak berurutan ditulis satu per satu
+      var urutBln = bulan.map(function(x){ var m = String(x).match(/^(\S+)\s+(\d{4})$/); return m ? Number(m[2]) * 12 + BULAN_KEU.indexOf(m[1]) : NaN; });
+      var berurutan = urutBln.every(function(v, i){ return !isNaN(v) && (i === 0 || v === urutBln[i-1] + 1); });
+      var teksBulan = bulan.length >= 3 && berurutan ? bulan[0] + ' s.d. ' + bulan[bulan.length-1] + ' (' + bulan.length + ' bulan)' : bulan.join(', ') + (bulan.length > 1 ? ' (' + bulan.length + ' bulan)' : '');
+      var dataS = [['Nama Santri', nama, true]];
+      if (s.kelas) dataS.push(['Kelas', s.kelas]);
+      dataS.push(['SPP yang belum terselesaikan', teksBulan], ['Jumlah', rupiah(s.total)]);
+      tabel(dataS, {indent: 70, lebarLabel: 420});
+      paragraf([{t:'Insya Allah pertemuan tersebut akan dilaksanakan pada:'}], {jarak:6, rata:false});
+      var q = String(isian.tanggal || '').split('-').map(Number);
+      var hari = q.length === 3 ? HARI_LIST[new Date(q[0], q[1]-1, q[2]).getDay()] : '';
+      tabel([['Hari/Tanggal', (hari ? hari + ', ' : '') + tglPanjangKeu(isian.tanggal)], ['Waktu', isian.jam], ['Tempat', isian.tempat]], {indent: 70, lebarLabel: 420});
+      paragraf([{t:'Kami memahami bahwa setiap keluarga memiliki keadaan yang berbeda-beda. Karena itu, pertemuan ini kami maksudkan untuk mencari jalan terbaik bersama, termasuk kemungkinan pengaturan cara dan waktu penyelesaiannya. Bila Bapak/Ibu berhalangan hadir pada waktu tersebut, mohon berkenan menghubungi kami'},
+        b.kontak ? {t:' di nomor '} : {t:''}, b.kontak ? {t:b.kontak, b:true} : {t:''}, {t:' agar dapat diatur waktu lain yang lebih leluasa.'}]);
+      paragraf([{t:'Apabila Bapak/Ibu telah menyelesaikan administrasi tersebut sebelum surat ini diterima, mohon surat ini diabaikan dan kami haturkan '}, {t:'jazakumullahu khairan.', i:true}]);
+      paragraf([{t:'Demikian undangan ini kami sampaikan. Atas perhatian dan kerja sama Bapak/Ibu, kami ucapkan '}, {t:'jazakumullahu khairan katsiran.', i:true}]);
+      paragraf([{t:'Wassalamu’alaikum warahmatullahi wabarakatuh.', i:true}], {rata:false, jarak:20});
+      // --- tanda tangan ---
+      var tx = W - MR - 640;
+      teks((k.kota || 'Poso') + ', ' + tglPanjangKeu(b.tanggal), tx, y, U + 'px ' + SP_FONT); y += LH;
+      teks(String(sg.jabatan || 'Mudir').replace(/\s+/g, ' '), tx, y, U + 'px ' + SP_FONT); y += 12;
+      if (img[1]) { var th = 230, tw = Math.min(600, th * img[1].width / img[1].height), yT = y; ops.push(function(c){ c.drawImage(img[1], tx - 20, yT, tw, th); }); y += th + 22; }
+      else y += 170;
+      var nm = String(sg.nama || '').toUpperCase();
+      teks(nm, tx, y, 'bold ' + U + 'px ' + SP_FONT);
+      ctxUkur.font = 'bold ' + U + 'px ' + SP_FONT; var lebarNm = ctxUkur.measureText(nm).width, yN = y;
+      ops.push(function(c){ c.fillStyle = '#000'; c.fillRect(tx, yN + 6, lebarNm, 2); });
+      y += LH;
+      if (sg.nip) { teks(sg.nip, tx, y, U + 'px ' + SP_FONT); y += LH; }
+      var H = Math.max(2246, Math.round(y + 90));
+      var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+      var c = cv.getContext('2d');
+      c.fillStyle = '#fff'; c.fillRect(0, 0, W, H); c.textBaseline = 'alphabetic';
+      ops.forEach(function(f){ c.save(); f(c); c.restore(); });
+      return cv.toDataURL('image/png');
+    });
+  }
+  function tambahHariFE(n){ var d = new Date(); d.setDate(d.getDate() + n); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
+  function bukaKirimPanggilanSpp(s, selesai){
+    var m = keuModal('<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h3 style="margin:0">&#9993;&#65039; Surat Undangan untuk Wali '+esc(s.nama)+'</h3><button class="secondary small" data-tutup>Tutup</button></div>' +
+      '<p class="muted" style="font-size:12.5px;margin:6px 0 10px">'+s.jumlahBulan+' bulan &middot; '+rupiah(s.total)+(s.kelas?' &middot; '+esc(s.kelas):'')+'</p>' +
+      '<div id="kpBody"><p class="muted">Menyiapkan data surat...</p></div>', 640);
+    var bahan = null, png = '';
+    function isian(){ return {tanggal: m.el.querySelector('#kpTgl').value, jam: m.el.querySelector('#kpJam').value.trim(), tempat: m.el.querySelector('#kpTempat').value.trim()}; }
+    function siapkan(){
+      return apiSurat('panggilanSppSiapkan', {nisn: s.nisn}).then(function(r){
+        if (!r || !r.ok) throw new Error((r && r.error) || 'Data surat tidak dapat disiapkan.');
+        bahan = r.data; return bahan;
+      });
+    }
+    function pratinjau(){
+      var el = m.el.querySelector('#kpPratinjau'), i = isian();
+      if (!i.tanggal) { el.innerHTML = errBox('Pilih tanggal pertemuan dulu.'); return Promise.reject(new Error('tanggal')); }
+      el.innerHTML = '<p class="muted">Membuat gambar surat...</p>';
+      return gambarSuratKanvas(bahan, i).then(function(url){
+        png = url;
+        el.innerHTML = '<img src="'+url+'" alt="Pratinjau surat" style="width:100%;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.08)">';
+        return url;
+      }, function(e){ el.innerHTML = errBox(e.message || 'Gagal membuat gambar surat.'); throw e; });
+    }
+    siapkan().then(function(b){
+      var t = s.terakhir;
+      m.el.querySelector('#kpBody').innerHTML =
+        (t ? '<div class="warn" style="margin-bottom:8px">&#8505;&#65039; Undangan terakhir sudah dikirim '+esc(tglPanjangKeu(t.tanggal))+' (No. '+esc(t.nomor)+(t.oleh?', oleh '+esc(t.oleh):'')+'). Pastikan memang perlu dikirim lagi.</div>' : '') +
+        '<div class="grid2"><div><label>Tanggal pertemuan</label><input type="date" id="kpTgl" value="'+tambahHariFE(3)+'" min="'+todayStr()+'"></div>' +
+        '<div><label>Waktu</label><input id="kpJam" value="'+esc(b.jam)+'"></div></div>' +
+        '<label>Tempat</label><input id="kpTempat" value="'+esc(b.tempat)+'">' +
+        '<p class="muted" style="font-size:12px;margin:4px 0 8px">Nomor surat <b>'+esc(b.nomor)+'</b> (otomatis dari Persuratan). Surat dikirim ke akun wali (menu Surat) dan WhatsApp wali dalam bentuk gambar.</p>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="secondary" id="kpLihat">&#128065; Pratinjau</button><button id="kpKirim">&#9993;&#65039; Kirim ke Wali</button></div>' +
+        '<div id="kpPesan"></div><div id="kpPratinjau" style="margin-top:10px"></div>';
+      ['kpTgl','kpJam','kpTempat'].forEach(function(id){ m.el.querySelector('#'+id).oninput = function(){ png = ''; }; });
+      m.el.querySelector('#kpLihat').onclick = function(){ pratinjau().catch(function(){}); };
+      var bK = m.el.querySelector('#kpKirim');
+      bK.onclick = function(){
+        var i = isian(), elP = m.el.querySelector('#kpPesan');
+        if (!i.tanggal) { elP.innerHTML = errBox('Pilih tanggal pertemuan dulu.'); return; }
+        loadingBtn(bK, 'Membuat surat...');
+        (png ? Promise.resolve(png) : pratinjau()).then(function(){
+          if (!confirm('Kirim surat undangan No. '+bahan.nomor+' ke wali '+s.nama+'?\n\nPertemuan: '+tglPanjangKeu(i.tanggal)+', '+i.jam)) { resetBtn(bK, '&#9993;&#65039; Kirim ke Wali'); return null; }
+          loadingBtn(bK, 'Mengirim...');
+          function kirim(ulang){
+            return apiSurat('panggilanSppKirim', {nisn: s.nisn, nomor: bahan.nomor, urut: bahan.urut, tanggalPertemuan: i.tanggal, jam: i.jam, tempat: i.tempat, png: png}).then(function(r){
+              if (r && !r.ok && /NOMOR_DIPAKAI/.test(r.error || '') && !ulang) {
+                // Nomor baru saja dipakai surat lain: ambil nomor berikutnya lalu buat ulang gambarnya
+                return siapkan().then(function(){ return pratinjau(); }).then(function(){ return kirim(true); });
+              }
+              return r;
+            });
+          }
+          return kirim(false).then(function(r){
+            resetBtn(bK, '&#9993;&#65039; Kirim ke Wali');
+            if (!r || !r.ok) { elP.innerHTML = errBox((r && r.error) || 'Gagal mengirim. Periksa koneksi lalu coba lagi.'); return; }
+            var h = r.data, w = h.wa || {};
+            bK.disabled = true; bK.textContent = 'Terkirim';
+            elP.innerHTML = '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;font-size:13px;color:#166534;margin-top:8px">&#9989; Surat No. <b>'+esc(h.nomor)+'</b> terkirim.<br>' +
+              'Akun wali: '+(h.app ? h.app+' akun (menu Surat + notifikasi)' : '<span style="color:#b45309">wali belum punya akun WASIAT</span>')+'<br>' +
+              'WhatsApp: '+(w.terkirim ? w.terkirim+' nomor' : (w.nonaktif ? 'jenis pesan ini dinonaktifkan' : (!w.nomor ? '<span style="color:#b45309">nomor WA wali belum terisi</span>' : '<span style="color:#b45309">gagal'+(h.galatWa?' ('+esc(h.galatWa)+')':'')+'</span>'))) +
+              '<br><span class="muted">Tersimpan di arsip Surat Keluar (Persuratan).</span></div>';
+            if (selesai) selesai();
+          });
+        }).catch(function(e){ resetBtn(bK, '&#9993;&#65039; Kirim ke Wali'); if (e && e.message !== 'tanggal') m.el.querySelector('#kpPesan').innerHTML = errBox((e && e.message) || 'Gagal.'); });
+      };
+    }).catch(function(e){ m.el.querySelector('#kpBody').innerHTML = errBox(e.message); });
+  }
+
   function fileKeB64Keu(file){ return new Promise(function(res,rej){ var fr=new FileReader(); fr.onload=function(){ res(String(fr.result).split(',')[1]); }; fr.onerror=rej; fr.readAsDataURL(file); }); }
   function labelBulanSppKeu(idx, tahunMasuk){ var tot=6+(idx-1); return BULAN_KEU[tot%12]+' '+(Number(tahunMasuk)+Math.floor(tot/12)); }
   function jatuhTempoSppKeu(tahunMasuk){ var today=new Date(), maks=0; for(var m=1;m<=36;m++){ var tot=6+(m-1); var d=new Date(Number(tahunMasuk)+Math.floor(tot/12), tot%12, 1); if(d<=today) maks=m; else break; } return maks; }
@@ -4206,7 +4779,8 @@
     // Cek sekali beberapa detik setelah masuk (jangan langsung, biar tidak menambah
     // beban saat halaman baru dirender). Berikutnya ditangani interval berkala.
     setTimeout(cekPembaruanData, 6000);
-    setTimeout(tawarkanSiapkanOffline, 9000);
+    // Data offline disiapkan otomatis (tanpa perlu ditawarkan/ditekan)
+    setTimeout(siapkanOfflineOtomatis, 8000 + Math.floor(Math.random() * 22000));
     // Kalau izin notifikasi sudah pernah diberikan, muat SDK diam-diam supaya
     // perangkat ini tetap terdaftar dengan nama pengguna yang sedang login
     // (penting saat satu HP dipakai berganti akun).
@@ -4319,6 +4893,7 @@
     );
 
     renderSlideBar('slideBarWrap');
+    try { pasangKartuPanggilanSpp('slideBarWrap'); } catch(e){}
 
     // Binding logout
     document.getElementById('sbLogout').onclick = function(){ if (!konfirmasiKeluarAkun()) return; STATE.user=null; hapusSesiTersimpan(); showBeranda(); };
@@ -4361,7 +4936,7 @@
         li.classList.add('active');
         tutupSidebarMulti(); // tutup sidebar di mobile saat menu dipilih
         var fn = mapFn[li.dataset.key];
-        if (fn) fn();
+        if (fn) { segarkanWadahKonten(); fn(); }
       };
     });
 
@@ -4443,6 +5018,17 @@
 
   // Semua fungsi guru/bendahara/pemilik yang memakai 'dg-content','db-content','dp-content'
   // perlu dibaca dari STATE._contentId
+  // Pindah menu: wadah konten diganti elemen baru (id sama). Halaman sebelumnya yang
+  // datanya baru tiba belakangan (mis. saat sinyal lemah) menulis ke wadah lama yang
+  // sudah dilepas -- tidak lagi menimpa halaman yang sedang dibuka/diisi pengguna.
+  function segarkanWadahKonten(){
+    try {
+      var lama = getContentEl();
+      if (!lama || !lama.parentNode) return;
+      var baru = lama.cloneNode(false);
+      lama.parentNode.replaceChild(baru, lama);
+    } catch(e){}
+  }
   function getContentEl(){
     // Coba STATE._contentId dulu, lalu coba semua ID yang mungkin ada
     var ids = [STATE._contentId, 'da-content', 'dg-content', 'db-content', 'dp-content', 'dpb-content', 'main-content'];
@@ -6235,6 +6821,7 @@
       '</div>'
     );
     renderSlideBar('slideBarWrap');
+    try { pasangKartuPanggilanSpp('slideBarWrap'); } catch(e){}
     document.getElementById('sbLogout').onclick = function(){ if (!konfirmasiKeluarAkun()) return; STATE.user=null; hapusSesiTersimpan(); showBeranda(); };
     var sbGanti = document.getElementById('sbGantiRole');
     if (sbGanti) sbGanti.onclick = function(){ tampilkanPilihanRole(); };
@@ -6255,6 +6842,7 @@
         document.querySelectorAll('.nav-item').forEach(function(x){x.classList.remove('active');});
         item.classList.add('active');
         tutupSidebar();
+        segarkanWadahKonten();
         opts.onSelect(item.dataset.key);
       };
     });
@@ -6832,7 +7420,9 @@
       if (!document.body.contains(el)) return;
       if (!res.ok || !res.data || res.data.ok === false) {
         el.innerHTML = '<div class="card" style="border-left:4px solid #d97706"><div class="muted" style="font-size:12px">'+judul+'</div>' +
-          '<p style="margin:6px 0 0;font-size:13px;color:#92400e">Rekap jam belum bisa dimuat'+((res && res.error) ? ': '+esc(res.error) : '')+'. Bila berlanjut, minta Admin memastikan Code.gs versi terbaru sudah di-deploy.</p></div>';
+          ((res && res._jaringanGagal)
+            ? '<p style="margin:6px 0 0;font-size:13px;color:#64748b">&#128225; Rekap jam tampil lagi saat internet tersedia. Absensi tetap bisa diisi.</p></div>'
+            : '<p style="margin:6px 0 0;font-size:13px;color:#92400e">Rekap jam belum bisa dimuat'+((res && res.error) ? ': '+esc(res.error) : '')+'. Bila berlanjut, minta Admin memastikan Code.gs versi terbaru sudah di-deploy.</p></div>');
         return;
       }
       var d = res.data;
@@ -13507,6 +14097,10 @@
           }).then(function(r){
             resetBtn(btn, '💾 Simpan Absensi');
             if (!r.ok) { document.getElementById('pbPesan').innerHTML = errBox(r.error); return; }
+            if (r.offline) {
+              document.getElementById('pbPesan').innerHTML = '<div style="background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:10px;font-size:13px">'+r.pesanOffline+'</div>';
+              return;
+            }
             document.getElementById('pbPesan').innerHTML =
               '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;color:#16a34a;font-weight:600">' +
               '✅ Absensi tersimpan! Total: '+r.total+' santri' +
@@ -19082,7 +19676,7 @@
             }
             var catatan = catInput ? catInput.value.trim() : '';
             api('centangTugas', {idTugas:id, pembina:namaPembina, tanggal:tanggal,
-                                  selesai: !done, catatan: catatan}).then(function(r){
+                                  selesai: !done, catatan: catatan, waktuKlien: new Date().toISOString()}).then(function(r){
               if (!r.ok){ alert(r.error); return; }
               muat(tanggal);
             });
@@ -19096,7 +19690,7 @@
               var id = item.dataset.id;
               if (item.dataset.done === '1') {
                 api('centangTugas', {idTugas:id, pembina:namaPembina, tanggal:tanggal,
-                                      selesai:true, catatan: this.value.trim()}).then(function(){});
+                                      selesai:true, catatan: this.value.trim(), waktuKlien: new Date().toISOString()}).then(function(){});
               }
             });
           }
@@ -19123,8 +19717,15 @@
                 var catInput2 = item.querySelector('.tugasCatatan');
                 var catatan = catInput2 ? catInput2.value.trim() : '';
                 api('centangTugas', {idTugas:id, pembina:namaPembina, tanggal:tanggal,
-                                      selesai:true, catatan: catatan}).then(function(r2){
+                                      selesai:true, catatan: catatan, waktuKlien: new Date().toISOString()}).then(function(r2){
                   if (!r2.ok){ alert(r2.error); return; }
+                  if (r2.offline) {
+                    // Foto tidak bisa diantre (ukurannya besar) -- tugas tetap tercatat selesai
+                    if (progress) progress.style.display = 'none';
+                    alert('Tugas ditandai selesai dan tersimpan di HP (dikirim otomatis saat online).\n\nFoto bukti belum bisa diunggah tanpa internet -- buka lagi tugas ini dan unggah fotonya setelah internet tersedia.');
+                    muat(tanggal);
+                    return;
+                  }
                   api('uploadFotoTugas', {imageBase64:base64, mimeType:mime,
                     namaFile:'Tugas_'+namaPembina+'_'+tanggal+'_'+id+'.jpg',
                     idTugas:id, pembina:namaPembina, tanggal:tanggal,
