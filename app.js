@@ -314,7 +314,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.10.30-a';
+  var VERSI_APP = '2026.11.04-b';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -16218,13 +16218,18 @@
     var c = getContentEl();
     c.innerHTML = '<div class="card"><p class="muted">Memuat...</p></div>';
     Promise.all([
-      api('getPengaturanBatch', {keys:['AbsenSusulanAktif','AbsenSusulanGuru','AbsenSusulanSampai','SusulanLupaAktif','SusulanLupaBerlakuHari']}),
+      api('getPengaturanBatch', {keys:['AbsenSusulanAktif','AbsenSusulanGuru','AbsenSusulanSampai','SusulanLupaAktif','SusulanLupaBerlakuHari','SusulanLupaBatasMundur','SusulanLupaHalaqoh','SusulanLupaOtomatis','SusulanLupaOtomatisDari','SusulanLupaOtomatisSampai']}),
       api('getMasterData', {sheet:'Guru'})
     ]).then(function(hasil){
       var pg = hasil[0].ok ? hasil[0].data : {};
       // Bawaan AKTIF bila belum pernah diatur
       var lupaAktif = !(pg.SusulanLupaAktif === false || String(pg.SusulanLupaAktif).toLowerCase() === 'false');
       var lupaHari = Number(pg.SusulanLupaBerlakuHari) || 3;
+      var bmStr = String(pg.SusulanLupaBatasMundur == null ? '' : pg.SusulanLupaBatasMundur).trim();
+      var lupaBatas = bmStr === '' ? 30 : (Number(bmStr) || 0);   // 0 = tanpa batas
+      var lupaHalaqoh = !(pg.SusulanLupaHalaqoh === false || String(pg.SusulanLupaHalaqoh).toLowerCase() === 'false');
+      var lupaOto = String(pg.SusulanLupaOtomatis).toLowerCase() === 'true';
+      var lupaOtoDari = String(pg.SusulanLupaOtomatisDari || '').slice(0,10), lupaOtoSampai = String(pg.SusulanLupaOtomatisSampai || '').slice(0,10);
       var daftarGuru = (hasil[1].ok && hasil[1].data && hasil[1].data.data)
         ? hasil[1].data.data.map(function(g){ return String(g.Nama||'').trim(); }).filter(Boolean).sort() : [];
       var aktif = pg.AbsenSusulanAktif === true || String(pg.AbsenSusulanAktif).toLowerCase() === 'true';
@@ -16258,9 +16263,24 @@
         '<button id="btnSimpanSusulan" style="margin-top:12px">Simpan</button><div id="pesanSusulan"></div></div>' +
 
         '<div class="card"><h3>&#9989; Absen Susulan lewat Izin "Lupa Mencatat"</h3>' +
-        warnBox('Guru yang sudah mengajar tapi lupa mengisi absen mengajukan izin dengan jenis <b>"Sudah mengajar, lupa mencatat"</b>. Begitu Anda menyetujuinya di menu <b>Kehadiran Guru &amp; SP &rarr; Izin Guru</b>, guru itu langsung mendapat notifikasi, dan di halaman Jadwal &amp; Absen-nya muncul tombol <b>Isi Absen</b> untuk setiap sesi pada tanggal tersebut (mapel maupun halaqoh). Akses ini hanya untuk guru dan tanggal yang disetujui.') +
+        warnBox('Guru yang sudah mengajar tapi lupa mengisi absen mengajukan izin dengan jenis "Sudah mengajar, lupa mencatat". Begitu Anda menyetujuinya di menu Kehadiran Guru & SP > Izin Guru, guru itu langsung mendapat notifikasi, dan di halaman Jadwal & Absen-nya muncul tombol Isi Absen untuk sesi pada tanggal tersebut (mapel, dan halaqoh bila diizinkan di bawah). Akses ini hanya untuk guru dan tanggal yang disetujui.') +
         '<label style="display:flex;align-items:center;gap:8px;font-weight:700;margin:6px 0 10px"><input type="checkbox" id="lpAktif" style="width:auto"'+(lupaAktif?' checked':'')+'> Aktifkan pengajuan "lupa mencatat"</label>' +
         '<p class="muted" style="font-size:12px;margin-top:-4px">Bila dimatikan, pilihan ini hilang dari form izin guru dan tombol Isi Absen yang sudah terbuka ikut tertutup.</p>' +
+        '<label>Tanggal mengajar paling jauh ke belakang yang boleh diajukan</label><select id="lpBatas">' +
+          '<option value="30"'+(lupaBatas===30?' selected':'')+'>30 hari ke belakang</option>' +
+          (lupaBatas>0 && lupaBatas!==30 ? '<option value="'+lupaBatas+'" selected>'+lupaBatas+' hari ke belakang</option>' : '') +
+          '<option value="0"'+(lupaBatas===0?' selected':'')+'>Tanpa batas (sejauh apa pun ke belakang)</option></select>' +
+        '<p class="muted" style="font-size:12px;margin-top:-4px">Berlaku untuk tanggal yang dipilih guru saat mengajukan izin. Pengajuan disetujui Mudir/Admin satu per satu, atau otomatis selama masa buka absen susulan di bawah.</p>' +
+        '<label>Absen halaqoh tahfidz yang terlupa</label><select id="lpHalaqoh">' +
+          '<option value="true"'+(lupaHalaqoh?' selected':'')+'>Boleh disusulkan (seperti absen mata pelajaran)</option>' +
+          '<option value="false"'+(!lupaHalaqoh?' selected':'')+'>Tidak bisa disusulkan</option></select>' +
+        '<p class="muted" style="font-size:12px;margin-top:-4px">Bila <b>tidak bisa</b>: tombol Isi Absen hanya muncul untuk mata pelajaran, dan sesi halaqoh yang tidak diisi pada harinya tetap dihitung tidak hadir di rekap Kehadiran Guru walau izin "lupa mencatat" disetujui.</p>' +
+        '<div style="border:1px solid #bbf7d0;background:#f0fdf4;border-radius:10px;padding:10px 12px;margin:10px 0">' +
+          '<label style="display:flex;align-items:center;gap:8px;font-weight:700;margin:0"><input type="checkbox" id="lpOto" style="width:auto"'+(lupaOto?' checked':'')+'> Buka masa absen susulan: setujui otomatis tanpa menunggu Mudir/Admin</label>' +
+          '<p class="muted" style="font-size:12px;margin:4px 0 8px">Selama masa ini, pengajuan "lupa mencatat" dari guru <b>langsung disetujui</b> dan tombol Isi Absen langsung muncul. Pengajuan tetap tercatat di Kehadiran Guru &amp; SP &rarr; Izin Guru (penyetuju: Otomatis). Di luar masa ini kembali disetujui satu per satu.</p>' +
+          '<div class="grid2" id="lpOtoTgl"><div><label>Mulai tanggal <span class="muted">(opsional)</span></label><input type="date" id="lpOtoDari" value="'+esc(lupaOtoDari)+'"></div>' +
+          '<div><label>Sampai tanggal <span class="muted">(disarankan diisi)</span></label><input type="date" id="lpOtoSampai" value="'+esc(lupaOtoSampai)+'"></div></div>' +
+          '<p class="muted" style="font-size:12px;margin:0">Kosongkan tanggal = berlaku sampai dimatikan manual.</p></div>' +
         '<label>Batas waktu mengisi setelah disetujui</label><select id="lpHari">' +
           [1,2,3,5,7].map(function(n){ return '<option value="'+n+'"'+(n===lupaHari?' selected':'')+'>'+n+' hari</option>'; }).join('') + '</select>' +
         '<button id="btnSimpanLupa" style="margin-top:12px">Simpan</button><div id="pesanLupa"></div></div>';
@@ -16280,14 +16300,23 @@
       document.getElementById('btnSimpanLupa').onclick = function(){
         var btn = this, el = document.getElementById('pesanLupa');
         var on = document.getElementById('lpAktif').checked, hari = Number(document.getElementById('lpHari').value);
+        var batas = Number(document.getElementById('lpBatas').value) || 0, hlq = document.getElementById('lpHalaqoh').value === 'true';
+        var oto = document.getElementById('lpOto').checked, otoDari = document.getElementById('lpOtoDari').value, otoSampai = document.getElementById('lpOtoSampai').value;
+        if (oto && otoDari && otoSampai && otoSampai < otoDari) { el.innerHTML = errBox('Tanggal "sampai" lebih awal daripada tanggal mulai.'); return; }
         loadingBtn(btn, 'Menyimpan...');
-        api('simpanPengaturanBatch', {data:{SusulanLupaAktif: on ? 'true' : 'false', SusulanLupaBerlakuHari: hari}}).then(function(r){
+        api('simpanPengaturanBatch', {data:{SusulanLupaAktif: on ? 'true' : 'false', SusulanLupaBerlakuHari: hari, SusulanLupaBatasMundur: batas, SusulanLupaHalaqoh: hlq ? 'true' : 'false',
+          SusulanLupaOtomatis: oto ? 'true' : 'false', SusulanLupaOtomatisDari: otoDari, SusulanLupaOtomatisSampai: otoSampai}}).then(function(r){
           resetBtn(btn, 'Simpan');
           if (!r.ok) { el.innerHTML = errBox(r.error); return; }
           STATE.pengaturan.SusulanLupaAktif = on ? 'true' : 'false';
           STATE.pengaturan.SusulanLupaBerlakuHari = hari;
+          STATE.pengaturan.SusulanLupaBatasMundur = batas;
+          STATE.pengaturan.SusulanLupaHalaqoh = hlq ? 'true' : 'false';
+          STATE.pengaturan.SusulanLupaOtomatis = oto ? 'true' : 'false';
+          STATE.pengaturan.SusulanLupaOtomatisDari = otoDari; STATE.pengaturan.SusulanLupaOtomatisSampai = otoSampai;
           el.innerHTML = '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;font-size:13px;color:#166534;margin-top:8px">&#9989; ' +
-            (on ? 'Aktif. Guru yang izin "lupa mencatat"-nya disetujui bisa mengisi absen dalam '+hari+' hari.' : 'Dinonaktifkan. Pilihan "lupa mencatat" tidak lagi tersedia untuk guru.') + '</div>';
+            (on ? 'Aktif. Guru bisa mengajukan untuk tanggal '+(batas>0 ? 'sampai '+batas+' hari ke belakang' : 'sejauh apa pun ke belakang')+'; absen halaqoh tahfidz '+(hlq ? 'boleh' : '<b>tidak bisa</b>')+' disusulkan; setelah disetujui, absen bisa diisi dalam '+hari+' hari.' +
+              (oto ? ' <b>Persetujuan otomatis aktif</b>' + (otoDari ? ' mulai '+esc(otoDari) : '') + (otoSampai ? ' sampai '+esc(otoSampai) : ' sampai dimatikan') + '.' : ' Setiap pengajuan disetujui satu per satu.') : 'Dinonaktifkan. Pilihan "lupa mencatat" tidak lagi tersedia untuk guru.') + '</div>';
         }).catch(function(){ resetBtn(btn, 'Simpan'); el.innerHTML = errBox('Gagal menyimpan.'); });
       };
 
@@ -16443,6 +16472,20 @@
     {nama:'Sudah mengajar, lupa mencatat', bukti:false, contoh:''}
   ];
 
+  // Aturan "lupa mencatat" dari pengaturan Admin/Mudir (dimuat di STATE.pengaturan)
+  function aturanLupaFE(){
+    var pg = STATE.pengaturan || {};
+    var b = String(pg.SusulanLupaBatasMundur == null ? '' : pg.SusulanLupaBatasMundur).trim();
+    var batas = b === '' ? 30 : (Number(b) || 0);
+    var halaqoh = !(pg.SusulanLupaHalaqoh === false || String(pg.SusulanLupaHalaqoh).toLowerCase() === 'false');
+    var hariIni = todayStr(), dari = String(pg.SusulanLupaOtomatisDari || '').slice(0,10), sampai = String(pg.SusulanLupaOtomatisSampai || '').slice(0,10);
+    var otomatis = String(pg.SusulanLupaOtomatis).toLowerCase() === 'true' && (!dari || hariIni >= dari) && (!sampai || hariIni <= sampai);
+    return {batas: batas, halaqoh: halaqoh, otomatis: otomatis,
+      teksOtomatis: otomatis ? ' <b>Saat ini pengajuan langsung disetujui otomatis</b>'+(sampai ? ' (sampai '+esc(sampai)+')' : '')+', tidak perlu menunggu Mudir/Admin.' : '',
+      teksBatas: batas > 0 ? 'bisa sampai '+batas+' hari ke belakang' : 'tanpa batas tanggal ke belakang',
+      teksHalaqoh: halaqoh ? '' : ' Absen <b>halaqoh tahfidz</b> yang terlupa <b>tidak bisa</b> disusulkan &mdash; hanya absen mata pelajaran.'};
+  }
+
   function formAjukanIzinGuru(tanggalAwal, setelahBerhasil){
     var fields =
       // Nama diambil dari akun yang login dan tidak bisa diubah -- nama guru dipakai
@@ -16456,7 +16499,7 @@
       '<label>Jenis</label><select id="izAlasan">'+IZIN_JENIS.filter(function(j){
           return j.nama !== 'Sudah mengajar, lupa mencatat' || String(STATE.pengaturan.SusulanLupaAktif).toLowerCase() !== 'false';
         }).map(function(j){ return '<option value="'+esc(j.nama)+'">'+esc(j.nama)+'</option>'; }).join('')+'</select>' +
-      '<div id="izInfoLupa" class="muted" style="display:none;font-size:12.5px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 10px;margin-top:6px">Setelah disetujui Mudir/Admin, Anda akan mendapat notifikasi dan tombol <b>Isi Absen</b> di halaman Jadwal &amp; Absen untuk mengisi absensi tanggal ini.</div>' +
+      '<div id="izInfoLupa" class="muted" style="display:none;font-size:12.5px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 10px;margin-top:6px">Setelah disetujui Mudir/Admin, Anda akan mendapat notifikasi dan tombol <b>Isi Absen</b> di halaman Jadwal &amp; Absen untuk mengisi absensi tanggal ini. Pengajuan '+aturanLupaFE().teksBatas+'.'+aturanLupaFE().teksHalaqoh+aturanLupaFE().teksOtomatis+'</div>' +
       '<label style="margin-top:8px">Keterangan <span style="color:#dc2626">(wajib)</span></label>' +
       '<textarea id="izKet" rows="3" style="width:100%;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-family:inherit" placeholder="Jelaskan singkat, mis. demam sejak semalam, sudah periksa ke klinik"></textarea>' +
       '<div id="izKetHint" class="muted" style="font-size:12px;margin-top:2px">Minimal 10 huruf.</div>' +
@@ -16485,7 +16528,9 @@
       return api('ajukanIzinGuru', {guru: STATE.user.nama, tanggal: tgl, tanggalSelesai: sampai || tgl,
         alasan: jenis, keterangan: ket, buktiUrl: buktiUrl, buktiMenyusul: menyusul}).then(function(r){
         if (!r.ok) { alert(r.error); throw new Error(r.error); }
-        alert('Pengajuan izin terkirim untuk ' + r.jumlah + ' hari. Menunggu persetujuan Mudir/Admin.' +
+        alert((r.otomatis
+            ? 'Absen susulan langsung DIBUKA untuk ' + r.jumlah + ' hari (disetujui otomatis). Tombol Isi Absen sekarang ada di halaman Izin & Surat Saya dan Jadwal & Absen. Isi dalam ' + (r.berlakuHari || 3) + ' hari.'
+            : 'Pengajuan izin terkirim untuk ' + r.jumlah + ' hari. Menunggu persetujuan Mudir/Admin.') +
           (r.dilewati && r.dilewati.length ? '\n\nDilewati karena sudah ada pengajuan: ' + r.dilewati.join(', ') : '') +
           (menyusul && !buktiUrl ? '\n\nJangan lupa melampirkan buktinya lewat menu Izin & Surat Saya begitu suratnya ada.' : ''));
         if (setelahBerhasil) setelahBerhasil();
@@ -16568,6 +16613,7 @@
       tiket.forEach(function(t, ti){
         html += '<div style="margin-top:10px;padding-top:8px;border-top:1px dashed #86efac">' +
           '<div style="font-size:13px"><b>'+fmtTglIndoSP(t.tanggal)+'</b> <span class="muted">&middot; berlaku sampai '+fmtTglIndoSP(t.berlakuSampai)+'</span></div>';
+        if (t.halaqohDitutup) html += '<p style="font-size:12px;margin:6px 0;color:#92400e">&#128274; Absen halaqoh tahfidz pada tanggal ini tidak bisa disusulkan (diatur Admin/Mudir).</p>';
         if (!t.sesi.length) html += '<p class="muted" style="font-size:12.5px;margin:6px 0">Tidak ada jadwal Anda yang tercatat pada hari '+esc(t.hari)+'. Pilih mata pelajarannya di bawah.</p>';
         t.sesi.forEach(function(x){
           var i = semua.length; semua.push({t:t, x:x});
@@ -16691,7 +16737,7 @@
       var saya = h[1].ok ? h[1] : {sp:[]};
       var html = '<div id="izTiketSusulan"></div><div class="card"><h3>&#128221; Izin Tidak Masuk</h3>' +
         '<p class="muted" style="font-size:13px">Ajukan izin <b>sebelum</b> hari Anda berhalangan bila sudah tahu, atau paling lambat '+((saya.cfg&&saya.cfg.batasKlarifikasi)||3)+' hari setelahnya. Izin yang disetujui Mudir/Admin tidak dihitung sebagai ketidakhadiran.</p>' +
-        '<p class="muted" style="font-size:13px"><b>Sudah mengajar tapi lupa mengisi absen?</b> Ajukan izin jenis <i>"Sudah mengajar, lupa mencatat"</i> (bisa sampai 30 hari ke belakang). Setelah disetujui, tombol <b>Isi Absen</b> muncul di halaman ini dan di Jadwal &amp; Absen untuk mengisi kehadiran santri pada tanggal itu.</p>' +
+        '<p class="muted" style="font-size:13px"><b>Sudah mengajar tapi lupa mengisi absen?</b> Ajukan izin jenis <i>"Sudah mengajar, lupa mencatat"</i> ('+aturanLupaFE().teksBatas+').'+aturanLupaFE().teksHalaqoh+aturanLupaFE().teksOtomatis+' Setelah disetujui, tombol <b>Isi Absen</b> muncul di halaman ini dan di Jadwal &amp; Absen untuk mengisi kehadiran santri pada tanggal itu.</p>' +
         '<button id="btnAjukanIzinBaru">+ Ajukan Izin</button></div>';
 
       html += '<div class="card"><h4>Riwayat Pengajuan</h4>' + (izin.length
