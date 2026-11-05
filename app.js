@@ -11,8 +11,8 @@
   var DAFTAR_ROLE = [
     {value:'Admin',        label:'Admin'},
     {value:'Mudir',        label:'Mudir'},
-    // Sekretaris: hanya membuka aplikasi Persuratan (buat surat, arsip, surat masuk).
-    {value:'Sekretaris',   label:'Sekretaris'},
+    // Sekretaris pondok sekaligus Admin dan Guru: satu centang sudah mencakup ketiganya.
+    {value:'Sekretaris',   label:'Sekretaris (termasuk Admin & Guru)'},
     {value:'Guru',         label:'Guru'},
     {value:'WaliKelas',    label:'Wali Kelas'},
     {value:'Bendahara',    label:'Bendahara'},
@@ -314,7 +314,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.11.06-a';
+  var VERSI_APP = '2026.11.08-b';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -2973,7 +2973,7 @@
   // pilihan dulu setelah login -- semua data role sudah didapat sekali dari server,
   // jadi memilih di sini tidak perlu panggilan server lagi.
   function tampilkanPilihanRole(){
-    var roles = STATE.user.roles || [STATE.user.level];
+    var roles = peranTampil(STATE.user.roles || [STATE.user.level]);
     var logo = logoSrc();
     render(
       '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(160deg,#0f766e,#134e4a 60%,#0a2e2c)">' +
@@ -3097,6 +3097,7 @@
       {key:'kondisipondok',   label:'Kondisi Pondok Hari Ini', icon:'&#127979;'},
       {key:'raporkelas',      label:'Rapor Santri',        icon:'&#128203;'},
       {key:'rekaphalaqoh',    label:'Rekap Halaqoh',       icon:'&#128218;'},
+      {key:'cetakjadwal',     label:'Cetak Jadwal Pelajaran', icon:'&#128197;'},
       {key:'rekapjurnal',     label:'Rekap Jurnal Guru',   icon:'&#128221;'},
       {key:'kelolatugas',     label:'Tugas Pembina',       icon:'&#9989;'},
       {key:'rekaptugas',      label:'Rekap Tugas Pembina', icon:'&#128202;'},
@@ -3107,6 +3108,7 @@
       {key:'kondisipondok',   label:'Kondisi Pondok Hari Ini', icon:'&#127979;'},
       {key:'raporkelas',      label:'Rapor Santri',        icon:'&#128203;'},
       {key:'rekaphalaqoh',    label:'Rekap Halaqoh',       icon:'&#128218;'},
+      {key:'cetakjadwal',     label:'Cetak Jadwal Pelajaran', icon:'&#128197;'},
       {key:'persuratan',      label:'Persuratan',          icon:'&#9993;&#65039;'},
       {key:'persetujuankeu',  label:'Persetujuan Keuangan', icon:'&#9989;'}
     ],
@@ -3185,7 +3187,7 @@
       // Admin/Mudir (kalau multi-role)
       adminpenuh:function(){ dashboardAdmin(); },
       raporkelas:adminRaporKelas, kelompokpapel:adminKelompokMapel,
-      rekaphalaqoh:adminRekapHalaqoh, rekapjurnal:adminRekapJurnal,
+      rekaphalaqoh:adminRekapHalaqoh, rekapjurnal:adminRekapJurnal, cetakjadwal:halCetakJadwal,
       rekaptugas:function(){ adminRekapTugasPembina(); },
       kelolatugas:function(){ adminKelolaTugasPembina(); },
     };
@@ -4498,7 +4500,7 @@
           tile('&#128214;','Setoran hafalan', (h.setoran||0), (h.santri||0)+' santri · '+(h.sabaq||0)+' sabaq · '+(h.tidakSetor||0)+' tidak setor', '#7c3aed') +
           tile('&#127979;','Kegiatan belajar', (mg.sesi||0)+' sesi', (mg.guru||0)+' guru mengajar · '+(mg.jurnalBelum||0)+' jurnal belum diisi', '#2563eb') +
           tile('&#128176;','Saldo kas', rupiah(k.saldo||0), 'Bulan ini: +'+rupiah(k.masukBulan||0)+' / −'+rupiah(k.keluarBulan||0), '#16a34a') +
-          tile('&#128179;','Tunggakan SPP', rupiah(k.tunggakanTotal||0), (k.tunggakanSantri||0)+' santri', '#dc2626') +
+          tile('&#128179;','Tunggakan SPP', rupiah(k.tunggakanTotal||0), (k.tunggakanSantri||0)+' santri aktif'+(k.tunggakanDikecualikan?' · '+k.tunggakanDikecualikan+' dikecualikan tidak dihitung':''), '#dc2626') +
           tile('&#9888;&#65039;','Pelanggaran hari ini', (d.pelanggaranHariIni||0), 'tercatat oleh pembina/guru', '#d97706') +
           '</div>' +
           (tunggu.length ? '<div style="margin-top:12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:10px 12px"><b style="font-size:13px">&#9203; Menunggu tindakan</b><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' +
@@ -4786,6 +4788,7 @@
     // (penting saat satu HP dipakai berganti akun).
     if (statusIzinNotif() === 'granted') setTimeout(muatOneSignal, 3000);
     else setTimeout(tawarkanAktifkanNotif, 14000);
+    lengkapiPeranSekretaris();
     var roles = STATE.user.roles || [STATE.user.level];
     // WaliSantri (orang tua) selalu dashboard sendiri
     if (roles.length === 1 && roles[0] === 'WaliSantri') return dashboardWali();
@@ -4822,9 +4825,29 @@
     var dariGuru = (MENU_PER_ROLE['Guru'] || []).filter(function(m){ return m.key && !sudah[m.key] && m.key !== 'pelanggaran'; });
     MENU_PER_ROLE[r] = dasar.concat([{judul:'Menu Guru'}], dariGuru);
   });
+  // Sekretaris: satu peran, satu sidebar berisi menu Sekretariat + Admin + Guru (server
+  // memberi akun Sekretaris hak Admin dan Guru sekaligus -- lihat levelEfektif_ di Code.gs).
+  (function(){
+    var sudah = {};
+    var ambil = function(daftar){ return (daftar || []).filter(function(m){ if (!m.key || sudah[m.key]) return false; sudah[m.key] = true; return true; }); };
+    var sek = ambil(MENU_PER_ROLE['Sekretaris']), adm = ambil(MENU_PER_ROLE['Admin']), guru = ambil(MENU_PER_ROLE['Guru']);
+    MENU_PER_ROLE['Sekretaris'] = [{judul:'Sekretariat'}].concat(sek, [{judul:'Admin'}], adm, [{judul:'Menu Guru'}], guru);
+  })();
+  // Peran yang ditampilkan sebagai tab: Admin & Guru sudah tergabung di dalam Sekretaris.
+  function peranTampil(roles){
+    roles = (roles || []).slice();
+    if (roles.indexOf('Sekretaris') === -1) return roles;
+    return roles.filter(function(r){ return r !== 'Admin' && r !== 'Guru'; });
+  }
+  // Sesi lama (sebelum pembaruan) bisa belum memuat Admin & Guru -- dilengkapi di sini.
+  function lengkapiPeranSekretaris(){
+    if (!STATE.user || !STATE.user.roles || STATE.user.roles.indexOf('Sekretaris') === -1) return;
+    ['Admin','Guru'].forEach(function(r){ if (STATE.user.roles.indexOf(r) === -1) STATE.user.roles.push(r); });
+  }
 
   function dashboardMultiRole(roles, activeRoleTab, activeMenuKey){
-    var validRoles = roles.filter(function(r){ return r !== 'WaliSantri' && MENU_PER_ROLE[r]; });
+    var validRoles = peranTampil(roles).filter(function(r){ return r !== 'WaliSantri' && MENU_PER_ROLE[r]; });
+    if (activeRoleTab && validRoles.indexOf(activeRoleTab) === -1) activeRoleTab = null;
     if (!validRoles.length){ showBeranda(true,'Tidak ada role yang valid. Hubungi Admin.'); return; }
 
     activeRoleTab = activeRoleTab || validRoles[0];
@@ -11956,6 +11979,18 @@
       var res=hasil[0], resTg=hasil[1];
       if(!res.ok){c.innerHTML=errBox(res.error);return;}
       var d=res.data;
+      // Tunggakan pondok = santri aktif yang ditagih. Santri yang sudah keluar/lulus dan yang
+      // dikecualikan dari tagihan disebut terpisah (dulu ikut dijumlah sehingga angkanya
+      // berbeda dengan Kondisi Pondok dan menu SPP).
+      var tgSemua = resTg.ok ? resTg.data : [];
+      var tgAktif = tgSemua.filter(function(t){ return !t.status && !t.tanpaTagihan; });
+      var tgLain = function(f){ var x = tgSemua.filter(f); return {n: x.length, rp: x.reduce(function(s,t){ return s+t.tunggakanSPP; },0)}; };
+      var keluarLulus = function(t){ return t.status === 'Lulus' || t.status === 'Mutasi Keluar'; };
+      var tgKeluar = tgLain(keluarLulus), tgCek = tgLain(function(t){ return !!t.status && !keluarLulus(t); }),
+          tgKecuali = tgLain(function(t){ return !t.status && t.tanpaTagihan; });
+      var catatanTg = [tgKeluar.n ? tgKeluar.n+' santri sudah keluar/lulus ('+rupiah(tgKeluar.rp)+')' : '',
+        tgCek.n ? tgCek.n+' catatan SPP perlu dicek NISN-nya ('+rupiah(tgCek.rp)+', lihat menu SPP &amp; Tunggakan)' : '',
+        tgKecuali.n ? tgKecuali.n+' santri dikecualikan dari tagihan ('+rupiah(tgKecuali.rp)+')' : ''].filter(Boolean).join(' &middot; ');
       var html='<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">' +
         '<h3>&#128200; Dasbor Keuangan</h3>' +
         '<div style="display:flex;gap:6px">' +
@@ -11972,15 +12007,16 @@
         '<div class="ringkasan-tile"><div class="ico">&#128176;</div><div class="nilai">'+rupiah(d.saldoKumulatif)+'</div><div class="label">Saldo Kas</div></div>' +
         '</div>' +
 
-        (resTg.ok&&resTg.data.length?
-          '<div class="card"><h4>&#9888;&#65039; Tunggakan SPP ('+resTg.data.length+' santri)</h4>' +
+        (tgAktif.length?
+          '<div class="card"><h4>&#9888;&#65039; Tunggakan SPP ('+tgAktif.length+' santri)</h4>' +
           '<div style="background:#fef2f2;border-radius:8px;padding:10px;font-size:13px">' +
-          '<div style="display:flex;justify-content:space-between;font-weight:700;margin-bottom:6px"><span>Total Tunggakan</span><span style="color:#dc2626">'+rupiah(resTg.data.reduce(function(s,t){return s+t.tunggakanSPP;},0))+'</span></div>' +
-          resTg.data.slice(0,5).map(function(t){
+          '<div style="display:flex;justify-content:space-between;font-weight:700;margin-bottom:6px"><span>Total Tunggakan</span><span style="color:#dc2626">'+rupiah(tgAktif.reduce(function(s,t){return s+t.tunggakanSPP;},0))+'</span></div>' +
+          (catatanTg ? '<p class="muted" style="margin:0 0 6px;font-size:11.5px">Belum termasuk: '+catatanTg+'.</p>' : '') +
+          tgAktif.slice(0,5).map(function(t){
             return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-top:1px dashed #fca5a5">' +
               '<span>'+esc(t.nama)+labelStatusSpp(t)+'</span><span style="color:#dc2626;font-weight:600">'+rupiah(t.tunggakanSPP)+' ('+t.jumlahBulan+' bln)</span></div>';
           }).join('') +
-          (resTg.data.length>5?'<p class="muted" style="margin:6px 0 0">...dan '+(resTg.data.length-5)+' santri lainnya. Lihat lengkap di menu SPP & Tunggakan.</p>':'')+
+          (tgAktif.length>5?'<p class="muted" style="margin:6px 0 0">...dan '+(tgAktif.length-5)+' santri lainnya. Lihat lengkap di menu SPP & Tunggakan.</p>':'')+
           '</div></div>':'') +
 
         (d.perKategori.length?
@@ -14441,8 +14477,8 @@
       '<div class="ringkasan-tile"><div class="ico">&#128101;</div><div class="nilai">'+d.santri.length+'</div><div class="label">Santri</div></div>'+
       '<div class="ringkasan-tile '+(rataHadir>=75?'warna-hijau':'warna-merah')+'"><div class="ico">&#9989;</div><div class="nilai">'+rataHadir+'%</div><div class="label">Rata Kehadiran</div></div>'+
       '</div>'+
-      '<div class="card"><table>'+
-      '<tr><th>No</th><th>Nama Santri</th><th>Hadir</th><th>Sakit</th><th>Izin</th><th>Alpa</th><th>% Hadir</th><th>Ket.</th></tr>'+
+      '<div class="card">'+(d.waktuHalaqoh||d.pengampu?'<p class="muted" style="margin-top:0">'+esc(d.namaHalaqoh||'')+(d.waktuHalaqoh?' &middot; Waktu: '+esc(d.waktuHalaqoh):'')+(d.pengampu?' &middot; Pengampu: '+esc(d.pengampu):'')+'</p>':'')+'<div style="overflow-x:auto"><table>'+
+      '<tr><th>No</th><th>Nama Santri</th><th>Hadir</th><th>Sakit</th><th>Izin</th><th>Izin Pulang</th><th>Alpa</th><th>% Hadir</th><th>Ket.</th></tr>'+
       d.santri.map(function(s,i){
         var w=s.persenHadir>=75?'#16a34a':s.persenHadir>=50?'#d97706':'#dc2626';
         var ket = s.persenHadir<75?'&#9888;&#65039; Perlu perhatian':'';
@@ -14450,12 +14486,13 @@
           '<td style="color:#16a34a;font-weight:600;text-align:center">'+s.hadir+'</td>'+
           '<td style="text-align:center">'+s.sakit+'</td>'+
           '<td style="text-align:center">'+s.izin+'</td>'+
+          '<td style="text-align:center">'+(s.izinPulang||0)+'</td>'+
           '<td style="color:#dc2626;font-weight:'+(s.alpa>0?'700':'400')+';text-align:center">'+s.alpa+'</td>'+
           '<td><div style="display:flex;align-items:center;gap:6px">'+
           '<div style="flex:1;background:#e2e8f0;border-radius:4px;height:10px"><div style="background:'+w+';width:'+Math.min(s.persenHadir,100)+'%;height:100%;border-radius:4px"></div></div>'+
           '<b style="color:'+w+';min-width:36px">'+s.persenHadir+'%</b></div></td>'+
           '<td style="font-size:12px">'+ket+'</td></tr>';
-      }).join('')+'</table></div>';
+      }).join('')+'</table></div></div>';
     container.innerHTML=html;
   }
 
@@ -14494,18 +14531,18 @@
       'td,th{border:1px solid #888;padding:4px 6px}th{background:#eee}.center{text-align:center}.bold{font-weight:700}'+
       '.merah{color:#dc2626}.hijau{color:#16a34a}'+
       '@media print{@page{margin:10mm}}</style></head><body>'+
-      '<h1>REKAP KEHADIRAN HALAQOH MAGHRIB<br><small>'+esc(namaSekolah)+'</small></h1>'+
-      '<p style="text-align:center">Halaqoh: <b>'+esc(d.namaHalaqoh)+'</b> | Total Sesi: <b>'+d.totalSesi+'</b></p>'+
-      '<table><tr><th>No</th><th>Nama Santri</th><th class="center">Hadir</th><th class="center">Sakit</th><th class="center">Izin</th><th class="center">Alpa</th><th class="center">% Hadir</th><th>Keterangan</th></tr>'+
+      '<h1>REKAP KEHADIRAN HALAQOH'+(d.waktuHalaqoh?' ('+esc(String(d.waktuHalaqoh).toUpperCase())+')':'')+'<br><small>'+esc(namaSekolah)+'</small></h1>'+
+      '<p style="text-align:center">Halaqoh: <b>'+esc(d.namaHalaqoh)+'</b>'+(d.pengampu?' | Pengampu: <b>'+esc(d.pengampu)+'</b>':'')+' | Total Sesi: <b>'+d.totalSesi+'</b>'+(d.periode?'<br>Periode: '+esc(d.periode):'')+'</p>'+
+      '<table><tr><th>No</th><th>Nama Santri</th><th class="center">Hadir</th><th class="center">Sakit</th><th class="center">Izin</th><th class="center">Izin Pulang</th><th class="center">Alpa</th><th class="center">% Hadir</th><th>Keterangan</th></tr>'+
       d.santri.map(function(s,i){
         var ket = s.persenHadir<75?'Perlu perhatian':s.persenHadir>=90?'Sangat baik':'Baik';
         return '<tr><td class="center">'+(i+1)+'</td><td>'+esc(s.nama)+'</td>'+
           '<td class="center">'+s.hadir+'</td><td class="center">'+s.sakit+'</td>'+
-          '<td class="center">'+s.izin+'</td><td class="center bold '+(s.alpa>2?'merah':'')+'">'+s.alpa+'</td>'+
+          '<td class="center">'+s.izin+'</td><td class="center">'+(s.izinPulang||0)+'</td><td class="center bold '+(s.alpa>2?'merah':'')+'">'+s.alpa+'</td>'+
           '<td class="center bold '+(s.persenHadir>=75?'hijau':'merah')+'">'+s.persenHadir+'%</td>'+
           '<td>'+ket+'</td></tr>';
       }).join('')+
-      '</table><p style="margin-top:20px;font-size:10px">Dicetak: '+new Date().toLocaleDateString('id-ID')+' | Pengampu: '+esc(STATE.user.nama)+'</p>'+
+      '</table><p style="margin-top:20px;font-size:10px">Dicetak: '+new Date().toLocaleDateString('id-ID')+' | Oleh: '+esc(STATE.user.nama)+'</p>'+
       '</body></html>');
     win.document.close();
   }
@@ -14516,11 +14553,12 @@
     var baris = [['No','Nama Santri','Hadir','Sakit','Izin','Izin Pulang','Alpa','% Hadir','Keterangan']];
     d.santri.forEach(function(s,i){
       var ket = s.persenHadir<75?'Perlu perhatian':s.persenHadir>=90?'Sangat baik':'Baik';
-      baris.push([i+1, s.nama, s.hadir, s.sakit, s.izin, s.alpa, s.persenHadir+'%', ket]);
+      baris.push([i+1, s.nama, s.hadir, s.sakit, s.izin, s.izinPulang||0, s.alpa, s.persenHadir+'%', ket]);
     });
     baris.push([]);
     baris.push(['Halaqoh', d.namaHalaqoh, '', 'Total Sesi', d.totalSesi]);
-    baris.push(['Dicetak', new Date().toLocaleDateString('id-ID'), '', 'Pengampu', STATE.user.nama]);
+    baris.push(['Waktu', d.waktuHalaqoh||'', '', 'Pengampu', d.pengampu||'']);
+    baris.push(['Periode', d.periode||'', '', 'Dicetak oleh', STATE.user.nama]);
 
     var csv = bom + baris.map(function(r){
       return r.map(function(v){
@@ -15283,6 +15321,7 @@
       {key:'mutasi', label:'Mutasi & Alumni', icon:'&#127891;'},
       {key:'data', label:'Data Master Lain', icon:'&#128193;'},
       {key:'pengganti', label:'Guru Pengganti', icon:'&#128101;'},
+      {key:'cetakjadwal', label:'Cetak Jadwal Pelajaran', icon:'&#128197;'},
       {key:'rekapguru', label:'Rekap Guru', icon:'&#128104;&#8205;&#127979;'},
       {key:'rekapsantri', label:'Rekap Santri', icon:'&#127891;'},
       {key:'rekaphafalanbulan', label:'Rekap Hafalan Bulanan', icon:'&#128202;'},
@@ -15329,7 +15368,7 @@
       {key:'ppdb', label:'PPDB Online', icon:'&#128221;'}
     ];
     var map = {ringkasan:adminRingkasan, tahun:adminTahunAjaran, rombel:adminRombel, halaqoh:adminHalaqoh, santri:adminDataSantri, mutasi:adminMutasiSantri, pengaturankasir:adminPengaturanKasir,
-      data:adminDataMaster, pengganti:adminPenggantian, rekapguru:adminRekapGuru, rekapsantri:adminRekapSantri, rekaphafalanbulan:halamanRekapHafalanBulanan, rapor:adminRaporSantri,
+      data:adminDataMaster, pengganti:adminPenggantian, cetakjadwal:halCetakJadwal, rekapguru:adminRekapGuru, rekapsantri:adminRekapSantri, rekaphafalanbulan:halamanRekapHafalanBulanan, rapor:adminRaporSantri,
       catatpelanggaran:function(){ renderFormCatatPelanggaran('da-content'); }, pelanggaran:adminKelolaPelanggaran,
       slide:adminSlide, websitebuilder:adminWebsiteBuilder, persuratan:halamanPersuratan, notifpush:adminNotifikasiPush,
       persetujuankeu:halPersetujuanKeuangan, pengajuandana:halPengajuanDana, konfirmasitf:bendKonfirmasiTransfer, logaktivitas:adminLogAktivitas,
@@ -15366,9 +15405,13 @@
     activeKey = activeKey && map[activeKey] ? activeKey : 'ringkasan';
     renderSidebarShell({title:'Dashboard '+STATE.user.level, navItems:navItems, activeKey:activeKey, contentId:'da-content',
       extraTop: adaRoleLain ?
-        '<button class="secondary small" style="margin:8px 10px 0;width:calc(100% - 20px)" onclick="lanjutkanKeDashboard()">&#8592; Kembali ke Dashboard Saya</button>'
+        '<button class="secondary small" style="margin:8px 10px 0;width:calc(100% - 20px)" id="btnKembaliDashSaya">&#8592; Kembali ke Dashboard Saya</button>'
         : '',
       onSelect:function(key){ map[key](); }});
+    // Dipasang lewat kode (bukan onclick di HTML): fungsi aplikasi tidak bersifat global,
+    // jadi onclick="lanjutkanKeDashboard()" sebelumnya tidak berfungsi.
+    var btnKembaliDash = document.getElementById('btnKembaliDashSaya');
+    if (btnKembaliDash) btnKembaliDash.onclick = function(){ lanjutkanKeDashboard(); };
     map[activeKey]();
     setTimeout(muatNotifBadge, 800);
   }
@@ -19468,14 +19511,17 @@
     var tglMulai = bt.tahun+'-'+String(bt.bulan).padStart(2,'0')+'-01';
 
     c.innerHTML='<div class="card"><h3>&#128218; Rekap Halaqoh Al-Qur\'an</h3>'+
-      '<p class="muted">Rekap kehadiran santri di halaqoh (semua waktu: Subuh, Dhuha, Maghrib, dll)</p>'+
+      '<p class="muted">Kehadiran santri di halaqoh, diambil dari catatan Isi Hafalan guru halaqoh: Sabaq/Sabqi/Manzil/Murojaah/Tahsin/Tasmi\'/Tidak Setor = hadir; Sakit, Izin, Izin Pulang; Ghaib = alpa.</p>'+
       '<div class="grid2">'+
       '<div><label>Dari Tanggal</label><input type="date" id="arDari" value="'+tglMulai+'"></div>'+
       '<div><label>Sampai Tanggal</label><input type="date" id="arSampai" value="'+todayStr()+'"></div>'+
       '</div>'+
       '<div class="grid2">'+
-      '<div><label>Halaqoh (kosong = semua)</label><input id="arHalaqoh" placeholder="Nama halaqoh..."></div>'+
-      '<div><label>Gender</label><select id="arGender"><option value="">Semua</option><option value="Putra">Putra</option><option value="Putri">Putri</option></select></div>'+
+      '<div><label>Halaqoh (kosong = semua)</label><input id="arHalaqoh" list="arDaftarHalaqoh" placeholder="Nama halaqoh..."><datalist id="arDaftarHalaqoh"></datalist></div>'+
+      '<div><label>Waktu</label><select id="arWaktu"><option value="">Semua waktu</option><option value="Subuh">Subuh</option><option value="Duha">Duha</option><option value="Maghrib">Maghrib</option></select></div>'+
+      '</div>'+
+      '<div class="grid2">'+
+      '<div><label>Gender</label><select id="arGender"><option value="">Semua</option><option value="Putra">Putra</option><option value="Putri">Putri</option></select></div><div></div>'+
       '</div>'+
       '<div style="display:flex;gap:8px;margin-top:10px">'+
       '<button id="btnCariAR">Tampilkan Rekap</button>'+
@@ -19490,13 +19536,15 @@
       var sampai = document.getElementById('arSampai').value;
       var halaqoh = document.getElementById('arHalaqoh').value.trim();
       var gender = document.getElementById('arGender').value;
+      var waktuAR = document.getElementById('arWaktu').value;
 
       if (halaqoh) {
         // Tampilkan rekap halaqoh spesifik
         document.getElementById('arDetailContent').innerHTML='<p>Memuat...</p>';
         document.getElementById('arSemuaHalaqoh').innerHTML='';
-        api('getRekapAbsensiHalaqoh',{namaHalaqoh:halaqoh, waktuHalaqoh:'Maghrib', tglMulai:dari, tglAkhir:sampai, gender:gender}).then(function(r){
+        api('getRekapAbsensiHalaqoh',{namaHalaqoh:halaqoh, waktuHalaqoh:waktuAR, tglMulai:dari, tglAkhir:sampai, gender:gender}).then(function(r){
           if(!r.ok){ document.getElementById('arDetailContent').innerHTML=errBox(r.error); return; }
+          r.data.periode = dari+' s.d. '+sampai;
           tampilkanRekapHalaqoh(r.data, document.getElementById('arDetailContent'));
           document.getElementById('btnCetakAR').onclick=function(){ cetakRekapHalaqoh(r.data); };
           document.getElementById('btnExcelAR').onclick=function(){ unduhExcelRekap(r.data); };
@@ -19505,21 +19553,32 @@
         // Tampilkan ringkasan semua halaqoh
         document.getElementById('arSemuaHalaqoh').innerHTML='<p>Memuat semua halaqoh...</p>';
         document.getElementById('arDetailContent').innerHTML='';
-        api('getRekapSemuaHalaqoh',{waktuHalaqoh:'Maghrib', tglMulai:dari, tglAkhir:sampai}).then(function(r){
+        api('getRekapSemuaHalaqoh',{waktuHalaqoh:waktuAR, tglMulai:dari, tglAkhir:sampai}).then(function(r){
           if(!r.ok){ document.getElementById('arSemuaHalaqoh').innerHTML=errBox(r.error); return; }
-          if(!r.data.length){ document.getElementById('arSemuaHalaqoh').innerHTML='<div class="card"><p class="muted">Belum ada data absensi halaqoh pada periode ini.</p></div>'; return; }
+          var dl = document.getElementById('arDaftarHalaqoh');
+          if (dl) dl.innerHTML = r.data.map(function(h){ return '<option value="'+esc(h.namaHalaqoh)+'">'; }).join('');
+          if(!r.data.length){ document.getElementById('arSemuaHalaqoh').innerHTML='<div class="card"><p class="muted">Belum ada catatan halaqoh (Isi Hafalan) pada periode ini.</p></div>'; return; }
+          var dataAR = r.data.filter(function(h){
+            if (!gender) return true;
+            var gh = String(h.gender||'').toLowerCase();
+            return gender==='Putra' ? (gh==='laki-laki'||gh==='putra') : (gh==='perempuan'||gh==='putri');
+          });
           document.getElementById('arSemuaHalaqoh').innerHTML=
             '<div class="card"><h4>Ringkasan Semua Halaqoh</h4>'+
-            warnBox('Klik nama halaqoh untuk lihat detail per santri.')+
-            '<table><tr><th>Nama Halaqoh</th><th>Pengampu</th><th>Gender</th><th>Total Sesi</th><th>Santri</th><th>Rata % Hadir</th></tr>'+
-            r.data.map(function(h){
+            warnBox('Klik nama halaqoh untuk lihat detail per santri. Persentase = hadir &divide; seluruh catatan santri pada sesi yang tercatat.')+
+            '<div style="overflow-x:auto"><table><tr><th>Nama Halaqoh</th><th>Pengampu</th><th>Waktu</th><th>Gender</th><th>Total Sesi</th><th>Santri</th><th>Sakit</th><th>Izin</th><th>Izin Pulang</th><th>Alpa</th><th>Rata % Hadir</th></tr>'+
+            dataAR.map(function(h){
               var w=h.rataHadir>=75?'#16a34a':'#dc2626';
               return '<tr><td><b class="btnDetailHalaqoh" data-nama="'+esc(h.namaHalaqoh)+'" style="color:#0d9488;cursor:pointer;text-decoration:underline">'+esc(h.namaHalaqoh)+'</b></td>'+
-                '<td>'+esc(h.pengampu)+'</td><td>'+esc(h.gender)+'</td>'+
+                '<td>'+esc(h.pengampu)+'</td><td>'+esc(h.waktu||'-')+'</td><td>'+esc(h.gender)+'</td>'+
                 '<td style="text-align:center">'+h.totalSesi+'</td>'+
                 '<td style="text-align:center">'+h.jumlahSantri+'</td>'+
+                '<td style="text-align:center">'+(h.sakit||0)+'</td>'+
+                '<td style="text-align:center">'+(h.izin||0)+'</td>'+
+                '<td style="text-align:center">'+(h.izinPulang||0)+'</td>'+
+                '<td style="text-align:center;color:#dc2626">'+(h.alpa||0)+'</td>'+
                 '<td style="color:'+w+';font-weight:700;text-align:center">'+h.rataHadir+'%</td></tr>';
-            }).join('')+'</table></div>';
+            }).join('')+'</table></div></div>';
 
           document.querySelectorAll('.btnDetailHalaqoh').forEach(function(btn){
             btn.onclick=function(){
@@ -19532,6 +19591,338 @@
     }
     document.getElementById('btnCariAR').onclick=muat;
     muat();
+  }
+
+  // ============================================================
+  // CETAK JADWAL PELAJARAN (Admin/Mudir) -- format jadwal sekolah, dipisah Pondok
+  // Putra & Putri, kertas mendatar 2 lembar (Senin-Rabu & Kamis-akhir pekan),
+  // nama guru lengkap dengan gelar sesuai data Guru. Jadwal yang bentrok ditandai.
+  // Unduh: Cetak / Simpan PDF (lewat dialog cetak) dan PNG per lembar.
+  // ============================================================
+  var CJ_HARI = ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu','Ahad'];
+  var CJ_SINGKAT = {'Bahasa Indonesia':'B. Indonesia','Ilmu Pengetahuan Alam':'IPA','Ilmu Pengetahuan Sosial':'IPS',
+    'Bahasa Inggris':'B. Inggris','Al Qurán/Tahsin':"Al-Qur'an/Tahsin",'Al Quran/Tahsin':"Al-Qur'an/Tahsin",'Hadist':'Hadits',
+    'Bahasa Arab':'B. Arab',"Ekskul Mufrodat & Do'a":"Mufrodat & Do'a",'Pendidikan Kewarganegaraan':'PKn'};
+  var CJ_KAT = {diniyah:{bg:'#eaf5ec', garis:'#7fb58a', label:'Pelajaran Diniyah'}, umum:{bg:'#e9f0fa', garis:'#7d9fd0', label:'Pelajaran Umum'}, ekskul:{bg:'#fbf1df', garis:'#d5a75a', label:'Ekstrakurikuler'}};
+  var CJ_TEMA = {putra:{judul:'PONDOK PUTRA', utama:'#0f5e59', muda:'#e3f1ef', aksen:'#14837b'},
+    putri:{judul:'PONDOK PUTRI', utama:'#7a2856', muda:'#f6e8ef', aksen:'#a23b74'},
+    lain:{judul:'KELAS LAINNYA', utama:'#334155', muda:'#eef2f7', aksen:'#475569'}};
+  var CJ_KERTAS = {f4:[330,215,'F4 / Folio'], a4:[297,210,'A4']};
+
+  function cjNormHari(h){
+    var t = String(h||'').trim().toLowerCase().replace(/['’`]/g,'');
+    if (!t) return '';
+    if (t === 'selsa') return 'Selasa';
+    if (t === 'minggu') return 'Ahad';
+    for (var i=0;i<CJ_HARI.length;i++) if (CJ_HARI[i].toLowerCase() === t) return CJ_HARI[i];
+    return '';
+  }
+  function cjKategori(m){ return /bela diri|ekskul|ekstra/i.test(m) ? 'ekskul' : (/qur|hadi[st]|aqidah|akhla|fiqi|tarikh|arab|tahsin|tahfidz|siroh|sirah/i.test(m) ? 'diniyah' : 'umum'); }
+  // "3" | "1,2" | "1-2" | "1 & 2" -> [1,2]
+  function cjDaftarJam(v){
+    var out = [];
+    String(v == null ? '' : v).split(/[,;\/&]|\s+dan\s+/).forEach(function(bag){
+      var m = bag.trim().match(/^(\d+)\s*(?:-|–|s\.?d\.?)\s*(\d+)$/);
+      if (m) { for (var i = Number(m[1]); i <= Number(m[2]) && i - Number(m[1]) < 12; i++) if (out.indexOf(i) === -1) out.push(i); return; }
+      var n = Number(bag.trim()); if (n > 0 && Math.floor(n) === n && out.indexOf(n) === -1) out.push(n);
+    });
+    return out.sort(function(a,b){ return a-b; });
+  }
+  function cjKunciGuru(s){ return String(s||'').toUpperCase().replace(/[^A-Z]/g,''); }
+
+  // Data server -> model jadwal per pondok
+  function cjOlah(res){
+    var guru = {}; (res.guru||[]).forEach(function(n){ if (String(n).trim()) guru[cjKunciGuru(n)] = String(n).trim(); });
+    var namaLengkap = function(g){ var s = String(g||'').trim(); return guru[cjKunciGuru(s)] || s; };
+    var waktu = {};
+    String(res.waktu||'').split(/\n/).forEach(function(b){ var a = b.split('|'); if (a.length < 3) return;
+      a[2].split(',').forEach(function(x){ var h = cjNormHari(x); if (h) waktu[h+'|'+String(a[0]).trim()] = String(a[1]).trim(); }); });
+    var wali = {}, urutKelas = [];
+    (res.wali||[]).forEach(function(w){ wali[w[0]] = namaLengkap(w[1]); urutKelas.push(w[0]); });
+    (res.jadwal||[]).forEach(function(r){ if (urutKelas.indexOf(r[1]) === -1) urutKelas.push(r[1]); });
+    var jkKelas = function(k){ var x = (res.kelasJk||{})[k]; if (!x) return 'lain'; return x.putra > x.putri ? 'putra' : (x.putri > x.putra ? 'putri' : 'lain'); };
+    var grup = {putra:[], putri:[], lain:[]};
+    urutKelas.forEach(function(k){ grup[jkKelas(k)].push(k); });
+    var bangun = function(kelasList){
+      var sel = {}, belum = [];
+      (res.jadwal||[]).forEach(function(r){
+        if (kelasList.indexOf(r[1]) === -1) return;
+        var h = cjNormHari(r[3]), jams = cjDaftarJam(r[4]);
+        var dasar = {mapel:r[0], singkat: CJ_SINGKAT[r[0]] || r[0], kategori: cjKategori(r[0]), guru: namaLengkap(r[2]), guruKunci: cjKunciGuru(r[2]), kelas:r[1], hari:h};
+        if (!h || !jams.length || !String(r[2]).trim()) { belum.push(dasar); return; }
+        jams.forEach(function(j){ var it = {}; for (var q in dasar) it[q] = dasar[q]; it.jam = j;
+          (sel[h+'|'+j+'|'+r[1]] = sel[h+'|'+j+'|'+r[1]] || []).push(it); });
+      });
+      var kunci = Object.keys(sel), baris = [];
+      CJ_HARI.forEach(function(h){
+        var jams = kunci.filter(function(k){ return k.indexOf(h+'|') === 0; }).map(function(k){ return Number(k.split('|')[1]); });
+        if (!jams.length) return;
+        var maks = Math.max.apply(null, jams);
+        for (var j=1;j<=maks;j++) baris.push({hari:h, jam:j, waktu: waktu[h+'|'+j] || ''});
+      });
+      var bentrokKelas = kunci.filter(function(k){ return sel[k].length > 1; }).map(function(k){ return {kunci:k, isi:sel[k]}; });
+      var perGuru = {};
+      kunci.forEach(function(k){ sel[k].forEach(function(it){ var g = it.guruKunci+'|'+it.hari+'|'+it.jam; (perGuru[g] = perGuru[g] || []).push(it); }); });
+      var bentrokGuru = [], gabung = [];
+      Object.keys(perGuru).forEach(function(g){ var x = perGuru[g];
+        var kls = x.map(function(i){ return i.kelas; }).filter(function(v,i,a){ return a.indexOf(v) === i; }); if (kls.length < 2) return;
+        var mp = x.map(function(i){ return i.mapel; }).filter(function(v,i,a){ return a.indexOf(v) === i; });
+        (mp.length === 1 ? gabung : bentrokGuru).push(x); });
+      return {kelas: kelasList, sel: sel, baris: baris, belum: belum, bentrokKelas: bentrokKelas, bentrokGuru: bentrokGuru, gabung: gabung,
+        wali: kelasList.map(function(k){ return wali[k] || ''; }), tanpaWaktu: baris.filter(function(b){ return !b.waktu; })};
+    };
+    return {putra: bangun(grup.putra), putri: bangun(grup.putri), lain: bangun(grup.lain), grup: grup};
+  }
+
+  function cjDaftarMasalah(x){
+    var out = [];
+    x.bentrokKelas.forEach(function(b){ var a = b.kunci.split('|'); out.push({jenis:'Bentrok kelas', teks: a[2]+', '+a[0]+' jam ke-'+a[1]+': '+b.isi.map(function(i){ return i.singkat+' ('+i.guru+')'; }).join(' dan ')}); });
+    x.bentrokGuru.forEach(function(a){ out.push({jenis:'Guru di dua kelas', teks: a[0].guru+', '+a[0].hari+' jam ke-'+a[0].jam+': '+a.map(function(i){ return i.kelas+' '+i.singkat; }).join(' dan ')}); });
+    x.gabung.forEach(function(a){ out.push({jenis:'Kelas digabung?', teks: a[0].guru+' mengajar '+a[0].singkat+' di '+a.map(function(i){ return i.kelas; }).join(' & ')+' bersamaan ('+a[0].hari+' jam ke-'+a[0].jam+')'}); });
+    if (x.belum.length) out.push({jenis:'Belum terjadwal', teks: x.belum.map(function(i){ return i.singkat+' '+i.kelas; }).join(', ')+' (hari/jam/pengajar masih kosong)'});
+    if (x.tanpaWaktu.length) out.push({jenis:'Jam belum punya waktu', teks: x.tanpaWaktu.map(function(b){ return b.hari+' jam ke-'+b.jam; }).join(', ')+' (Pengaturan waktu jam pelajaran)'});
+    return out;
+  }
+
+  // Bagi hari menjadi 2 lembar dengan jumlah baris seimbang
+  function cjBagiHari(x){
+    var hari = []; x.baris.forEach(function(b){ if (hari.indexOf(b.hari) === -1) hari.push(b.hari); });
+    if (hari.length < 2) return [hari];
+    var n = function(h){ return x.baris.filter(function(b){ return b.hari === h; }).length; };
+    var terbaik = 1, selisih = 1e9;
+    for (var i=1;i<hari.length;i++){
+      var a = hari.slice(0,i).reduce(function(s,h){ return s+n(h); },0), b = hari.slice(i).reduce(function(s,h){ return s+n(h); },0);
+      if (Math.abs(a-b) < selisih) { selisih = Math.abs(a-b); terbaik = i; }
+    }
+    return [hari.slice(0,terbaik), hari.slice(terbaik)];
+  }
+
+  // Skrip penyesuaian ukuran: tabel diperbesar/diperkecil agar pas 1 lembar, lalu ukuran
+  // huruf disamakan di semua lembar dan baris direnggangkan supaya lembar terisi rapi.
+  function cjSkripPas(){
+    return 'function pasMuat(){var hal=[].slice.call(document.querySelectorAll(".hal"));' +
+      'var zs=hal.map(function(h){var t=h.querySelector("table");t.style.height="";var z=1;t.style.zoom=1;var muat=function(){return h.scrollHeight<=h.clientHeight+1;};' +
+      'while(muat()&&z<1.3){z=Math.round((z+0.01)*100)/100;t.style.zoom=z;}while(!muat()&&z>0.55){z=Math.round((z-0.01)*100)/100;t.style.zoom=z;}return z;});' +
+      'var zm=Math.min.apply(null,zs);hal.forEach(function(h){var t=h.querySelector("table");t.style.zoom=zm;var awal=t.offsetHeight,tb=0;' +
+      'while(h.scrollHeight<=h.clientHeight+1&&tb<2000){tb+=4;t.style.height=(awal+tb)+"px";}t.style.height=(awal+Math.max(0,tb-4))+"px";});document.body.setAttribute("data-siap","1");}';
+  }
+
+  function cjDokumen(x, g, o){
+    var T = CJ_TEMA[g], K = CJ_KERTAS[o.kertas] || CJ_KERTAS.f4, PW = K[0], PH = K[1];
+    var tandai = !!o.tandai;
+    var kelompok = cjBagiHari(x);
+    var labelHari = function(h){ return h === 'Jumat' ? "Jum'at" : h; };
+    var sel = function(b, k){
+      var isi = x.sel[b.hari+'|'+b.jam+'|'+k] || [];
+      if (!isi.length) return '<td class="kosong"></td>';
+      var bentrok = isi.length > 1 && tandai;
+      return '<td class="isi'+(bentrok?' bentrok':'')+'">' + isi.map(function(it){
+        return '<div class="mp" style="--bg:'+CJ_KAT[it.kategori].bg+';--gr:'+CJ_KAT[it.kategori].garis+'"><b>'+esc(it.singkat)+'</b><span>'+esc(it.guru)+'</span></div>';
+      }).join('') + (bentrok ? '<i class="tanda">bentrok</i>' : '') + '</td>';
+    };
+    var tbody = function(hari){
+      var h = '';
+      hari.forEach(function(hr, hi){
+        var rows = x.baris.filter(function(b){ return b.hari === hr; });
+        rows.forEach(function(b, i){
+          h += '<tr class="'+(i===0?'awal ':'')+(hi%2?'genap':'')+'">' +
+            (i===0 ? '<th class="hari" rowspan="'+rows.length+'"><span>'+esc(labelHari(hr))+'</span></th>' : '') +
+            '<td class="jam">'+b.jam+'</td><td class="waktu">'+(b.waktu ? esc(b.waktu.replace('-','–')) : (tandai ? '<em>belum diatur</em>' : '–'))+'</td>' +
+            x.kelas.map(function(k){ return sel(b,k); }).join('') + '</tr>';
+        });
+      });
+      return h;
+    };
+    var masalah = cjDaftarMasalah(x);
+    var ringkas = (function(){ var a = [];
+      if (x.bentrokKelas.length) a.push(x.bentrokKelas.length+' jam bentrok (kotak merah)');
+      if (x.bentrokGuru.length) a.push(x.bentrokGuru.length+' guru mengajar dua kelas sekaligus');
+      if (x.gabung.length) a.push(x.gabung.length+' kemungkinan kelas digabung');
+      if (x.belum.length) a.push(x.belum.length+' pelajaran belum terjadwal');
+      if (x.tanpaWaktu.length) a.push(x.tanpaWaktu.length+' jam belum punya waktu');
+      return a.join(' &middot; '); })();
+    var legenda = Object.keys(CJ_KAT).map(function(k){ return '<span class="lg"><i style="background:'+CJ_KAT[k].bg+';border-color:'+CJ_KAT[k].garis+'"></i>'+CJ_KAT[k].label+'</span>'; }).join('') +
+      (tandai ? '<span class="lg"><i style="background:#fde2e2;border-color:#d64545;border-style:dashed"></i>Bentrok (perlu diperbaiki)</span>' : '');
+    var css = '@page{size:'+PW+'mm '+PH+'mm;margin:0}' +
+      '*{box-sizing:border-box;margin:0;padding:0}html,body{background:#fff}' +
+      'body{font-family:"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;color:#1d2a2a;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+      '.hal{font-family:"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;color:#1d2a2a;width:'+PW+'mm;height:'+PH+'mm;padding:9mm 9mm 8mm;position:relative;display:flex;flex-direction:column;overflow:hidden;background:#fff;page-break-after:always;break-after:page}' +
+      '.hal:last-child{page-break-after:auto;break-after:auto}' +
+      'header{display:flex;align-items:center;gap:5mm;padding-bottom:3.2mm;border-bottom:1.4mm solid '+T.utama+';position:relative}' +
+      'header:after{content:"";position:absolute;left:0;right:0;bottom:-2.6mm;border-bottom:.35mm solid '+T.utama+'}' +
+      'header img{width:16mm;height:16mm;object-fit:contain}.kop{flex:1}' +
+      '.kop .t2{font-size:14pt;font-weight:800;color:'+T.utama+';letter-spacing:.2pt;line-height:1.15;margin:.6mm 0}.kop .t3{font-size:7.6pt;color:#5c6b6a}' +
+      '.lencana{text-align:right}.lencana .jd{font-size:9pt;font-weight:700;color:#4b5b5a;letter-spacing:1.5pt}' +
+      '.lencana .bd{display:inline-block;margin-top:1.4mm;background:'+T.utama+';color:#fff;font-weight:800;font-size:12pt;letter-spacing:1.2pt;padding:1.8mm 4.5mm;border-radius:1.5mm}' +
+      '.lencana .ta{font-size:7.6pt;color:#5c6b6a;margin-top:1.2mm}' +
+      '.subjudul{display:flex;justify-content:space-between;align-items:baseline;margin-top:4.5mm;color:'+T.utama+'}.subjudul b{font-size:10.5pt;letter-spacing:.3pt}.subjudul span{font-size:7.5pt;color:#6b7877}' +
+      'table{width:100%;border-collapse:collapse;margin-top:2.2mm;table-layout:fixed}' +
+      'thead th{background:'+T.utama+';color:#fff;font-size:8.2pt;font-weight:700;padding:1.6mm 1mm;border:.25mm solid '+T.utama+'}' +
+      'thead tr.wali th{background:'+T.muda+';color:'+T.utama+';font-weight:600;font-size:6.4pt;padding:1mm .8mm;border-color:#c9d6d4}' +
+      'th.hari{background:'+T.muda+';color:'+T.utama+';font-size:8.6pt;font-weight:800;border:.25mm solid #b7c7c5}' +
+      'th.hari span{display:inline-block;transform:rotate(-90deg);white-space:nowrap}' +
+      'td{border:.25mm solid #c9d3d2;font-size:7pt;vertical-align:middle}tr.awal td,tr.awal th{border-top:.6mm solid '+T.aksen+'}' +
+      'td.jam{text-align:center;font-weight:700;color:'+T.utama+'}td.waktu{text-align:center;font-size:6.5pt;color:#45514f;font-variant-numeric:tabular-nums}' +
+      'td.waktu em{color:#c03636;font-style:normal;font-size:6pt}tr.genap td.jam,tr.genap td.waktu{background:#f7f9f9}' +
+      'td.isi{padding:.5mm;position:relative}td.kosong{background:repeating-linear-gradient(135deg,#fff 0 1.4mm,#f4f6f6 1.4mm 2.8mm)}' +
+      '.mp{background:var(--bg);border-left:.9mm solid var(--gr);border-radius:.8mm;padding:.3mm 1mm;line-height:1.1}.mp+.mp{margin-top:.6mm}' +
+      '.mp b{display:block;font-size:7pt;font-weight:700;color:#15201f;white-space:nowrap}.mp span{display:block;font-size:5.6pt;color:#4a5856;line-height:1.15}' +
+      'td.bentrok{background:#fde2e2;outline:.45mm dashed #d64545;outline-offset:-.6mm}' +
+      '.tanda{position:absolute;top:.2mm;right:.6mm;font-size:5.4pt;font-style:normal;font-weight:800;color:#c03636;text-transform:uppercase;letter-spacing:.3pt}' +
+      '.bawah{margin-top:auto;display:flex;gap:6mm;align-items:flex-end;padding-top:3mm}.ket{flex:1;font-size:6.8pt;color:#45514f}' +
+      '.legenda{display:flex;flex-wrap:wrap;gap:3.5mm;margin-bottom:2mm}.lg{display:inline-flex;align-items:center;gap:1.4mm}' +
+      '.lg i{display:inline-block;width:4mm;height:3mm;border:.35mm solid;border-radius:.6mm}' +
+      '.catatan{border:.35mm solid #e7b4b4;background:#fff6f6;border-radius:1.5mm;padding:2mm 2.6mm}.catatan h4{font-size:7.4pt;color:#a82f2f;margin-bottom:1mm}' +
+      '.ttd{width:62mm;text-align:center;font-size:8pt;color:#24302f}.ttd .nm{margin-top:14mm;font-weight:700;text-decoration:underline}' +
+      '.lanjut{font-size:7.5pt;color:#6b7877;font-style:italic;white-space:nowrap}' +
+      '@media screen{body.pratinjau{background:#cbd5e1;padding:14px 0}body.pratinjau .hal{margin:0 auto 14px;box-shadow:0 2px 10px rgba(0,0,0,.18)}}';
+    var halaman = kelompok.map(function(hari, hi){
+      var akhir = hi === kelompok.length - 1;
+      return '<div class="hal">' +
+        '<header>'+(o.logo ? '<img src="'+o.logo+'" alt="">' : '') +
+        '<div class="kop"><div class="t2">'+esc(o.nama)+'</div><div class="t3">'+esc(o.alamat)+'</div></div>' +
+        '<div class="lencana"><div class="jd">JADWAL PELAJARAN</div><div class="bd">'+T.judul+'</div><div class="ta">'+esc(o.periode)+'</div></div></header>' +
+        '<div class="subjudul"><b>'+hari.map(labelHari).map(esc).join(' &middot; ')+'</b><span>Lembar '+(hi+1)+' dari '+kelompok.length+'</span></div>' +
+        '<table><colgroup><col style="width:10mm"><col style="width:8mm"><col style="width:16.5mm">'+x.kelas.map(function(){ return '<col>'; }).join('')+'</colgroup>' +
+        '<thead><tr><th rowspan="2">Hari</th><th rowspan="2">Jam<br>ke</th><th rowspan="2">Waktu</th>'+x.kelas.map(function(k){ return '<th>'+esc(k)+'</th>'; }).join('')+'</tr>' +
+        '<tr class="wali">'+x.wali.map(function(w){ return '<th>Wali: '+esc(w||'-')+'</th>'; }).join('')+'</tr></thead>' +
+        '<tbody>'+tbody(hari)+'</tbody></table>' +
+        '<div class="bawah"><div class="ket"><div class="legenda">'+legenda+'</div>' +
+        (akhir && tandai && masalah.length ? '<div class="catatan"><h4>&#9888; '+masalah.length+' hal perlu diperiksa</h4><div>'+ringkas+'</div></div>' : '') + '</div>' +
+        (akhir ? '<div class="ttd">'+esc(o.kota)+', '+esc(o.tanggal)+'<br>'+esc(o.jabatan)+',<div class="nm">'+esc(o.penandatangan||'..............................')+'</div></div>'
+               : '<div class="lanjut">bersambung ke lembar '+(hi+2)+' &rarr;</div>') +
+        '</div></div>';
+    }).join('');
+    return '<!doctype html><html lang="id"><head><meta charset="utf-8"><title>Jadwal Pelajaran '+T.judul+'</title><style>'+css+'</style></head>' +
+      '<body'+(o.pratinjau?' class="pratinjau"':'')+'>'+halaman+'<script>'+cjSkripPas()+
+      'window.addEventListener("load",function(){pasMuat();'+(o.cetak?'setTimeout(function(){window.print();},400);':'')+'});<\/script></body></html>';
+  }
+
+  // Satu lembar (elemen .hal yang sudah disesuaikan) -> PNG, lewat SVG foreignObject
+  function cjLembarKePng(doc, idx, namaFile){
+    return new Promise(function(selesai, gagal){
+      try {
+        var hal = doc.querySelectorAll('.hal')[idx]; if (!hal) { gagal(new Error('Lembar tidak ditemukan')); return; }
+        var w = hal.offsetWidth, h = hal.offsetHeight, skala = 2.5;
+        var css = doc.querySelector('style').textContent;
+        var xhtml = new XMLSerializer().serializeToString(hal);
+        var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="'+(w*skala)+'" height="'+(h*skala)+'" viewBox="0 0 '+w+' '+h+'">' +
+          '<foreignObject x="0" y="0" width="'+w+'" height="'+h+'"><div xmlns="http://www.w3.org/1999/xhtml"><style>'+css.replace(/</g,'&lt;')+'</style>'+xhtml+'</div></foreignObject></svg>';
+        var img = new Image();
+        img.onload = function(){
+          setTimeout(function(){
+            try {
+              var cv = document.createElement('canvas'); cv.width = Math.round(w*skala); cv.height = Math.round(h*skala);
+              var cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0,0,cv.width,cv.height); cx.drawImage(img, 0, 0, cv.width, cv.height);
+              cv.toBlob(function(b){
+                if (!b) { gagal(new Error('Gagal membuat gambar')); return; }
+                var a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = namaFile;
+                document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+                selesai();
+              }, 'image/png');
+            } catch(e){ gagal(e); }
+          }, 150);
+        };
+        img.onerror = function(){ gagal(new Error('Peramban tidak dapat menggambar lembar ini')); };
+        img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+      } catch(e){ gagal(e); }
+    });
+  }
+
+  function halCetakJadwal(){
+    var c = getContentEl();
+    var simpan = {}; try { simpan = JSON.parse(localStorage.getItem('wasiatCetakJadwalV1') || '{}') || {}; } catch(e){ simpan = {}; }
+    c.innerHTML = '<div class="card"><h3>&#128197; Cetak Jadwal Pelajaran</h3>' +
+      '<p class="muted">Jadwal disusun otomatis dari jadwal mengajar guru (Data Master &rsaquo; MataPelajaran), dipisah Pondok Putra dan Putri menurut santri di tiap kelas. Nama pengajar sesuai data Guru. Kertas mendatar, 2 lembar per pondok.</p>' +
+      '<div class="grid2">' +
+        '<div><label>Pondok</label><select id="cjPondok"></select></div>' +
+        '<div><label>Ukuran kertas</label><select id="cjKertas"><option value="f4">F4 / Folio (mendatar)</option><option value="a4">A4 (mendatar)</option></select></div>' +
+      '</div>' +
+      '<div class="grid2">' +
+        '<div><label>Penanda tangan</label><input id="cjTtd" placeholder="Nama penanda tangan"></div>' +
+        '<div><label>Jabatan</label><input id="cjJabatan" value="Mudir"></div>' +
+      '</div>' +
+      '<label style="display:flex;align-items:center;gap:8px;margin:8px 0;font-weight:500"><input type="checkbox" id="cjTandai" style="width:auto" checked> Tandai jadwal yang bentrok (kotak merah)</label>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">' +
+        '<button id="cjCetak">&#128424; Cetak / Simpan PDF</button>' +
+        '<span id="cjPngWadah" style="display:flex;gap:8px;flex-wrap:wrap"></span>' +
+      '</div><div id="cjPesan" style="margin-top:8px"></div></div>' +
+      '<div id="cjMasalah"></div>' +
+      '<div class="card" style="padding:10px"><div id="cjPratinjau" style="width:100%;overflow:hidden;border-radius:8px;background:#cbd5e1"><p style="padding:14px">Memuat jadwal...</p></div></div>';
+    var model = null, info = null;
+    var $ = function(id){ return document.getElementById(id); };
+    function opsi(extra){
+      var p = STATE.pengaturan || {};
+      var nama = String(p.NamaPesantren || 'Pondok Pesantren'); if (!/poso/i.test(nama)) nama += ' Poso';
+      var alamat = String(p.AlamatPesantren || ''); if (alamat && !/poso/i.test(alamat)) alamat += ', Poso';
+      var d = new Date(), B = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+      var o = {nama: nama.toUpperCase(), alamat: [alamat, p.EmailPesantren].filter(Boolean).join(' · '),
+        periode: (info.tahunAjaran ? 'Tahun Pelajaran '+info.tahunAjaran+' · ' : '') + 'Semester '+(d.getMonth() >= 6 ? 'Ganjil' : 'Genap'),
+        logo: p.LogoDataUriDefault || '', kertas: $('cjKertas').value, tandai: $('cjTandai').checked,
+        kota: 'Poso', tanggal: d.getDate()+' '+B[d.getMonth()]+' '+d.getFullYear(),
+        penandatangan: $('cjTtd').value.trim(), jabatan: $('cjJabatan').value.trim() || 'Mudir'};
+      for (var k in (extra||{})) o[k] = extra[k];
+      return o;
+    }
+    function simpanPilihan(){ try { localStorage.setItem('wasiatCetakJadwalV1', JSON.stringify({kertas:$('cjKertas').value, tandai:$('cjTandai').checked, ttd:$('cjTtd').value, jabatan:$('cjJabatan').value})); } catch(e){} }
+    function namaFile(g){ return 'Jadwal_Pelajaran_'+(g==='putra'?'Putra':g==='putri'?'Putri':'Kelas_Lain'); }
+    function tampil(){
+      if (!model) return;
+      var g = $('cjPondok').value, x = model[g];
+      var masalah = cjDaftarMasalah(x);
+      $('cjMasalah').innerHTML = masalah.length ?
+        '<div class="card" style="border-left:4px solid #dc2626"><h4 style="margin-top:0">&#9888;&#65039; '+masalah.length+' hal perlu diperiksa pada jadwal '+esc(CJ_TEMA[g].judul.toLowerCase())+'</h4>' +
+        '<ul style="margin:0;padding-left:18px;font-size:13px">'+masalah.map(function(m){ return '<li style="margin-bottom:4px"><b>'+esc(m.jenis)+'</b> &ndash; '+esc(m.teks)+'</li>'; }).join('')+'</ul>' +
+        '<p class="muted" style="font-size:12px;margin:8px 0 0">Perbaiki di Data Master &rsaquo; MataPelajaran (kolom Hari & Jam Ke), lalu buka menu ini lagi.</p></div>' :
+        '<div class="card" style="border-left:4px solid #16a34a"><b>&#9989; Tidak ada jadwal yang bentrok.</b></div>';
+      var K = CJ_KERTAS[$('cjKertas').value];
+      var lebarPx = Math.round(K[0]*96/25.4), tinggiPx = Math.round(K[1]*96/25.4);
+      var lembar = cjBagiHari(x).length;
+      var wadah = $('cjPratinjau'); wadah.innerHTML = '';
+      var ifr = document.createElement('iframe');
+      ifr.setAttribute('title', 'Pratinjau jadwal');
+      ifr.style.cssText = 'border:0;width:'+lebarPx+'px;height:'+(lembar*(tinggiPx+14)+14)+'px;transform-origin:0 0;display:block;background:#cbd5e1';
+      wadah.appendChild(ifr);
+      var skala = Math.min(1, (wadah.clientWidth || lebarPx) / lebarPx);
+      ifr.style.transform = 'scale('+skala+')';
+      wadah.style.height = Math.ceil(lembar*(tinggiPx+14)*skala + 14*skala) + 'px';
+      ifr.srcdoc = cjDokumen(x, g, opsi({pratinjau:true}));
+      // tombol PNG per lembar
+      $('cjPngWadah').innerHTML = '';
+      for (var i=0;i<lembar;i++) (function(i){
+        var b = document.createElement('button'); b.className = 'secondary'; b.innerHTML = '&#128444;&#65039; PNG Lembar '+(i+1);
+        b.onclick = function(){
+          var d = ifr.contentDocument; if (!d || d.body.getAttribute('data-siap') !== '1') { $('cjPesan').innerHTML = warnBox('Pratinjau belum selesai dimuat, coba sebentar lagi.'); return; }
+          b.disabled = true; $('cjPesan').innerHTML = '';
+          cjLembarKePng(d, i, namaFile(g)+'_Lembar'+(i+1)+'.png').then(function(){ b.disabled = false; })
+            .catch(function(e){ b.disabled = false; $('cjPesan').innerHTML = errBox('Gambar tidak dapat dibuat di peramban ini ('+esc(e.message)+'). Gunakan Cetak / Simpan PDF.'); });
+        };
+        $('cjPngWadah').appendChild(b);
+      })(i);
+    }
+    $('cjCetak').onclick = function(){
+      if (!model) return;
+      var g = $('cjPondok').value;
+      var w = window.open('', '_blank');
+      if (!w) { $('cjPesan').innerHTML = errBox('Izinkan jendela baru (pop-up) untuk mencetak / menyimpan PDF.'); return; }
+      w.document.open(); w.document.write(cjDokumen(model[g], g, opsi({cetak:true}))); w.document.close();
+    };
+    ['cjPondok','cjKertas','cjTandai'].forEach(function(id){ $(id).onchange = function(){ simpanPilihan(); tampil(); }; });
+    var tunda = null;
+    ['cjTtd','cjJabatan'].forEach(function(id){ $(id).oninput = function(){ simpanPilihan(); clearTimeout(tunda); tunda = setTimeout(tampil, 600); }; });
+    if (simpan.kertas) $('cjKertas').value = simpan.kertas;
+    if (simpan.tandai === false) $('cjTandai').checked = false;
+    if (simpan.jabatan) $('cjJabatan').value = simpan.jabatan;
+    api('getDataCetakJadwal', {}).then(function(res){
+      if (!res.ok) { $('cjPratinjau').innerHTML = errBox(res.error || 'Gagal memuat jadwal.'); return; }
+      info = res; model = cjOlah(res);
+      $('cjTtd').value = simpan.ttd || res.namaMudir || '';
+      var pil = [['putra','Pondok Putra'],['putri','Pondok Putri']];
+      if (model.grup.lain.length) pil.push(['lain','Kelas lainnya ('+model.grup.lain.join(', ')+')']);
+      $('cjPondok').innerHTML = pil.filter(function(p){ return model.grup[p[0]].length; }).map(function(p){ return '<option value="'+p[0]+'">'+esc(p[1])+' &middot; '+model.grup[p[0]].length+' kelas</option>'; }).join('');
+      if (!$('cjPondok').options.length) { $('cjPratinjau').innerHTML = '<p style="padding:14px">Belum ada jadwal mengajar.</p>'; return; }
+      tampil();
+    });
   }
 
   // ============ ADMIN: REKAP JURNAL MENGAJAR ============
