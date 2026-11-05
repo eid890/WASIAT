@@ -314,7 +314,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.11.08-b';
+  var VERSI_APP = '2026.11.08-c';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -19565,7 +19565,7 @@
           });
           document.getElementById('arSemuaHalaqoh').innerHTML=
             '<div class="card"><h4>Ringkasan Semua Halaqoh</h4>'+
-            warnBox('Klik nama halaqoh untuk lihat detail per santri. Persentase = hadir &divide; seluruh catatan santri pada sesi yang tercatat.')+
+            warnBox('Klik nama halaqoh untuk lihat detail per santri. Persentase = hadir ÷ seluruh catatan santri pada sesi yang tercatat.')+
             '<div style="overflow-x:auto"><table><tr><th>Nama Halaqoh</th><th>Pengampu</th><th>Waktu</th><th>Gender</th><th>Total Sesi</th><th>Santri</th><th>Sakit</th><th>Izin</th><th>Izin Pulang</th><th>Alpa</th><th>Rata % Hadir</th></tr>'+
             dataAR.map(function(h){
               var w=h.rataHadir>=75?'#16a34a':'#dc2626';
