@@ -327,7 +327,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.11.08-d';
+  var VERSI_APP = '2026.11.08-e';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -17151,7 +17151,7 @@
       '<label>Jenis</label><select id="izAlasan">'+IZIN_JENIS.filter(function(j){
           return j.nama !== 'Sudah mengajar, lupa mencatat' || String(STATE.pengaturan.SusulanLupaAktif).toLowerCase() !== 'false';
         }).map(function(j){ return '<option value="'+esc(j.nama)+'">'+esc(j.nama)+'</option>'; }).join('')+'</select>' +
-      '<div id="izInfoLupa" class="muted" style="display:none;font-size:12.5px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 10px;margin-top:6px">Setelah disetujui Mudir/Admin, Anda akan mendapat notifikasi dan tombol <b>Isi Absen</b> di halaman Jadwal &amp; Absen untuk mengisi absensi tanggal ini. Pengajuan '+aturanLupaFE().teksBatas+'.'+aturanLupaFE().teksHalaqoh+aturanLupaFE().teksOtomatis+'</div>' +
+      '<div id="izInfoLupa" class="muted" style="display:none;font-size:12.5px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 10px;margin-top:6px">Setelah disetujui Mudir/Admin, Anda akan mendapat notifikasi dan tombol <b>Isi Absen</b> di halaman Jadwal &amp; Absen untuk mengisi absensi tanggal ini. Pengajuan '+aturanLupaFE().teksBatas+'.'+aturanLupaFE().teksHalaqoh+aturanLupaFE().teksOtomatis+' <b>Tanggal yang semua sesinya sudah diisi (oleh Anda sendiri maupun guru pengganti) otomatis ditolak.</b></div>' +
       '<label style="margin-top:8px">Keterangan <span style="color:#dc2626">(wajib)</span></label>' +
       '<textarea id="izKet" rows="3" style="width:100%;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-family:inherit" placeholder="Jelaskan singkat, mis. demam sejak semalam, sudah periksa ke klinik"></textarea>' +
       '<div id="izKetHint" class="muted" style="font-size:12px;margin-top:2px">Minimal 10 huruf.</div>' +
@@ -17184,6 +17184,7 @@
             ? 'Absen susulan langsung DIBUKA untuk ' + r.jumlah + ' hari (disetujui otomatis). Tombol Isi Absen sekarang ada di halaman Izin & Surat Saya dan Jadwal & Absen. Isi dalam ' + (r.berlakuHari || 3) + ' hari.'
             : 'Pengajuan izin terkirim untuk ' + r.jumlah + ' hari. Menunggu persetujuan Mudir/Admin.') +
           (r.dilewati && r.dilewati.length ? '\n\nDilewati karena sudah ada pengajuan: ' + r.dilewati.join(', ') : '') +
+          (r.ditolakTerisi && r.ditolakTerisi.length ? '\n\nDitolak otomatis karena absen sesinya sudah tercatat:\n- ' + r.ditolakTerisi.join('\n- ') : '') +
           (menyusul && !buktiUrl ? '\n\nJangan lupa melampirkan buktinya lewat menu Izin & Surat Saya begitu suratnya ada.' : ''));
         if (setelahBerhasil) setelahBerhasil();
       });
