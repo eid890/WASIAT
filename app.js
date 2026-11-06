@@ -42,6 +42,19 @@
   var JENIS_HAFALAN_ALL = ['Sabaq','Sabqi','Manzil','Murojaah','Tahsin',"Tasmi'",'Tidak Setor','Izin','Izin Pulang','Sakit','Ghaib'];
   // Tasmi' diperlakukan seperti setoran: wajib isi detail (surah/ayat, halaman, atau juz utuh) dan nilai.
   var JENIS_HAFALAN_SETOR = ['Sabaq','Sabqi','Manzil','Murojaah','Tahsin',"Tasmi'"];
+  // Aturan form Isi Hafalan per waktu halaqoh:
+  //  - Duha   : setoran wajib Sabqi -> pilihan Sabaq disembunyikan, bawaan Sabqi
+  //             (mencegah guru salah pilih Sabaq/Sabqi). Pilihan lain tetap ada.
+  //  - Maghrib: bawaan semua santri "Tidak Setor", pilihan lain tetap bisa dipilih.
+  //  - Subuh & lainnya: seperti biasa.
+  function aturanJenisHafalanWaktu(waktu){
+    var w = String(waktu || '').toLowerCase().replace(/[^a-z]/g, '');
+    if (w === 'duha' || w === 'dhuha') return {pilihan: JENIS_HAFALAN_ALL.filter(function(j){ return j !== 'Sabaq'; }), bawaan: 'Sabqi',
+      catatan: 'Halaqoh Duha: setoran wajib <b>Sabqi</b>, jadi pilihan Sabaq tidak ditampilkan. Semua santri otomatis Sabqi &mdash; ubah bila santri izin, sakit, tidak setor, dll.'};
+    if (w === 'maghrib' || w === 'magrib') return {pilihan: JENIS_HAFALAN_ALL.slice(), bawaan: 'Tidak Setor',
+      catatan: 'Halaqoh Maghrib: semua santri otomatis <b>Tidak Setor</b>. Ubah hanya untuk santri yang menyetor atau yang izin/sakit.'};
+    return {pilihan: JENIS_HAFALAN_ALL.slice(), bawaan: JENIS_HAFALAN_ALL[0], catatan: ''};
+  }
   var PETA_KELAS_BADGE_HAFALAN = {'Sabaq':'sabaq','Sabqi':'sabqi','Manzil':'manzil','Murojaah':'murojaah','Tahsin':'tahsin',"Tasmi'":'tasmi','Tidak Setor':'tidaksetor','Izin':'izin','Izin Pulang':'izinpulang','Sakit':'sakit','Ghaib':'ghaib'};
   // Rangkai detail setoran hanya dari bagian yang BENAR-BENAR terisi.
   // Sebelumnya semua bagian selalu dirangkai apa adanya, sehingga catatan yang
@@ -314,7 +327,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.11.08-c';
+  var VERSI_APP = '2026.11.08-d';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -8482,7 +8495,9 @@
       if(!res.data.length){ wrap.innerHTML = warnBox(res.peringatan); return; }
       var datalistHtml = ''; // select dropdown}).join('') + '</datalist>';
       var opsiHalaman = Array.from({length:22},function(_,i){return i+1;});
+      var aturanJenis = aturanJenisHafalanWaktu(waktu);
       var html = datalistHtml + '<h4>Halaqoh: '+esc(namaHalaqoh)+' (' + esc(waktu) + ')</h4>' +
+        (aturanJenis.catatan ? '<div class="infoJenisWaktu" style="background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px">&#8505;&#65039; '+aturanJenis.catatan+'</div>' : '') +
         warnBox('Isian akan otomatis terisi mengikuti riwayat terakhir santri untuk jenis hafalan yang dipilih -- tinggal ubah bagian yang berbeda saja (misalnya Ayat).') +
         '<div id="formHafalan">';
       res.data.forEach(function(s){
@@ -8490,7 +8505,7 @@
           '<b>'+esc(s.nama)+'</b> <span class="muted">('+esc(s.nisn)+')</span><br>' +
           '<p class="faded hintHafalan">Memuat riwayat...</p>' +
           '<label class="muted">Jenis Hafalan</label>' +
-          '<select class="jenisSelect">' + JENIS_HAFALAN_ALL.map(function(j){return '<option value="'+j+'">'+j+'</option>';}).join('') + '</select>' +
+          '<select class="jenisSelect">' + aturanJenis.pilihan.map(function(j){return '<option value="'+j+'"'+(j===aturanJenis.bawaan?' selected':'')+'>'+j+'</option>';}).join('') + '</select>' +
           // MODE INPUT SELECTOR — hanya muncul untuk jenis Sabaq/Sabqi/Manzil/Murojaah/Tahsin/Tasmi'
           '<div class="modeInputWrap">' +
           '<label class="muted">Mode Input</label>' +
@@ -8735,7 +8750,7 @@
           var d = draft[row.dataset.nisn];
           if (!d) return;
           var setVal = function(sel, val){ var el = row.querySelector(sel); if (el) el.value = val || ''; };
-          setVal('.jenisSelect', d.jenis);
+          if (d.jenis && aturanJenis.pilihan.indexOf(d.jenis) !== -1) setVal('.jenisSelect', d.jenis);
           toggleDetail(row);
           // Pulihkan mode input (kalau draft lama tidak punya, default 'ayat')
           setVal('.modeInput', d.mode || 'ayat');

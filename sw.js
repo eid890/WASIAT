@@ -10,7 +10,7 @@
 //
 // CACHE_VERSION diisi otomatis saat build — ubah ini kalau mau paksa re-cache semua.
 
-const CACHE_VERSION = 'wasiat-offline-v54'; // diupdate otomatis tiap build
+const CACHE_VERSION = 'wasiat-offline-v55'; // diupdate otomatis tiap build
 const CACHE_NAME = CACHE_VERSION;
 // Cache foto (produk kantin, galeri, logo) SENGAJA tidak diberi nomor versi aplikasi.
 // Kalau ikut versi, setiap kali aplikasi diperbarui semua foto akan terhapus dan
@@ -21,7 +21,7 @@ const CACHE_IMG = 'wasiat-img-v1';
 const APP_SHELL = [
   '/',
   '/index.html',
-  '/app.js?v=2026.11.08-c',
+  '/app.js?v=2026.11.08-d',
   '/manifest.json',
   '/config.js',
   '/icon-192.png',
