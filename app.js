@@ -327,7 +327,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.11.08-e';
+  var VERSI_APP = '2026.11.08-i';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -17817,12 +17817,12 @@
     c.innerHTML = '<div class="card"><p class="muted">Memuat pengaturan WhatsApp...</p></div>';
     api('getInfoPengaturanWA', {oleh: STATE.user.nama}).then(function(d){
       if (!d.ok) { c.innerHTML = '<div class="card">'+errBox(d.error)+'</div>'; return; }
-      var namaPenyedia = {wablas:'Wablas', fonnte:'Fonnte'};
+      var namaPenyedia = {wablas:'Wablas', fonnte:'Fonnte', bales:'BalesOtomatis', meta:'WhatsApp Cloud API (Meta)'};
       function kotakStatus(){
         if (!d.dipakai) return '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:10px 12px;font-size:13.5px"><b style="color:#991b1b">&#10060; WhatsApp belum aktif.</b> '+
-          (d.pilihan==='wablas' ? 'Wablas dipilih, tetapi tokennya belum diisi.' : d.pilihan==='fonnte' ? 'Fonnte dipilih, tetapi tokennya belum diisi.' : 'Isi token Wablas atau Fonnte di bawah.')+'</div>';
+          (d.pilihan==='wablas' ? 'Wablas dipilih, tetapi tokennya belum diisi.' : d.pilihan==='fonnte' ? 'Fonnte dipilih, tetapi tokennya belum diisi.' : d.pilihan==='bales' ? 'BalesOtomatis dipilih, tetapi Kode Aksesnya belum diisi.' : d.pilihan==='meta' ? 'Meta dipilih, tetapi MetaToken / MetaPhoneNumberId belum diisi di sheet Pengaturan.' : 'Tempel Kode Akses BalesOtomatis di bawah.')+'</div>';
         return '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 12px;font-size:13.5px"><b style="color:#166534">&#9989; Pesan WA dikirim lewat '+namaPenyedia[d.dipakai]+'</b>'+
-          (d.pilihan==='otomatis' ? '<br><span class="muted" style="font-size:12px">'+(d.adaWablas && d.adaFonnte ? 'Kedua token terisi &mdash; dipakai yang paling akhir diisi.' : 'Dipakai penyedia yang tokennya terisi.')+'</span>' : '')+'</div>';
+          (d.pilihan==='otomatis' ? '<br><span class="muted" style="font-size:12px">'+(d.dipakai==='bales' ? 'Kode Akses BalesOtomatis terisi &mdash; BalesOtomatis dipakai, Fonnte/Wablas tidak dipakai.' : d.adaWablas && d.adaFonnte ? 'Kedua token terisi &mdash; dipakai yang paling akhir diisi.' : 'Dipakai penyedia yang tokennya terisi.')+'</span>' : '')+'</div>';
       }
 
       // Kelompokkan jenis pesan
@@ -17846,9 +17846,18 @@
         '<div class="card"><h4 style="margin-top:0">1. Penyedia pengiriman</h4>' +
           '<label>Kirim lewat</label><select id="waPilihan">' +
             '<option value="otomatis"'+(d.pilihan==='otomatis'?' selected':'')+'>Otomatis &mdash; sesuai token yang diisi</option>' +
+            '<option value="bales"'+(d.pilihan==='bales'?' selected':'')+'>Selalu BalesOtomatis</option>' +
             '<option value="wablas"'+(d.pilihan==='wablas'?' selected':'')+'>Selalu Wablas</option>' +
-            '<option value="fonnte"'+(d.pilihan==='fonnte'?' selected':'')+'>Selalu Fonnte</option></select>' +
-          '<p class="muted" style="font-size:12px;margin-top:2px">Otomatis: isi token Fonnte &rarr; Fonnte yang dipakai; isi token Wablas &rarr; Wablas yang dipakai. Bila keduanya terisi, dipakai yang paling akhir diisi.</p>' +
+            '<option value="fonnte"'+(d.pilihan==='fonnte'?' selected':'')+'>Selalu Fonnte</option>' +
+            '<option value="meta"'+(d.pilihan==='meta'?' selected':'')+'>Selalu WhatsApp Cloud API (Meta)</option></select>' +
+          '<p class="muted" style="font-size:12px;margin-top:2px">Otomatis: bila Kode Akses BalesOtomatis terisi, BalesOtomatis yang dipakai. Bila kosong, dipakai token Fonnte/Wablas seperti biasa.</p>' +
+
+          '<div style="border:2px solid #0f766e;border-radius:10px;padding:10px 12px;margin-top:10px;background:#f0fdfa"><b>BalesOtomatis</b> <span style="font-size:11px;background:#0f766e;color:#fff;border-radius:6px;padding:1px 6px">pengganti Fonnte</span>' +
+            '<ol class="muted" style="font-size:12px;margin:6px 0 8px;padding-left:18px"><li>Buka member area BalesOtomatis &rarr; menu <b>Integration &rarr; Kode Akses (Token)</b>.</li><li>Klik <b>Salin Kode</b>.</li><li>Tempel di kolom di bawah, lalu klik <b>Simpan Penyedia</b>.</li></ol>' +
+            fieldRahasia('waBales','Kode Akses BalesOtomatis', d.adaBales) +
+            '<div style="display:flex;gap:6px;flex-wrap:wrap">' + (d.adaBales ? '<button class="small secondary" id="waCekBales" type="button">Cek perangkat</button><button class="small secondary" id="waHapusBales" type="button" style="color:#dc2626">Hapus Kode Akses</button>' : '') + '</div>' +
+            '<div id="waInfoBales" style="font-size:12.5px;margin-top:6px"></div>' +
+          '</div>' +
 
           '<div style="border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-top:10px"><b>Wablas</b>' +
             fieldText('waHost','Alamat server Wablas', d.host || 'https://jkt.wablas.com') +
@@ -17886,7 +17895,8 @@
           WablasHost: host,
           WablasToken: document.getElementById('waToken').value.trim(),       // kosong = tidak diubah
           WablasSecretKey: document.getElementById('waSecret').value.trim(),  // kosong = tidak diubah
-          FonnteToken: document.getElementById('waFonnte').value.trim()       // kosong = tidak diubah
+          FonnteToken: document.getElementById('waFonnte').value.trim(),      // kosong = tidak diubah
+          BalesApiKey: document.getElementById('waBales').value.trim()        // kosong = tidak diubah
         }}).then(function(r){
           resetBtn(btn, 'Simpan Penyedia');
           if (!r.ok) { el.innerHTML = errBox(r.error); return; }
@@ -17901,6 +17911,19 @@
       }
       var hw = document.getElementById('waHapusWablas'); if (hw) hw.onclick = function(){ hapusToken('WablasToken','Wablas'); };
       var hf = document.getElementById('waHapusFonnte'); if (hf) hf.onclick = function(){ hapusToken('FonnteToken','Fonnte'); };
+      var hb = document.getElementById('waHapusBales'); if (hb) hb.onclick = function(){ hapusToken('BalesApiKey','BalesOtomatis'); };
+      var cb = document.getElementById('waCekBales'); if (cb) cb.onclick = function(){
+        var btn = this, el = document.getElementById('waInfoBales');
+        loadingBtn(btn, 'Memeriksa...');
+        api('cekPerangkatBales', {oleh: STATE.user.nama}).then(function(r){
+          resetBtn(btn, 'Cek perangkat');
+          if (!r.ok) { el.innerHTML = errBox(esc(r.error||'Gagal memeriksa.')); return; }
+          var p = r.perangkat || [];
+          el.innerHTML = (r.paket && r.paket.name ? '<div>Paket: <b>'+esc(r.paket.name)+'</b>'+(r.paket.active_until ? ' (berlaku s.d. '+esc(r.paket.active_until)+')' : '')+'</div>' : '') +
+            (p.length ? p.map(function(x){ var on = /^connected$/i.test(x.state_connection); return '<div>'+(on ? '&#9989;' : '&#10060;')+' '+esc(x.number_whatsapp || x.number_id)+' &mdash; '+(on ? 'tersambung' : esc(x.state_connection || 'tidak tersambung')+' (scan ulang QR di member area)')+'</div>'; }).join('')
+              : errBox('Belum ada perangkat WhatsApp di akun BalesOtomatis.'));
+        }).catch(function(){ resetBtn(btn, 'Cek perangkat'); el.innerHTML = errBox('Gagal menghubungi server.'); });
+      };
 
       document.getElementById('waTesKirim').onclick = function(){
         var btn = this, el = document.getElementById('waTesPesan');
