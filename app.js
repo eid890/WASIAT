@@ -327,7 +327,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.11.08-i';
+  var VERSI_APP = '2026.11.10-a';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -3396,13 +3396,23 @@
             '<div style="min-width:200px;flex:1"><b>'+esc(s.nama)+'</b> <span class="muted" style="font-size:12px">'+esc(s.kelas||'')+'</span>' +
             '<div style="font-size:12.5px;color:#b45309">'+s.jumlahBulan+' bulan &middot; '+rupiah(s.total)+'</div>' +
             (t ? '<div class="muted" style="font-size:11.5px">&#9993;&#65039; Undangan terakhir '+esc(tglPanjangKeu(t.tanggal))+' (No. '+esc(t.nomor)+')'+(t.pertemuan?' &middot; pertemuan '+esc(tglPanjangKeu(t.pertemuan)):'')+'</div>' : '') +
-            '</div><button class="small kpsKirim" data-i="'+i+'">&#9993;&#65039; Kirim Surat Undangan</button></div>';
+            '</div><div style="display:flex;gap:6px;flex-wrap:wrap">' + (t && t.id ? '<button class="small secondary kpsUnduh" data-i="'+i+'" title="Unduh surat No. '+esc(t.nomor)+'">&#11015;&#65039; Unduh PNG</button>' : '') +
+            '<button class="small kpsKirim" data-i="'+i+'">&#9993;&#65039; Kirim Surat Undangan</button></div></div>';
         }).join('') + '</div>';
       }
       wrap.innerHTML = '<div class="card" style="border-left:4px solid #ea580c">' + kepala + isi + '</div>';
       var bB = document.getElementById('kpsBuka'); if (bB) bB.onclick = function(){ terbuka = !terbuka; gambar(res); };
       var bA = document.getElementById('kpsAtur'); if (bA) bA.onclick = function(){ aturPanggilanSpp(function(){ _panggilanCache = null; muat(); }); };
       wrap.querySelectorAll('.kpsKirim').forEach(function(b){ b.onclick = function(){ bukaKirimPanggilanSpp(daftar[Number(b.dataset.i)], function(){ _panggilanCache = null; terbuka = true; muat(); }); }; });
+      wrap.querySelectorAll('.kpsUnduh').forEach(function(b){ b.onclick = function(){
+        var s = daftar[Number(b.dataset.i)], t = s.terakhir;
+        loadingBtn(b, 'Mengunduh...');
+        apiSurat('panggilanSppUnduh', {id: t.id}).then(function(r){
+          resetBtn(b, '&#11015;&#65039; Unduh PNG');
+          if (!r || !r.ok) { alert((r && r.error) || 'Gagal mengunduh surat.'); return; }
+          unduhPngSurat(r.data.png, namaFilePanggilan(s.nama, r.data.nomor));
+        }).catch(function(){ resetBtn(b, '&#11015;&#65039; Unduh PNG'); alert('Gagal menghubungi server. Coba lagi.'); });
+      }; });
     }
     function muat(){
       if (_panggilanCache && Date.now() - _panggilanWaktu < 5*60*1000) { gambar(_panggilanCache); return; }
@@ -3561,6 +3571,15 @@
       return cv.toDataURL('image/png');
     });
   }
+  function namaFilePanggilan(nama, nomor){ return ('Undangan SPP - ' + nama + ' - ' + String(nomor || '').replace(/[\/\\:*?"<>|]+/g, '-')).replace(/\s+/g, ' ').trim() + '.png'; }
+  function unduhPngSurat(dataUrl, namaFile){
+    return fetch(dataUrl).then(function(r){ return r.blob(); }).then(function(blob){
+      var url = URL.createObjectURL(blob), a = document.createElement('a');
+      a.href = url; a.download = namaFile; a.style.display = 'none';
+      document.body.appendChild(a); a.click();
+      setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 4000);
+    });
+  }
   function tambahHariFE(n){ var d = new Date(); d.setDate(d.getDate() + n); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 
   function bukaKirimPanggilanSpp(s, selesai){
@@ -3592,8 +3611,8 @@
         '<div class="grid2"><div><label>Tanggal pertemuan</label><input type="date" id="kpTgl" value="'+tambahHariFE(3)+'" min="'+todayStr()+'"></div>' +
         '<div><label>Waktu</label><input id="kpJam" value="'+esc(b.jam)+'"></div></div>' +
         '<label>Tempat</label><input id="kpTempat" value="'+esc(b.tempat)+'">' +
-        '<p class="muted" style="font-size:12px;margin:4px 0 8px">Nomor surat <b>'+esc(b.nomor)+'</b> (otomatis dari Persuratan). Surat dikirim ke akun wali (menu Surat) dan WhatsApp wali dalam bentuk gambar.</p>' +
-        '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="secondary" id="kpLihat">&#128065; Pratinjau</button><button id="kpKirim">&#9993;&#65039; Kirim ke Wali</button></div>' +
+        '<p class="muted" style="font-size:12px;margin:4px 0 8px">Nomor surat <b>'+esc(b.nomor)+'</b> (otomatis dari Persuratan). <b>Kirim ke Wali</b>: dikirim ke akun wali (menu Surat) dan WhatsApp wali dalam bentuk gambar. <b>Simpan &amp; Unduh PNG</b>: disimpan di arsip lalu diunduh ke perangkat ini untuk dicetak/diantar sendiri, tanpa dikirim ke wali.</p>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="secondary" id="kpLihat">&#128065; Pratinjau</button><button class="secondary" id="kpUnduh">&#11015;&#65039; Simpan &amp; Unduh PNG</button><button id="kpKirim">&#9993;&#65039; Kirim ke Wali</button></div>' +
         '<div id="kpPesan"></div><div id="kpPratinjau" style="margin-top:10px"></div>';
       ['kpTgl','kpJam','kpTempat'].forEach(function(id){ m.el.querySelector('#'+id).oninput = function(){ png = ''; }; });
       m.el.querySelector('#kpLihat').onclick = function(){ pratinjau().catch(function(){}); };
@@ -3619,13 +3638,46 @@
             if (!r || !r.ok) { elP.innerHTML = errBox((r && r.error) || 'Gagal mengirim. Periksa koneksi lalu coba lagi.'); return; }
             var h = r.data, w = h.wa || {};
             bK.disabled = true; bK.textContent = 'Terkirim';
+            var bU0 = m.el.querySelector('#kpUnduh'); if (bU0) bU0.style.display = 'none';
             elP.innerHTML = '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;font-size:13px;color:#166534;margin-top:8px">&#9989; Surat No. <b>'+esc(h.nomor)+'</b> terkirim.<br>' +
               'Akun wali: '+(h.app ? h.app+' akun (menu Surat + notifikasi)' : '<span style="color:#b45309">wali belum punya akun WASIAT</span>')+'<br>' +
               'WhatsApp: '+(w.terkirim ? w.terkirim+' nomor' : (w.nonaktif ? 'jenis pesan ini dinonaktifkan' : (!w.nomor ? '<span style="color:#b45309">nomor WA wali belum terisi</span>' : '<span style="color:#b45309">gagal'+(h.galatWa?' ('+esc(h.galatWa)+')':'')+'</span>'))) +
-              '<br><span class="muted">Tersimpan di arsip Surat Keluar (Persuratan).</span></div>';
+              '<br><span class="muted">Tersimpan di arsip Surat Keluar (Persuratan).</span>' +
+              '<div style="margin-top:8px"><button class="small secondary" id="kpUnduhLagi">&#11015;&#65039; Unduh PNG</button></div></div>';
+            var pngTerkirim = png, namaF = namaFilePanggilan(s.nama, h.nomor);
+            m.el.querySelector('#kpUnduhLagi').onclick = function(){ unduhPngSurat(pngTerkirim, namaF); };
             if (selesai) selesai();
           });
         }).catch(function(e){ resetBtn(bK, '&#9993;&#65039; Kirim ke Wali'); if (e && e.message !== 'tanggal') m.el.querySelector('#kpPesan').innerHTML = errBox((e && e.message) || 'Gagal.'); });
+      };
+      var bU = m.el.querySelector('#kpUnduh');
+      bU.onclick = function(){
+        var i = isian(), elP = m.el.querySelector('#kpPesan');
+        if (!i.tanggal) { elP.innerHTML = errBox('Pilih tanggal pertemuan dulu.'); return; }
+        loadingBtn(bU, 'Membuat surat...');
+        (png ? Promise.resolve(png) : pratinjau()).then(function(){
+          if (!confirm('Simpan surat undangan No. '+bahan.nomor+' untuk wali '+s.nama+' ke arsip, lalu unduh sebagai PNG?\n\nSurat TIDAK dikirim ke akun/WhatsApp wali.')) { resetBtn(bU, '&#11015;&#65039; Simpan &amp; Unduh PNG'); return null; }
+          loadingBtn(bU, 'Menyimpan...');
+          function simpan(ulang){
+            return apiSurat('panggilanSppKirim', {nisn: s.nisn, nomor: bahan.nomor, urut: bahan.urut, tanggalPertemuan: i.tanggal, jam: i.jam, tempat: i.tempat, png: png, tanpaKirim: true}).then(function(r){
+              if (r && !r.ok && /NOMOR_DIPAKAI/.test(r.error || '') && !ulang) return siapkan().then(function(){ return pratinjau(); }).then(function(){ return simpan(true); });
+              return r;
+            });
+          }
+          return simpan(false).then(function(r){
+            if (!r || !r.ok) { resetBtn(bU, '&#11015;&#65039; Simpan &amp; Unduh PNG'); elP.innerHTML = errBox((r && r.error) || 'Gagal menyimpan. Periksa koneksi lalu coba lagi.'); return; }
+            var h = r.data, pngSimpan = png, namaF = namaFilePanggilan(s.nama, h.nomor);
+            return unduhPngSurat(pngSimpan, namaF).then(function(){
+              bU.disabled = true; bU.textContent = 'Tersimpan & diunduh';
+              bK.disabled = true; bK.style.display = 'none';
+              elP.innerHTML = '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;font-size:13px;color:#166534;margin-top:8px">&#9989; Surat No. <b>'+esc(h.nomor)+'</b> tersimpan di arsip Surat Keluar dan diunduh sebagai <b>'+esc(namaF)+'</b>.<br>' +
+                '<span class="muted">Surat ini belum dikirim ke wali. Cetak atau kirim sendiri gambarnya.</span>' +
+                '<div style="margin-top:8px"><button class="small secondary" id="kpUnduhLagi">&#11015;&#65039; Unduh lagi</button></div></div>';
+              m.el.querySelector('#kpUnduhLagi').onclick = function(){ unduhPngSurat(pngSimpan, namaF); };
+              if (selesai) selesai();
+            });
+          });
+        }).catch(function(e){ resetBtn(bU, '&#11015;&#65039; Simpan &amp; Unduh PNG'); if (e && e.message !== 'tanggal') m.el.querySelector('#kpPesan').innerHTML = errBox((e && e.message) || 'Gagal.'); });
       };
     }).catch(function(e){ m.el.querySelector('#kpBody').innerHTML = errBox(e.message); });
   }
