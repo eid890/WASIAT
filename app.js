@@ -327,7 +327,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.11.12-b';
+  var VERSI_APP = '2026.11.12-c';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -3420,7 +3420,27 @@
   var ROLE_PANGGILAN = ['Admin','Mudir','Bendahara','Sekretaris','KabagPutra','KabagPutri','Kabag'];
   function bolehPanggilanSpp(){
     var roles = (STATE.user && (STATE.user.roles || [STATE.user.level])) || [];
-    return !!(STATE.user && STATE.user.tokenSurat) && roles.some(function(r){ return ROLE_PANGGILAN.indexOf(r) >= 0; }) && !sedangModeKantin();
+    return !!STATE.user && roles.some(function(r){ return ROLE_PANGGILAN.indexOf(r) >= 0; }) && !sedangModeKantin();
+  }
+  // Kartu pengganti saat kartu surat SPP / wali kelas tidak bisa dimuat. Sebelumnya kartu
+  // hilang diam-diam (mis. sesi lama tanpa kunci surat, sesi kedaluwarsa, PIN diganti),
+  // sehingga akun Kabag/Bendahara/Admin tidak melihat fitur surat seperti akun Mudir.
+  function kartuGagalSurat(wrap, judul, jenis, ulang){
+    var pesan = jenis === 'sesi'
+      ? 'Sesi akun ini perlu diperbarui supaya fitur surat bisa dipakai. Tekan <b>Masuk ulang</b>, lalu masuk kembali dengan Nama/No WA dan PIN (cukup sekali).'
+      : (jenis === 'peran'
+        ? 'Server belum membaca akun ini sebagai Mudir/Admin/Bendahara/Kabag. Tekan <b>Masuk ulang</b>; bila tetap begini, minta Admin memeriksa kolom peran akun ini di RoleAkses.'
+        : 'Daftar belum termuat (koneksi lambat atau terputus).');
+    wrap.innerHTML = '<div class="card" style="border-left:4px solid #ea580c"><b style="color:#9a3412">' + judul + '</b>' +
+      '<div class="muted" style="font-size:12.5px;margin:4px 0 8px">' + pesan + '</div>' +
+      (jenis === 'jaringan' ? '<button class="small secondary kgsUlang">&#128260; Coba lagi</button>' : '<button class="small kgsMasuk">&#128274; Masuk ulang</button>') + '</div>';
+    var bU = wrap.querySelector('.kgsUlang'); if (bU) bU.onclick = function(){ wrap.innerHTML = '<div class="card muted" style="font-size:13px">Memuat...</div>'; ulang(); };
+    var bM = wrap.querySelector('.kgsMasuk'); if (bM) bM.onclick = function(){ STATE.user = null; hapusSesiTersimpan(); showBeranda(); };
+  }
+  function jenisGagalSurat(res){
+    if (!STATE.user || !STATE.user.tokenSurat) return 'sesi';
+    if (res && (res.auth === false || res.perluLogin)) return 'sesi';
+    return 'jaringan';
   }
   function pasangKartuPanggilanSpp(idSetelah){
     if (!bolehPanggilanSpp()) return;
@@ -3430,7 +3450,12 @@
     var terbuka = false;
     function gambar(res){
       if (!document.body.contains(wrap)) return;
-      if (!res || !res.ok || !res.data || !res.data.tampil) { wrap.innerHTML = ''; return; }
+      if (!res || !res.ok) { kartuGagalSurat(wrap, '&#128232; Surat undangan SPP', jenisGagalSurat(res), muat); return; }
+      if (!res.data || !res.data.tampil) {
+        // dimatikan di pengaturan -> memang tidak tampil; selain itu peran akun tidak terbaca di server
+        if (res.data && !res.data.nonaktif) kartuGagalSurat(wrap, '&#128232; Surat undangan SPP', 'peran', muat); else wrap.innerHTML = '';
+        return;
+      }
       var d = res.data, daftar = d.data || [];
       var cakupan = d.cakupan === 'putra' ? ' (santri putra)' : (d.cakupan === 'putri' ? ' (santri putri)' : '');
       var kepala = '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
@@ -3466,6 +3491,7 @@
       }; });
     }
     function muat(){
+      if (!STATE.user || !STATE.user.tokenSurat) { gambar({ok:false}); return; }
       if (_panggilanCache && Date.now() - _panggilanWaktu < 5*60*1000) { gambar(_panggilanCache); return; }
       apiSurat('panggilanSppDaftar', {}).then(function(r){ if (r && r.ok) { _panggilanCache = r; _panggilanWaktu = Date.now(); } gambar(r); });
     }
@@ -3495,14 +3521,15 @@
     if (hari <= 0) return 'hari ini'; if (hari === 1) return 'kemarin'; return hari + ' hari lalu';
   }
   function pasangKartuTunggakanWaliKelas(idSetelah){
-    if (!STATE.user || !STATE.user.tokenSurat || !STATE.user.waliKelas || sedangModeKantin()) return;
+    if (!STATE.user || !STATE.user.waliKelas || sedangModeKantin()) return;
     var acuan = document.getElementById('kartuPanggilanSpp') || document.getElementById(idSetelah); if (!acuan) return;
     var wrap = document.getElementById('kartuTunggakanWaliKelas');
     if (!wrap) { wrap = document.createElement('div'); wrap.id = 'kartuTunggakanWaliKelas'; acuan.parentNode.insertBefore(wrap, acuan.nextSibling); }
     var terbuka = false;
     function gambar(res){
       if (!document.body.contains(wrap)) return;
-      if (!res || !res.ok || !res.data || !res.data.tampil) { wrap.innerHTML = ''; return; }
+      if (!res || !res.ok) { kartuGagalSurat(wrap, '&#128179; SPP santri kelas Anda', jenisGagalSurat(res), muatKTW); return; }
+      if (!res.data || !res.data.tampil) { wrap.innerHTML = ''; return; }
       var d = res.data, daftar = d.data || [];
       var kelasTeks = (d.kelas || []).map(labelKelasPSW).join(', ');
       if (!daftar.length) {
@@ -3540,7 +3567,11 @@
         apiSurat('catatPengingatSppWali', {nisn: s.nisn}).catch(function(){});
       }; });
     }
-    apiSurat('tunggakanKelasSaya', {}).then(gambar).catch(function(){ wrap.innerHTML = ''; });
+    function muatKTW(){
+      if (!STATE.user || !STATE.user.tokenSurat) { gambar({ok:false}); return; }
+      apiSurat('tunggakanKelasSaya', {}).then(gambar).catch(function(){ gambar({ok:false}); });
+    }
+    muatKTW();
   }
 
   function aturPanggilanSpp(selesai){
