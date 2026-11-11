@@ -327,7 +327,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.11.10-a';
+  var VERSI_APP = '2026.11.12-b';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -569,6 +569,7 @@
   // dan isian hafalan berikutnya melanjutkan dari setoran terakhir yang benar.
   function terapkanAntrianKeHasil(action, payload, h){
     if (!h || !h.ok) return h;
+    if (action === 'getSantriUntukHafalan') terapkanJejakHafalan(h);   // berlaku walau antrian kosong
     var tunggu;
     try { tunggu = getOutbox().filter(function(x){ return x.status !== 'ditolak'; }); } catch(e){ return h; }
     if (!tunggu.length) return h;
@@ -615,6 +616,44 @@
       }
     } catch(e){}
     return h;
+  }
+  // JEJAK SETORAN HAFALAN yang sudah dikirim dari HP ini (per santri + jenis hafalan).
+  // Dipakai supaya isian otomatis SELALU melanjutkan dari setoran terakhir yang dicatat
+  // di HP ini, walaupun data form terpaksa diambil dari salinan lama (server lambat/offline).
+  // Data server tetap yang utama: jejak hanya dipakai bila tanggalnya LEBIH BARU.
+  var JEJAK_HAFALAN_KEY = 'wasiatJejakHafalanV1';
+  function bacaJejakHafalan(){ try { return JSON.parse(localStorage.getItem(JEJAK_HAFALAN_KEY) || '{}') || {}; } catch(e){ return {}; } }
+  function catatJejakHafalan(p){
+    try {
+      if (!p || !Array.isArray(p.items) || typeof JENIS_HAFALAN_SETOR === 'undefined') return;
+      var j = bacaJejakHafalan(), tgl = p.tanggal || todayStr();
+      p.items.forEach(function(it){
+        if (!it || JENIS_HAFALAN_SETOR.indexOf(it.jenisHafalan) === -1) return;
+        var k = String(it.nisn) + '|' + it.jenisHafalan, lama = j[k];
+        if (lama && lama.tanggal > tgl) return;
+        j[k] = {tanggal: tgl, surah: it.surah || '', ayat: it.ayat || '', juz: it.juz || '', halamanKe: it.halamanKe || '', nilai: it.nilai || '', simpan: Date.now()};
+      });
+      // simpan 60 hari terakhir saja
+      var batas = Date.now() - 60*24*60*60*1000;
+      Object.keys(j).forEach(function(k){ if (!j[k] || (j[k].simpan || 0) < batas) delete j[k]; });
+      localStorage.setItem(JEJAK_HAFALAN_KEY, JSON.stringify(j));
+    } catch(e){}
+  }
+  function terapkanJejakHafalan(h){
+    try {
+      if (!h || !Array.isArray(h.data)) return;
+      var j = bacaJejakHafalan();
+      h.data.forEach(function(s){
+        Object.keys(j).forEach(function(k){
+          var bag = k.split('|'); if (bag[0] !== String(s.nisn)) return;
+          var jenis = bag.slice(1).join('|'), t = j[k];
+          s.terakhirPerJenis = s.terakhirPerJenis || {};
+          var lama = s.terakhirPerJenis[jenis];
+          if (lama && lama.tanggal && lama.tanggal >= t.tanggal) return;   // data server sama/lebih baru: server yang dipakai
+          s.terakhirPerJenis[jenis] = {tanggal: t.tanggal, surah: t.surah, ayat: t.ayat, juz: t.juz, halamanKe: t.halamanKe, nilai: t.nilai, dariHp: true};
+        });
+      });
+    } catch(e){}
   }
   function hasilDariCache(action, payload, entri){
     var h = sesuaikanHasilCache(action, payload, entri.hasil, entri);
@@ -1690,18 +1729,29 @@
     var benarOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
     var putus = benarOffline || jaringanSedangBuruk();
     if (bisaDiantre && putus) {
-      return _antrePesan(action, payload, benarOffline ? 'offline' : 'jaringan_buruk');
+      return _antrePesan(action, payload, benarOffline ? 'offline' : 'jaringan_buruk').then(function(res){
+        if (action === 'submitHafalan' && res && res.ok) catatJejakHafalan(payload);
+        return res;
+      });
     }
+    // Riwayat hafalan harus SEGAR: salinan lama bisa membuat isian otomatis memakai ayat
+    // yang sudah lewat. Selama HP masih terhubung internet, server tetap dicoba (lebih lama)
+    // sebelum salinan dipakai.
+    var butuhSegar = action === 'getSantriUntukHafalan';
 
     var entriTersimpan = bisaDiCache ? (ambilCacheBaca(action, payload) || ambilCacheLonggar(action, payload)) : null;
-    if (entriTersimpan && putus) {
+    if (entriTersimpan && putus && !(butuhSegar && !benarOffline)) {
       tandaiSedangPakaiDataTersimpan(entriTersimpan.waktu);
       return Promise.resolve(hasilDariCache(action, payload, entriTersimpan));
     }
 
-    if (bisaDiantre) return kirimTulisDenganBatasLunak(action, payload);
+    if (bisaDiantre) {
+      var janji = kirimTulisDenganBatasLunak(action, payload);
+      if (action === 'submitHafalan') janji = janji.then(function(res){ if (res && res.ok) catatJejakHafalan(payload); return res; });
+      return janji;
+    }
 
-    var batas = entriTersimpan ? BATAS_BACA_ADA_CACHE_MS : (putus ? 12000 : BATAS_BACA_MS);
+    var batas = butuhSegar ? (putus ? 15000 : BATAS_BACA_MS) : (entriTersimpan ? BATAS_BACA_ADA_CACHE_MS : (putus ? 12000 : BATAS_BACA_MS));
     return apiJaringan(action, payload, batas).then(function(res){
       if (bisaDiCache && !res.ok && res._jaringanGagal && entriTersimpan) {
         tandaiSedangPakaiDataTersimpan(entriTersimpan.waktu);
@@ -3396,7 +3446,7 @@
             '<div style="min-width:200px;flex:1"><b>'+esc(s.nama)+'</b> <span class="muted" style="font-size:12px">'+esc(s.kelas||'')+'</span>' +
             '<div style="font-size:12.5px;color:#b45309">'+s.jumlahBulan+' bulan &middot; '+rupiah(s.total)+'</div>' +
             (t ? '<div class="muted" style="font-size:11.5px">&#9993;&#65039; Undangan terakhir '+esc(tglPanjangKeu(t.tanggal))+' (No. '+esc(t.nomor)+')'+(t.pertemuan?' &middot; pertemuan '+esc(tglPanjangKeu(t.pertemuan)):'')+'</div>' : '') +
-            '</div><div style="display:flex;gap:6px;flex-wrap:wrap">' + (t && t.id ? '<button class="small secondary kpsUnduh" data-i="'+i+'" title="Unduh surat No. '+esc(t.nomor)+'">&#11015;&#65039; Unduh PNG</button>' : '') +
+            '</div><div style="display:flex;gap:6px;flex-wrap:wrap">' + (t && t.id ? '<button class="small secondary kpsUnduh" data-i="'+i+'" title="Unduh surat No. '+esc(t.nomor)+'">&#11015;&#65039; Unduh PNG</button>' : '<button class="small secondary kpsBuatUnduh" data-i="'+i+'" title="Belum ada surat: buat surat lalu unduh PNG">&#11015;&#65039; Buat &amp; Unduh PNG</button>') +
             '<button class="small kpsKirim" data-i="'+i+'">&#9993;&#65039; Kirim Surat Undangan</button></div></div>';
         }).join('') + '</div>';
       }
@@ -3404,6 +3454,7 @@
       var bB = document.getElementById('kpsBuka'); if (bB) bB.onclick = function(){ terbuka = !terbuka; gambar(res); };
       var bA = document.getElementById('kpsAtur'); if (bA) bA.onclick = function(){ aturPanggilanSpp(function(){ _panggilanCache = null; muat(); }); };
       wrap.querySelectorAll('.kpsKirim').forEach(function(b){ b.onclick = function(){ bukaKirimPanggilanSpp(daftar[Number(b.dataset.i)], function(){ _panggilanCache = null; terbuka = true; muat(); }); }; });
+      wrap.querySelectorAll('.kpsBuatUnduh').forEach(function(b){ b.onclick = function(){ bukaKirimPanggilanSpp(daftar[Number(b.dataset.i)], function(){ _panggilanCache = null; terbuka = true; muat(); }, 'unduh'); }; });
       wrap.querySelectorAll('.kpsUnduh').forEach(function(b){ b.onclick = function(){
         var s = daftar[Number(b.dataset.i)], t = s.terakhir;
         loadingBtn(b, 'Mengunduh...');
@@ -3421,6 +3472,77 @@
     muat();
   }
 
+  // =====================================================================
+  // PENGINGAT SPP OLEH WALI KELAS: kartu di dashboard berisi santri kelasnya yang SPP-nya
+  // belum terselesaikan + tombol yang membuka chat WhatsApp orang tua (pesan sudah terisi).
+  // =====================================================================
+  // "9B" -> "Kelas 9B"; "Kelas 9B" tetap (supaya tidak tertulis "Kelas Kelas 9B")
+  function labelKelasPSW(k){ k = String(k || '').trim(); return !k ? '' : (/^kelas\b/i.test(k) ? k : 'Kelas ' + k); }
+  function teksPengingatSppWali(s, d){
+    var bln = s.bulan || [];
+    var rentang = bln.length ? (bln.length === 1 ? bln[0] : bln[0] + ' s.d. ' + bln[bln.length-1]) : '';
+    var kelasSaya = (d.kelas || []).map(labelKelasPSW).join(', ');
+    return "Assalamu'alaikum warahmatullahi wabarakatuh.\n\n" +
+      "Bapak/Ibu Orang Tua/Wali ananda *" + s.nama + "*" + (s.kelas ? " (" + labelKelasPSW(s.kelas) + ")" : "") + ", semoga senantiasa dalam keadaan sehat dan dilimpahi keberkahan.\n\n" +
+      "Kami informasikan bahwa SPP ananda belum terselesaikan selama *" + s.jumlahBulan + " bulan*" + (rentang ? " (" + rentang + ")" : "") +
+      " dengan jumlah *" + rupiah(s.total) + "*.\n\n" +
+      "Mohon kiranya Bapak/Ibu dapat segera menyelesaikan pembayarannya. Bila sudah membayar, mohon abaikan pesan ini atau kirimkan bukti pembayarannya kepada kami. " +
+      "Bila ada kendala, silakan sampaikan kepada kami agar dapat dimusyawarahkan bersama.\n\n" +
+      "Jazakumullahu khairan.\n\nHormat kami,\n" + (STATE.user && STATE.user.nama ? STATE.user.nama : '') + "\nWali " + (labelKelasPSW(s.kelas) || kelasSaya) + "\n" + (d.namaResmi || 'Pondok Pesantren Wihdatul Ummah Poso');
+  }
+  function waktuRelatifPSW(ms){
+    var hari = Math.floor((Date.now() - ms) / 86400000);
+    if (hari <= 0) return 'hari ini'; if (hari === 1) return 'kemarin'; return hari + ' hari lalu';
+  }
+  function pasangKartuTunggakanWaliKelas(idSetelah){
+    if (!STATE.user || !STATE.user.tokenSurat || !STATE.user.waliKelas || sedangModeKantin()) return;
+    var acuan = document.getElementById('kartuPanggilanSpp') || document.getElementById(idSetelah); if (!acuan) return;
+    var wrap = document.getElementById('kartuTunggakanWaliKelas');
+    if (!wrap) { wrap = document.createElement('div'); wrap.id = 'kartuTunggakanWaliKelas'; acuan.parentNode.insertBefore(wrap, acuan.nextSibling); }
+    var terbuka = false;
+    function gambar(res){
+      if (!document.body.contains(wrap)) return;
+      if (!res || !res.ok || !res.data || !res.data.tampil) { wrap.innerHTML = ''; return; }
+      var d = res.data, daftar = d.data || [];
+      var kelasTeks = (d.kelas || []).map(labelKelasPSW).join(', ');
+      if (!daftar.length) {
+        wrap.innerHTML = '<div class="card" style="border-left:4px solid #16a34a"><b style="color:#166534">&#9989; SPP santri ' + esc(kelasTeks) + ': semua lancar</b><div class="muted" style="font-size:12px">Tidak ada santri kelas Anda yang SPP-nya tertunggak.</div></div>';
+        return;
+      }
+      var kepala = '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
+        '<div><b style="color:#9a3412">&#128179; SPP santri ' + esc(kelasTeks) + ' belum terselesaikan: ' + daftar.length + ' santri</b>' +
+        '<div class="muted" style="font-size:12px">Ingatkan orang tua lewat WhatsApp Anda &mdash; pesan sudah disiapkan, tinggal kirim.</div></div>' +
+        '<button class="small secondary" id="ktwBuka">' + (terbuka ? 'Tutup' : 'Lihat daftar') + '</button></div>';
+      var isi = '';
+      if (terbuka) {
+        isi = '<div style="margin-top:10px;max-height:65vh;overflow:auto">' + daftar.map(function(s, i){
+          var t = s.terakhir, no = s.nomorWali || [];
+          return '<div style="padding:9px 0;border-top:1px solid #f1f5f9">' +
+            '<b>' + esc(s.nama) + '</b> <span class="muted" style="font-size:12px">' + esc(s.kelas || '') + '</span>' +
+            '<div style="font-size:12.5px;color:#b45309">' + s.jumlahBulan + ' bulan &middot; ' + rupiah(s.total) + ((s.bulan||[]).length ? ' <span class="muted">(' + esc(s.bulan[0]) + (s.bulan.length > 1 ? ' &ndash; ' + esc(s.bulan[s.bulan.length-1]) : '') + ')</span>' : '') + '</div>' +
+            '<div class="muted ktwTerakhir" data-i="' + i + '" style="font-size:11.5px">' + (t && t.t ? '&#128232; Terakhir diingatkan ' + waktuRelatifPSW(t.t) + (t.oleh ? ' oleh ' + esc(t.oleh) : '') : '') + '</div>' +
+            '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:5px">' +
+              (no.length ? no.map(function(n, k){ return '<button class="small ktwKirim" data-i="' + i + '" data-k="' + k + '" style="background:#16a34a">&#128242; Kirim WA ke ' + esc(n.tampil) + '</button>'; }).join('')
+                         : '<span style="font-size:12px;color:#b45309">Nomor WA orang tua belum ada di data santri.</span>') +
+            '</div></div>';
+        }).join('') + '</div>';
+      }
+      wrap.innerHTML = '<div class="card" style="border-left:4px solid #f59e0b">' + kepala + isi + '</div>';
+      var bB = document.getElementById('ktwBuka'); if (bB) bB.onclick = function(){ terbuka = !terbuka; gambar(res); };
+      wrap.querySelectorAll('.ktwKirim').forEach(function(btn){ btn.onclick = function(){
+        var s = daftar[Number(btn.dataset.i)], n = (s.nomorWali || [])[Number(btn.dataset.k)];
+        if (!s || !n) return;
+        // Buka chat WhatsApp orang tua dengan pesan yang sudah terisi (dikirim dari WA HP ini)
+        window.open('https://wa.me/' + nomorWaMe(n.baku) + '?text=' + encodeURIComponent(teksPengingatSppWali(s, d)), '_blank');
+        s.terakhir = {t: Date.now(), oleh: STATE.user.nama};
+        var el = wrap.querySelector('.ktwTerakhir[data-i="' + btn.dataset.i + '"]');
+        if (el) el.innerHTML = '&#128232; Terakhir diingatkan hari ini oleh ' + esc(STATE.user.nama);
+        apiSurat('catatPengingatSppWali', {nisn: s.nisn}).catch(function(){});
+      }; });
+    }
+    apiSurat('tunggakanKelasSaya', {}).then(gambar).catch(function(){ wrap.innerHTML = ''; });
+  }
+
   function aturPanggilanSpp(selesai){
     api('getPengaturanBatch', {keys:['PanggilanSppAktif','PanggilanSppMinBulan','PanggilanSppTempat','PanggilanSppJam','PanggilanSppKontak']}).then(function(r){
       var pg = (r && r.ok && r.data) || {};
@@ -3430,7 +3552,7 @@
         '<label style="display:flex;gap:8px;align-items:center;font-weight:700"><input type="checkbox" id="apsAktif" style="width:auto"'+(aktif?' checked':'')+'> Tampilkan kartu di dashboard Mudir, Admin, Bendahara &amp; Kabag</label>' +
         '<label style="margin-top:8px">Tampilkan santri yang menunggak minimal</label><select id="apsMin">' +
           [1,2,3,4,5,6].map(function(n){ return '<option value="'+n+'"'+(n===minB?' selected':'')+'>'+n+' bulan</option>'; }).join('') + '</select>' +
-        '<label>Tempat pertemuan (bawaan)</label><input id="apsTempat" value="'+esc(pg.PanggilanSppTempat || 'Kantor Pondok Pesantren Wihdatul Ummah Poso')+'">' +
+        '<label>Tempat pertemuan (bawaan)</label><input id="apsTempat" value="'+esc(pg.PanggilanSppTempat && pg.PanggilanSppTempat !== 'Kantor Pondok Pesantren Wihdatul Ummah Poso' ? pg.PanggilanSppTempat : 'Kantor Pondok')+'">' +
         '<label>Waktu pertemuan (bawaan)</label><input id="apsJam" value="'+esc(pg.PanggilanSppJam || '09.00 WITA s.d. selesai')+'">' +
         '<label>Nomor yang dapat dihubungi wali <span class="muted">(kosongkan = nomor di kop surat)</span></label><input id="apsKontak" value="'+esc(pg.PanggilanSppKontak || '')+'" placeholder="mis. 0822 2922 5617">' +
         '<p class="muted" style="font-size:12px">Kabag Putra hanya melihat santri putra, Kabag Putri hanya santri putri. Santri yang dibebaskan, dikecualikan dari tagihan, atau info SPP-nya disembunyikan dari wali tidak pernah muncul.</p>' +
@@ -3582,11 +3704,25 @@
   }
   function tambahHariFE(n){ var d = new Date(); d.setDate(d.getDate() + n); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 
-  function bukaKirimPanggilanSpp(s, selesai){
+  // Pesan pengantar yang ikut dikirim bersama gambar surat lewat WhatsApp pengirim
+  function teksPengantarPanggilan(bahan, s){
+    var roles = (STATE.user && (STATE.user.roles || [STATE.user.level])) || [];
+    var peran = STATE.user && STATE.user.level && ROLE_PANGGILAN.indexOf(STATE.user.level) >= 0 ? STATE.user.level : (roles.filter(function(r){ return ROLE_PANGGILAN.indexOf(r) >= 0; })[0] || '');
+    var jabatan = peran ? labelRole(peran) : '';
+    return "Assalamu'alaikum warahmatullahi wabarakatuh.\n\nBapak/Ibu Orang Tua/Wali ananda *" + s.nama + "*, terlampir surat undangan silaturahmi dan musyawarah dari " +
+      (bahan.namaResmi || 'Pondok Pesantren Wihdatul Ummah Poso') + " (No. " + bahan.nomor + ")." +
+      (bahan.appUrl ? "\nSurat juga dapat dibuka di aplikasi WASIAT (menu Surat): " + bahan.appUrl : '') +
+      "\n\nHormat kami,\n" + (STATE.user && STATE.user.nama ? STATE.user.nama : '') + (jabatan ? "\n" + jabatan : '') + "\n\nJazakumullahu khairan.";
+  }
+  function nomorWaMe(baku){ var d = String(baku || '').replace(/\D/g, ''); if (d.charAt(0) === '0') d = '62' + d.slice(1); return d; }
+  function bisaBagikanFile(){ try { return !!(navigator.canShare && navigator.canShare({files:[new File([new Blob(['x'],{type:'image/png'})], 'x.png', {type:'image/png'})]})); } catch(e){ return false; } }
+
+  // Jendela surat undangan. mode: 'wa' (bawaan) | 'unduh' (dibuka dari tombol Buat & Unduh)
+  function bukaKirimPanggilanSpp(s, selesai, mode){
     var m = keuModal('<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h3 style="margin:0">&#9993;&#65039; Surat Undangan untuk Wali '+esc(s.nama)+'</h3><button class="secondary small" data-tutup>Tutup</button></div>' +
       '<p class="muted" style="font-size:12.5px;margin:6px 0 10px">'+s.jumlahBulan+' bulan &middot; '+rupiah(s.total)+(s.kelas?' &middot; '+esc(s.kelas):'')+'</p>' +
       '<div id="kpBody"><p class="muted">Menyiapkan data surat...</p></div>', 640);
-    var bahan = null, png = '';
+    var bahan = null, png = '', sudah = false;
     function isian(){ return {tanggal: m.el.querySelector('#kpTgl').value, jam: m.el.querySelector('#kpJam').value.trim(), tempat: m.el.querySelector('#kpTempat').value.trim()}; }
     function siapkan(){
       return apiSurat('panggilanSppSiapkan', {nisn: s.nisn}).then(function(r){
@@ -3604,81 +3740,139 @@
         return url;
       }, function(e){ el.innerHTML = errBox(e.message || 'Gagal membuat gambar surat.'); throw e; });
     }
+    function tombolSemua(nonaktif){ ['kpWa','kpUnduh','kpKirim'].forEach(function(id){ var b = m.el.querySelector('#'+id); if (b) b.disabled = !!nonaktif; }); }
+    // Simpan ke arsip (nomor resmi). opsi: {tanpaKirim} | {waPribadi} | {} (WA pondok)
+    function simpanSurat(i, opsi){
+      function jalan(ulang){
+        return apiSurat('panggilanSppKirim', Object.assign({nisn: s.nisn, nomor: bahan.nomor, urut: bahan.urut, tanggalPertemuan: i.tanggal, jam: i.jam, tempat: i.tempat, png: png}, opsi)).then(function(r){
+          if (r && !r.ok && /NOMOR_DIPAKAI/.test(r.error || '') && !ulang) {
+            // Nomor baru saja dipakai surat lain: ambil nomor berikutnya lalu buat ulang gambarnya
+            return siapkan().then(function(){ return pratinjau(); }).then(function(){ return jalan(true); });
+          }
+          return r;
+        });
+      }
+      return jalan(false);
+    }
+    function kotakSukses(html){ return '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;font-size:13px;color:#166534;margin-top:8px">' + html + '</div>'; }
+    function jalankan(tombol, label, konfirmasi, opsi, sesudah){
+      var i = isian(), elP = m.el.querySelector('#kpPesan');
+      if (!i.tanggal) { elP.innerHTML = errBox('Pilih tanggal pertemuan dulu.'); return; }
+      loadingBtn(tombol, 'Membuat surat...');
+      (png ? Promise.resolve(png) : pratinjau()).then(function(){
+        if (!confirm(konfirmasi())) { resetBtn(tombol, label); return null; }
+        loadingBtn(tombol, 'Menyimpan...'); tombolSemua(true);
+        return simpanSurat(i, opsi).then(function(r){
+          resetBtn(tombol, label);
+          if (!r || !r.ok) { tombolSemua(false); elP.innerHTML = errBox((r && r.error) || 'Gagal. Periksa koneksi lalu coba lagi.'); return; }
+          sudah = true;
+          ['kpWa','kpUnduh','kpKirim'].forEach(function(id){ var b = m.el.querySelector('#'+id); if (b) b.style.display = 'none'; });
+          sesudah(r.data, png, elP);
+          if (selesai) selesai();
+        });
+      }).catch(function(e){ tombolSemua(false); resetBtn(tombol, label); if (e && e.message !== 'tanggal') m.el.querySelector('#kpPesan').innerHTML = errBox((e && e.message) || 'Gagal.'); });
+    }
+
     siapkan().then(function(b){
-      var t = s.terakhir;
+      var t = s.terakhir, nomorWali = b.nomorWali || [];
       m.el.querySelector('#kpBody').innerHTML =
-        (t ? '<div class="warn" style="margin-bottom:8px">&#8505;&#65039; Undangan terakhir sudah dikirim '+esc(tglPanjangKeu(t.tanggal))+' (No. '+esc(t.nomor)+(t.oleh?', oleh '+esc(t.oleh):'')+'). Pastikan memang perlu dikirim lagi.</div>' : '') +
-        '<div class="grid2"><div><label>Tanggal pertemuan</label><input type="date" id="kpTgl" value="'+tambahHariFE(3)+'" min="'+todayStr()+'"></div>' +
-        '<div><label>Waktu</label><input id="kpJam" value="'+esc(b.jam)+'"></div></div>' +
-        '<label>Tempat</label><input id="kpTempat" value="'+esc(b.tempat)+'">' +
-        '<p class="muted" style="font-size:12px;margin:4px 0 8px">Nomor surat <b>'+esc(b.nomor)+'</b> (otomatis dari Persuratan). <b>Kirim ke Wali</b>: dikirim ke akun wali (menu Surat) dan WhatsApp wali dalam bentuk gambar. <b>Simpan &amp; Unduh PNG</b>: disimpan di arsip lalu diunduh ke perangkat ini untuk dicetak/diantar sendiri, tanpa dikirim ke wali.</p>' +
-        '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="secondary" id="kpLihat">&#128065; Pratinjau</button><button class="secondary" id="kpUnduh">&#11015;&#65039; Simpan &amp; Unduh PNG</button><button id="kpKirim">&#9993;&#65039; Kirim ke Wali</button></div>' +
+        (t ? '<div class="warn" style="margin-bottom:8px">&#8505;&#65039; Undangan terakhir sudah dibuat '+esc(tglPanjangKeu(t.tanggal))+' (No. '+esc(t.nomor)+(t.oleh?', oleh '+esc(t.oleh):'')+'). Pastikan memang perlu surat baru.</div>' : '') +
+        '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:8px">' +
+          '<b style="font-size:13px">&#128197; Jadwal pertemuan dengan wali</b>' +
+          '<div class="grid2" style="margin-top:6px"><div><label>Tanggal pertemuan</label><input type="date" id="kpTgl" value="'+tambahHariFE(3)+'" min="'+todayStr()+'"></div>' +
+          '<div><label>Waktu</label><input id="kpJam" value="'+esc(b.jam)+'"></div></div>' +
+          '<label>Tempat pertemuan</label><input id="kpTempat" list="kpTempatPilihan" value="'+esc(b.tempat || 'Kantor Pondok')+'">' +
+          '<datalist id="kpTempatPilihan">' + ['Kantor Pondok','Masjid Pondok','Aula Pondok','Ruang Tamu Pondok'].map(function(x){ return '<option value="'+x+'">'; }).join('') + '</datalist>' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' + ['Kantor Pondok','Masjid Pondok','Aula Pondok'].map(function(x){ return '<button type="button" class="small secondary kpTmp" data-v="'+x+'">'+x+'</button>'; }).join('') + '</div>' +
+        '</div>' +
+        '<p class="muted" style="font-size:12px;margin:4px 0 2px">Nomor surat <b>'+esc(b.nomor)+'</b> (otomatis dari Persuratan).</p>' +
+        '<p style="font-size:12.5px;margin:0 0 6px">&#9997;&#65039; Ditandatangani: <b>'+esc((b.penandatangan||{}).nama || '')+'</b> ('+esc((b.penandatangan||{}).jabatan || 'Mudir')+')' + ((b.images||{}).ttd ? ' <span style="color:#16a34a">&#10003; tanda tangan terpasang</span>' : '') + '</p>' +
+        '<div style="font-size:12.5px;margin:0 0 8px">WhatsApp wali: ' + (nomorWali.length ? nomorWali.map(function(n){ return '<b>'+esc(n.tampil)+'</b>'; }).join(', ') : '<span style="color:#b45309">belum ada nomor WA wali di data santri</span>') + '</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+          '<button class="secondary" id="kpLihat">&#128065; Pratinjau</button>' +
+          '<button id="kpWa" style="background:#16a34a">&#128242; Kirim lewat WA Saya</button>' +
+          '<button class="secondary" id="kpUnduh">&#11015;&#65039; Simpan &amp; Unduh PNG</button>' +
+          '<button class="secondary" id="kpKirim" title="Dikirim otomatis dari nomor WhatsApp pondok">&#129302; Kirim otomatis (WA pondok)</button>' +
+        '</div>' +
+        '<p class="muted" style="font-size:11.5px;margin:6px 0 0"><b>Kirim lewat WA Saya</b>: surat jadi gambar PNG lalu dikirim dari WhatsApp di HP Anda sendiri, sehingga wali tahu siapa pengirimnya. <b>Simpan &amp; Unduh</b>: hanya disimpan &amp; diunduh untuk dicetak. <b>Kirim otomatis</b>: dikirim dari nomor WA pondok. Semua pilihan tercatat di arsip Surat Keluar.</p>' +
         '<div id="kpPesan"></div><div id="kpPratinjau" style="margin-top:10px"></div>';
-      ['kpTgl','kpJam','kpTempat'].forEach(function(id){ m.el.querySelector('#'+id).oninput = function(){ png = ''; }; });
+      var tundaPratinjau = null;
+      function ubahIsian(){ if (sudah) return; png = ''; clearTimeout(tundaPratinjau); tundaPratinjau = setTimeout(function(){ pratinjau().catch(function(){}); }, 700); }
+      ['kpTgl','kpJam','kpTempat'].forEach(function(id){ var el = m.el.querySelector('#'+id); el.oninput = ubahIsian; el.onchange = ubahIsian; });
+      m.el.querySelectorAll('.kpTmp').forEach(function(btn){ btn.onclick = function(){ if (sudah) return; m.el.querySelector('#kpTempat').value = btn.dataset.v; ubahIsian(); }; });
       m.el.querySelector('#kpLihat').onclick = function(){ pratinjau().catch(function(){}); };
-      var bK = m.el.querySelector('#kpKirim');
-      bK.onclick = function(){
-        var i = isian(), elP = m.el.querySelector('#kpPesan');
-        if (!i.tanggal) { elP.innerHTML = errBox('Pilih tanggal pertemuan dulu.'); return; }
-        loadingBtn(bK, 'Membuat surat...');
-        (png ? Promise.resolve(png) : pratinjau()).then(function(){
-          if (!confirm('Kirim surat undangan No. '+bahan.nomor+' ke wali '+s.nama+'?\n\nPertemuan: '+tglPanjangKeu(i.tanggal)+', '+i.jam)) { resetBtn(bK, '&#9993;&#65039; Kirim ke Wali'); return null; }
-          loadingBtn(bK, 'Mengirim...');
-          function kirim(ulang){
-            return apiSurat('panggilanSppKirim', {nisn: s.nisn, nomor: bahan.nomor, urut: bahan.urut, tanggalPertemuan: i.tanggal, jam: i.jam, tempat: i.tempat, png: png}).then(function(r){
-              if (r && !r.ok && /NOMOR_DIPAKAI/.test(r.error || '') && !ulang) {
-                // Nomor baru saja dipakai surat lain: ambil nomor berikutnya lalu buat ulang gambarnya
-                return siapkan().then(function(){ return pratinjau(); }).then(function(){ return kirim(true); });
-              }
-              return r;
-            });
-          }
-          return kirim(false).then(function(r){
-            resetBtn(bK, '&#9993;&#65039; Kirim ke Wali');
-            if (!r || !r.ok) { elP.innerHTML = errBox((r && r.error) || 'Gagal mengirim. Periksa koneksi lalu coba lagi.'); return; }
-            var h = r.data, w = h.wa || {};
-            bK.disabled = true; bK.textContent = 'Terkirim';
-            var bU0 = m.el.querySelector('#kpUnduh'); if (bU0) bU0.style.display = 'none';
-            elP.innerHTML = '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;font-size:13px;color:#166534;margin-top:8px">&#9989; Surat No. <b>'+esc(h.nomor)+'</b> terkirim.<br>' +
-              'Akun wali: '+(h.app ? h.app+' akun (menu Surat + notifikasi)' : '<span style="color:#b45309">wali belum punya akun WASIAT</span>')+'<br>' +
-              'WhatsApp: '+(w.terkirim ? w.terkirim+' nomor' : (w.nonaktif ? 'jenis pesan ini dinonaktifkan' : (!w.nomor ? '<span style="color:#b45309">nomor WA wali belum terisi</span>' : '<span style="color:#b45309">gagal'+(h.galatWa?' ('+esc(h.galatWa)+')':'')+'</span>'))) +
-              '<br><span class="muted">Tersimpan di arsip Surat Keluar (Persuratan).</span>' +
-              '<div style="margin-top:8px"><button class="small secondary" id="kpUnduhLagi">&#11015;&#65039; Unduh PNG</button></div></div>';
-            var pngTerkirim = png, namaF = namaFilePanggilan(s.nama, h.nomor);
-            m.el.querySelector('#kpUnduhLagi').onclick = function(){ unduhPngSurat(pngTerkirim, namaF); };
-            if (selesai) selesai();
+      pratinjau().catch(function(){});   // langsung tampilkan surat (dengan tanda tangan Mudir)
+
+      // 1) KIRIM LEWAT WA SAYA (WhatsApp di perangkat pengirim)
+      var bW = m.el.querySelector('#kpWa'), lblW = '&#128242; Kirim lewat WA Saya';
+      bW.onclick = function(){
+        jalankan(bW, lblW, function(){ return 'Buat surat undangan No. '+bahan.nomor+' untuk wali '+s.nama+' dan kirim lewat WhatsApp Anda sendiri?\n\nPertemuan: '+tglPanjangKeu(isian().tanggal)+', '+isian().jam; },
+          {waPribadi: true}, function(h, pngSurat, elP){
+            var namaF = namaFilePanggilan(s.nama, h.nomor);
+            var teks = teksPengantarPanggilan(Object.assign({}, bahan, {nomor: h.nomor}), s);
+            var daftarNo = (h.nomorWali && h.nomorWali.length) ? h.nomorWali : nomorWali;
+            var bisaShare = bisaBagikanFile();
+            elP.innerHTML = kotakSukses('&#9989; Surat No. <b>'+esc(h.nomor)+'</b> sudah jadi dan tercatat di arsip' + (h.app ? ' (juga masuk menu Surat di akun wali)' : '') + '.<br><b>Sekarang kirim gambarnya dari WhatsApp Anda:</b>' +
+              '<ol style="margin:8px 0 4px;padding-left:20px;line-height:1.6">' +
+              (bisaShare ? '<li><button class="small" id="kpBagikan" style="background:#16a34a">&#128228; Bagikan gambar surat ke WhatsApp</button><br><span class="muted" style="font-size:12px">Pilih <b>WhatsApp</b>, lalu pilih/cari chat wali ' + (daftarNo.length ? '(' + daftarNo.map(function(n){ return esc(n.tampil); }).join(', ') + ')' : '') + '.</span></li>' : '') +
+              '<li>' + (bisaShare ? 'Atau buka' : 'Buka') + ' chat wali, lalu lampirkan gambar surat yang sudah tersimpan di galeri/unduhan:<br>' +
+                (daftarNo.length ? daftarNo.map(function(n, k){ return '<button class="small secondary kpChat" data-k="'+k+'" style="margin:4px 4px 0 0">&#128172; Buka chat '+esc(n.tampil)+'</button>'; }).join('') : '<span style="color:#b45309">Nomor WA wali belum ada di data santri.</span>') + '</li>' +
+              '</ol>' +
+              '<div style="margin-top:6px"><button class="small secondary" id="kpUnduhLagi">&#11015;&#65039; Unduh PNG</button></div>');
+            if (!bisaShare) unduhPngSurat(pngSurat, namaF);
+            var bB = m.el.querySelector('#kpBagikan');
+            if (bB) {
+              // Berkas disiapkan SEBELUM tombol disentuh: navigator.share harus dipanggil langsung
+              // saat tombol disentuh (Safari/iPhone menolak bila ada jeda menunggu proses lain).
+              var fileSurat = null;
+              fetch(pngSurat).then(function(r){ return r.blob(); }).then(function(blob){ fileSurat = new File([blob], namaF, {type: 'image/png'}); }).catch(function(){});
+              bB.onclick = function(){
+                function gagal(){ unduhPngSurat(pngSurat, namaF); alert('Gambar tidak dapat dibagikan langsung dari perangkat ini. Gambar sudah diunduh; lampirkan dari galeri di chat wali.'); }
+                if (!fileSurat) { gagal(); return; }
+                var data = {files: [fileSurat], text: teks, title: 'Surat Undangan ' + h.nomor};
+                try { if (navigator.canShare && !navigator.canShare(data)) delete data.text; } catch(e){}
+                try {
+                  navigator.share(data).catch(function(e){ if (e && e.name !== 'AbortError') gagal(); });
+                } catch(e){ gagal(); }
+              };
+            }
+            m.el.querySelectorAll('.kpChat').forEach(function(btn){ btn.onclick = function(){
+              var n = daftarNo[Number(btn.dataset.k)];
+              window.open('https://wa.me/' + nomorWaMe(n.baku) + '?text=' + encodeURIComponent(teks), '_blank');
+            }; });
+            m.el.querySelector('#kpUnduhLagi').onclick = function(){ unduhPngSurat(pngSurat, namaF); };
           });
-        }).catch(function(e){ resetBtn(bK, '&#9993;&#65039; Kirim ke Wali'); if (e && e.message !== 'tanggal') m.el.querySelector('#kpPesan').innerHTML = errBox((e && e.message) || 'Gagal.'); });
       };
-      var bU = m.el.querySelector('#kpUnduh');
+
+      // 2) SIMPAN & UNDUH PNG (tanpa kirim)
+      var bU = m.el.querySelector('#kpUnduh'), lblU = '&#11015;&#65039; Simpan &amp; Unduh PNG';
       bU.onclick = function(){
-        var i = isian(), elP = m.el.querySelector('#kpPesan');
-        if (!i.tanggal) { elP.innerHTML = errBox('Pilih tanggal pertemuan dulu.'); return; }
-        loadingBtn(bU, 'Membuat surat...');
-        (png ? Promise.resolve(png) : pratinjau()).then(function(){
-          if (!confirm('Simpan surat undangan No. '+bahan.nomor+' untuk wali '+s.nama+' ke arsip, lalu unduh sebagai PNG?\n\nSurat TIDAK dikirim ke akun/WhatsApp wali.')) { resetBtn(bU, '&#11015;&#65039; Simpan &amp; Unduh PNG'); return null; }
-          loadingBtn(bU, 'Menyimpan...');
-          function simpan(ulang){
-            return apiSurat('panggilanSppKirim', {nisn: s.nisn, nomor: bahan.nomor, urut: bahan.urut, tanggalPertemuan: i.tanggal, jam: i.jam, tempat: i.tempat, png: png, tanpaKirim: true}).then(function(r){
-              if (r && !r.ok && /NOMOR_DIPAKAI/.test(r.error || '') && !ulang) return siapkan().then(function(){ return pratinjau(); }).then(function(){ return simpan(true); });
-              return r;
-            });
-          }
-          return simpan(false).then(function(r){
-            if (!r || !r.ok) { resetBtn(bU, '&#11015;&#65039; Simpan &amp; Unduh PNG'); elP.innerHTML = errBox((r && r.error) || 'Gagal menyimpan. Periksa koneksi lalu coba lagi.'); return; }
-            var h = r.data, pngSimpan = png, namaF = namaFilePanggilan(s.nama, h.nomor);
-            return unduhPngSurat(pngSimpan, namaF).then(function(){
-              bU.disabled = true; bU.textContent = 'Tersimpan & diunduh';
-              bK.disabled = true; bK.style.display = 'none';
-              elP.innerHTML = '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;font-size:13px;color:#166534;margin-top:8px">&#9989; Surat No. <b>'+esc(h.nomor)+'</b> tersimpan di arsip Surat Keluar dan diunduh sebagai <b>'+esc(namaF)+'</b>.<br>' +
-                '<span class="muted">Surat ini belum dikirim ke wali. Cetak atau kirim sendiri gambarnya.</span>' +
-                '<div style="margin-top:8px"><button class="small secondary" id="kpUnduhLagi">&#11015;&#65039; Unduh lagi</button></div></div>';
-              m.el.querySelector('#kpUnduhLagi').onclick = function(){ unduhPngSurat(pngSimpan, namaF); };
-              if (selesai) selesai();
-            });
+        jalankan(bU, lblU, function(){ return 'Simpan surat undangan No. '+bahan.nomor+' untuk wali '+s.nama+' ke arsip, lalu unduh sebagai PNG?\n\nSurat TIDAK dikirim ke akun/WhatsApp wali.'; },
+          {tanpaKirim: true}, function(h, pngSurat, elP){
+            var namaF = namaFilePanggilan(s.nama, h.nomor);
+            unduhPngSurat(pngSurat, namaF);
+            elP.innerHTML = kotakSukses('&#9989; Surat No. <b>'+esc(h.nomor)+'</b> tersimpan di arsip Surat Keluar dan diunduh sebagai <b>'+esc(namaF)+'</b>.<br>' +
+              '<span class="muted">Surat ini belum dikirim ke wali. Cetak atau kirim sendiri gambarnya.</span>' +
+              '<div style="margin-top:8px"><button class="small secondary" id="kpUnduhLagi">&#11015;&#65039; Unduh lagi</button></div>');
+            m.el.querySelector('#kpUnduhLagi').onclick = function(){ unduhPngSurat(pngSurat, namaF); };
           });
-        }).catch(function(e){ resetBtn(bU, '&#11015;&#65039; Simpan &amp; Unduh PNG'); if (e && e.message !== 'tanggal') m.el.querySelector('#kpPesan').innerHTML = errBox((e && e.message) || 'Gagal.'); });
       };
+
+      // 3) KIRIM OTOMATIS LEWAT WA PONDOK (seperti sebelumnya)
+      var bK = m.el.querySelector('#kpKirim'), lblK = '&#129302; Kirim otomatis (WA pondok)';
+      bK.onclick = function(){
+        jalankan(bK, lblK, function(){ return 'Kirim surat undangan No. '+bahan.nomor+' ke wali '+s.nama+' dari nomor WhatsApp pondok?\n\nPertemuan: '+tglPanjangKeu(isian().tanggal)+', '+isian().jam; },
+          {}, function(h, pngSurat, elP){
+            var w = h.wa || {}, namaF = namaFilePanggilan(s.nama, h.nomor);
+            elP.innerHTML = kotakSukses('&#9989; Surat No. <b>'+esc(h.nomor)+'</b> terkirim.<br>' +
+              'Akun wali: '+(h.app ? h.app+' akun (menu Surat + notifikasi)' : '<span style="color:#b45309">wali belum punya akun WASIAT</span>')+'<br>' +
+              'WhatsApp pondok: '+(w.terkirim ? w.terkirim+' nomor' : (w.nonaktif ? 'jenis pesan ini dinonaktifkan' : (!w.nomor ? '<span style="color:#b45309">nomor WA wali belum terisi</span>' : '<span style="color:#b45309">gagal'+(h.galatWa?' ('+esc(h.galatWa)+')':'')+'</span>'))) +
+              '<br><span class="muted">Tersimpan di arsip Surat Keluar (Persuratan).</span>' +
+              '<div style="margin-top:8px"><button class="small secondary" id="kpUnduhLagi">&#11015;&#65039; Unduh PNG</button></div>');
+            m.el.querySelector('#kpUnduhLagi').onclick = function(){ unduhPngSurat(pngSurat, namaF); };
+          });
+      };
+      if (mode === 'unduh') { bU.scrollIntoView({block: 'center'}); bU.style.outline = '3px solid #0f766e'; }
     }).catch(function(e){ m.el.querySelector('#kpBody').innerHTML = errBox(e.message); });
   }
 
@@ -4982,6 +5176,7 @@
 
     renderSlideBar('slideBarWrap');
     try { pasangKartuPanggilanSpp('slideBarWrap'); } catch(e){}
+    try { pasangKartuTunggakanWaliKelas('slideBarWrap'); } catch(e){}
 
     // Binding logout
     document.getElementById('sbLogout').onclick = function(){ if (!konfirmasiKeluarAkun()) return; STATE.user=null; hapusSesiTersimpan(); showBeranda(); };
@@ -6910,6 +7105,7 @@
     );
     renderSlideBar('slideBarWrap');
     try { pasangKartuPanggilanSpp('slideBarWrap'); } catch(e){}
+    try { pasangKartuTunggakanWaliKelas('slideBarWrap'); } catch(e){}
     document.getElementById('sbLogout').onclick = function(){ if (!konfirmasiKeluarAkun()) return; STATE.user=null; hapusSesiTersimpan(); showBeranda(); };
     var sbGanti = document.getElementById('sbGantiRole');
     if (sbGanti) sbGanti.onclick = function(){ tampilkanPilihanRole(); };
@@ -8539,16 +8735,32 @@
     } catch(e) { /* localStorage nonaktif -- diamkan */ }
   }
 
-  function muatFormHafalan(namaHalaqoh, waktu, tanggal){
+  function muatFormHafalan(namaHalaqoh, waktu, tanggal, paksaServer){
     var wrap = document.getElementById('formHafalanWrap');
-    wrap.innerHTML = '<p>Memuat santri halaqoh '+esc(namaHalaqoh)+'...</p>';
-    api('getSantriUntukHafalan', {namaHalaqoh: namaHalaqoh, waktu: waktu, tanggal: tanggal, pengampu: STATE.user.nama}).then(function(res){
-      if(!res.ok){ wrap.innerHTML = errBox(res.error); return; }
+    wrap.innerHTML = '<p>Memuat santri halaqoh '+esc(namaHalaqoh)+(paksaServer ? ' langsung dari server (mohon tunggu)' : '')+'...</p>';
+    var payloadForm = {namaHalaqoh: namaHalaqoh, waktu: waktu, tanggal: tanggal, pengampu: STATE.user.nama};
+    var idForm = String(Date.now()) + Math.random();
+    wrap.dataset.idForm = idForm;
+    // Ada salinan di HP: form LANGSUNG tampil tanpa menunggu server; riwayat terbaru diambil
+    // di belakang layar lalu isian diperbarui sendiri (tidak perlu menekan tombol apa pun).
+    var salinanForm = paksaServer ? null : (ambilCacheBaca('getSantriUntukHafalan', payloadForm) || ambilCacheLonggar('getSantriUntukHafalan', payloadForm));
+    var permintaan = salinanForm ? Promise.resolve(hasilDariCache('getSantriUntukHafalan', payloadForm, salinanForm)) : paksaServer
+      ? apiJaringan('getSantriUntukHafalan', payloadForm, 45000).then(function(r){
+          if (r && r.ok) { simpanCacheBaca('getSantriUntukHafalan', payloadForm, r); r = terapkanAntrianKeHasil('getSantriUntukHafalan', payloadForm, r); }
+          else if (r && r._jaringanGagal) r = {ok:false, error:'Server belum bisa dihubungi. Periksa sinyal/internet lalu coba lagi.'};
+          return r;
+        })
+      : api('getSantriUntukHafalan', payloadForm);
+    permintaan.then(function(res){
+      if(!res.ok){ wrap.innerHTML = errBox(res.error) + '<button type="button" class="secondary" id="btnUlangFormHafalan">&#128260; Coba lagi</button>';
+        var bu = document.getElementById('btnUlangFormHafalan'); if (bu) bu.onclick = function(){ muatFormHafalan(namaHalaqoh, waktu, tanggal, true); };
+        return; }
       if(!res.data.length){ wrap.innerHTML = warnBox(res.peringatan); return; }
       var datalistHtml = ''; // select dropdown}).join('') + '</datalist>';
       var opsiHalaman = Array.from({length:22},function(_,i){return i+1;});
       var aturanJenis = aturanJenisHafalanWaktu(waktu);
-      var html = datalistHtml + '<h4>Halaqoh: '+esc(namaHalaqoh)+' (' + esc(waktu) + ')</h4>' +
+      var statusSegar = res._dariCache ? '<div id="statusSegarHafalan" style="font-size:12px;color:#64748b;margin:4px 0">&#8635; Memeriksa riwayat terbaru dari server...</div>' : '';
+      var html = datalistHtml + statusSegar + '<h4>Halaqoh: '+esc(namaHalaqoh)+' (' + esc(waktu) + ')</h4>' +
         (aturanJenis.catatan ? '<div class="infoJenisWaktu" style="background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px">&#8505;&#65039; '+aturanJenis.catatan+'</div>' : '') +
         warnBox('Isian akan otomatis terisi mengikuti riwayat terakhir santri untuk jenis hafalan yang dipilih -- tinggal ubah bagian yang berbeda saja (misalnya Ayat).') +
         '<div id="formHafalan">';
@@ -8628,6 +8840,14 @@
       html += '</div><button type="button" id="btnSimpanHafalan">Simpan Hafalan</button>' +
         '<button type="button" class="secondary" id="btnBatalHafalan">Batal</button><div id="pesanSimpanHafalan"></div>';
       wrap.innerHTML = html;
+      // Baris yang sudah diubah pengampu tidak akan ditimpa pembaruan otomatis.
+      function tandaiDisentuh(e){
+        var row = e.target && e.target.closest ? e.target.closest('.santriRowHafalan') : null;
+        if (!row || e.target.matches('.jenisSelect, .modeInput')) return;
+        row.dataset.disentuh = '1';
+      }
+      wrap.addEventListener('input', tandaiDisentuh, true);
+      wrap.addEventListener('change', tandaiDisentuh, true);
 
       function toggleDetail(row){
         var jenis = row.querySelector('.jenisSelect').value;
@@ -8797,10 +9017,67 @@
       // sedang berjalan dan belum sempat diklik Simpan.
       var draftKey = draftHafalanKey(namaHalaqoh, waktu, tanggal, STATE.user.nama);
       var draft = ambilDraftHafalan(draftKey);
+      if (res._dariCache) setTimeout(function(){ segarkanRiwayatDiBelakang(1); }, 50);
+      function setStatusSegar(html, warna){ var el = document.getElementById('statusSegarHafalan'); if (el) { el.innerHTML = html; el.style.color = warna || '#64748b'; } }
+      function ringkasRiwayat(t){ return t ? [t.tanggal, t.surah, t.ayat, t.juz, t.halamanKe].join('|') : ''; }
+      function segarkanRiwayatDiBelakang(ke){
+        if (wrap.dataset.idForm !== idForm) return;
+        apiJaringan('getSantriUntukHafalan', payloadForm, 30000).then(function(r){
+          if (!document.body.contains(wrap) || wrap.dataset.idForm !== idForm) return;   // form sudah ditutup/diganti
+          if (r && r.ok && Array.isArray(r.data)) {
+            simpanCacheBaca('getSantriUntukHafalan', payloadForm, r);
+            r = terapkanAntrianKeHasil('getSantriUntukHafalan', payloadForm, r);
+            var diperbarui = 0, perluCek = 0;
+            wrap.querySelectorAll('.santriRowHafalan').forEach(function(row){
+              var baru = r.data.find(function(d){ return d.nisn === row.dataset.nisn; });
+              var lama = res.data.find(function(d){ return d.nisn === row.dataset.nisn; });
+              if (!baru || !lama) return;
+              var jenis = row.querySelector('.jenisSelect').value;
+              var beda = ringkasRiwayat((baru.terakhirPerJenis||{})[jenis]) !== ringkasRiwayat((lama.terakhirPerJenis||{})[jenis]);
+              lama.terakhirPerJenis = baru.terakhirPerJenis;          // ganti jenis berikutnya memakai data terbaru
+              if (!beda) return;
+              if (row.dataset.disentuh === '1') {
+                // Isian sudah diubah pengampu: jangan ditimpa, beri tahu saja
+                var t = (baru.terakhirPerJenis||{})[jenis];
+                var cat = row.querySelector('.catatanSegar');
+                if (!cat) { cat = document.createElement('div'); cat.className = 'catatanSegar'; row.querySelector('.hintHafalan').insertAdjacentElement('afterend', cat); }
+                cat.style.cssText = 'font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:4px 8px;margin:2px 0 6px';
+                cat.innerHTML = '&#8505;&#65039; Riwayat terbaru dari server: ' + esc(t ? ((t.surah||'-') + ' ayat ' + (t.ayat||'-') + ' (' + t.tanggal + ')') : '-') +
+                  ' <button type="button" class="small secondary" style="padding:2px 8px;font-size:11.5px">Pakai</button>';
+                cat.querySelector('button').onclick = function(){ cat.remove(); terapkanRiwayat(row, row.querySelector('.jenisSelect').value); try { autoIsiJuzHalaman(row); } catch(e){} };
+                perluCek++;
+              } else {
+                terapkanRiwayat(row, jenis);
+                row.style.transition = 'background-color .6s'; row.style.backgroundColor = '#ecfdf5';
+                setTimeout(function(){ row.style.backgroundColor = ''; }, 1500);
+                diperbarui++;
+              }
+            });
+            setStatusSegar('&#10003; Riwayat sudah yang terbaru dari server' + (diperbarui ? ' &mdash; ' + diperbarui + ' santri diperbarui otomatis' : '') +
+              (perluCek ? ' &middot; ' + perluCek + ' isian yang sudah Anda ubah tidak ditimpa (lihat catatan kuning)' : '') + '.', '#047857');
+            setTimeout(function(){ var el = document.getElementById('statusSegarHafalan'); if (el && !perluCek) el.style.display = 'none'; }, 6000);
+            return;
+          }
+          if (r && r.ok === false && !r._jaringanGagal) {
+            // Ditolak server (mis. sesi ini sudah diisi pengampu lain): jangan biarkan form dipakai
+            if (r.sudahDiisiOleh) { wrap.innerHTML = errBox(r.error); return; }
+            setStatusSegar('Memakai data di HP. ' + esc(r.error || ''), '#b45309');
+            return;
+          }
+          // Sinyal lemah: tetap pakai data di HP, coba lagi otomatis tanpa mengganggu
+          if (ke < 5) {
+            setStatusSegar('&#8635; Sinyal lemah &mdash; memakai riwayat yang tersimpan di HP. Mencoba lagi otomatis...', '#b45309');
+            setTimeout(function(){ segarkanRiwayatDiBelakang(ke + 1); }, Math.min(60000, 10000 * ke));
+          } else {
+            setStatusSegar('Belum terhubung ke server &mdash; isian memakai riwayat yang tersimpan di HP. Data tetap aman disimpan dan dikirim saat sinyal membaik.', '#b45309');
+          }
+        });
+      }
       if (draft) {
         wrap.querySelectorAll('.santriRowHafalan').forEach(function(row){
           var d = draft[row.dataset.nisn];
           if (!d) return;
+          row.dataset.disentuh = '1';
           var setVal = function(sel, val){ var el = row.querySelector(sel); if (el) el.value = val || ''; };
           if (d.jenis && aturanJenis.pilihan.indexOf(d.jenis) !== -1) setVal('.jenisSelect', d.jenis);
           toggleDetail(row);
@@ -16790,7 +17067,7 @@
           return '<div class="card"><h3>&#128172; WhatsApp untuk Pelanggaran</h3>' +
             '<p style="font-size:13px;margin:0 0 8px">Penyedia (Wablas/Fonnte) dan pilihan pesan mana yang dikirim diatur di menu <b>&#128172; Pengaturan WhatsApp</b>. ' +
             '<button class="small secondary" id="btnKePengaturanWA">Buka Pengaturan WhatsApp</button></p>' +
-            fieldText('pgGrupWA','No/ID Grup WA Pengajar (opsional, notifikasi poin habis)', d.GrupPengajarWA || '') +
+            fieldText('pgGrupWA','ID Grup WA Pengajar (mis. 120363...@g.us) &mdash; dipakai untuk daftar guru belum absen &amp; notifikasi poin habis', d.GrupPengajarWA || '') +
             fieldText('pgModalPoin','Modal Poin Santri per Bulan', d.ModalPoinSantri || '25') +
             '<button id="btnSimpanFonnte" style="margin-top:6px">Simpan</button><div id="pesanFonnte"></div></div>';
         })();
@@ -17928,6 +18205,12 @@
           '<div style="border-top:1px dashed #e2e8f0;margin-top:14px;padding-top:12px"><b style="font-size:13.5px">Kirim pesan uji</b>' +
             '<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap"><input id="waTesNomor" placeholder="Nomor WA tujuan, mis. 0812..." style="flex:1;min-width:180px;margin:0">' +
             '<button class="secondary" id="waTesKirim">Kirim Uji</button></div><div id="waTesPesan" style="font-size:13px;margin-top:6px"></div></div>' +
+          '<div style="border-top:1px dashed #e2e8f0;margin-top:14px;padding-top:12px"><b style="font-size:13.5px">Daftar guru belum mengisi absen (grup pengajar, pukul 12.00 &amp; 20.00)</b>' +
+            '<div id="waGbaStatus" class="muted" style="font-size:12.5px;margin-top:6px">Memeriksa...</div>' +
+            '<label style="margin-top:8px">ID grup WA pengajar</label>' +
+            '<div style="display:flex;gap:8px;flex-wrap:wrap"><input id="waGbaGrup" placeholder="mis. 120363197216486814@g.us" style="flex:1;min-width:200px;margin:0">' +
+            '<button class="small" id="waGbaSimpanGrup">Simpan ID grup</button></div>' +
+            '<button class="small secondary" id="waGbaKirim" style="margin-top:6px">Kirim daftar sekarang (uji)</button><div id="waGbaPesan" style="font-size:13px;margin-top:6px"></div></div>' +
         '</div>' +
 
         '<div class="card"><h4 style="margin-top:0">2. Pesan otomatis yang dikirim</h4>' +
@@ -17975,6 +18258,45 @@
             (p.length ? p.map(function(x){ var on = /^connected$/i.test(x.state_connection); return '<div>'+(on ? '&#9989;' : '&#10060;')+' '+esc(x.number_whatsapp || x.number_id)+' &mdash; '+(on ? 'tersambung' : esc(x.state_connection || 'tidak tersambung')+' (scan ulang QR di member area)')+'</div>'; }).join('')
               : errBox('Belum ada perangkat WhatsApp di akun BalesOtomatis.'));
         }).catch(function(){ resetBtn(btn, 'Cek perangkat'); el.innerHTML = errBox('Gagal menghubungi server.'); });
+      };
+
+      function muatStatusGba(){
+        var el = document.getElementById('waGbaStatus'); if (!el) return;
+        api('statusGuruBelumAbsen', {oleh: STATE.user.nama}).then(function(r){
+          if (!r || !r.ok) { el.innerHTML = errBox(esc((r && r.error) || 'Status tidak dapat dibaca.')); return; }
+          var ok = function(b){ return b ? '<span style="color:#16a34a">&#10003;</span>' : '<span style="color:#dc2626">&#10007;</span>'; };
+          var t = r.terakhir;
+          var inp = document.getElementById('waGbaGrup'); if (inp && !inp.value) inp.value = r.grup || '';
+          el.innerHTML =
+            '<div>' + ok(r.pemicuHarian >= 2) + ' Jadwal otomatis 12.00 &amp; 20.00 ' + (r.pemicuHarian >= 2 ? 'terpasang' : 'belum terpasang') + '</div>' +
+            '<div>' + ok(r.grupTerisi && r.grupFormatGrup) + ' Grup pengajar (GrupPengajarWA): ' + (!r.grupTerisi ? '<b style="color:#dc2626">belum diisi</b>' : (r.grupFormatGrup ? 'terisi' : '<b style="color:#b45309">terisi, tapi bukan ID grup (harus berakhiran @g.us)</b>')) + '</div>' +
+            '<div>' + ok(!r.nonaktif) + ' Jenis pesan ' + (r.nonaktif ? '<b style="color:#dc2626">dimatikan</b> (nyalakan di bagian 2 di bawah)' : 'aktif') + '</div>' +
+            '<div>' + ok(!!r.penyedia) + ' Penyedia WA: ' + esc(namaPenyedia[r.penyedia] || r.penyedia || 'belum diatur') + ' &middot; zona waktu server ' + esc(r.zonaWaktu) + ' (sekarang ' + esc(r.sekarang) + ')</div>' +
+            '<div style="margin-top:4px">Terakhir: ' + (t ? '<b>' + esc(t.slot) + '</b> &mdash; ' + (t.hasil === 'terkirim' ? '<span style="color:#16a34a">terkirim</span>' + (t.jumlahBelum != null ? ' (' + t.jumlahBelum + ' guru belum mengisi)' : '') : (t.hasil === 'dilewati' ? 'dilewati: ' + esc(t.alasan || '') : '<span style="color:#dc2626">gagal: ' + esc(t.alasan || '') + '</span>')) : 'belum pernah berjalan') + '</div>';
+        }).catch(function(){ el.innerHTML = errBox('Gagal menghubungi server.'); });
+      }
+      muatStatusGba();
+      document.getElementById('waGbaSimpanGrup').onclick = function(){
+        var btn = this, el = document.getElementById('waGbaPesan');
+        var v = document.getElementById('waGbaGrup').value.trim().replace(/\s+/g, '');
+        if (!/^\d{10,}@g\.us$/i.test(v)) { el.innerHTML = errBox('Format ID grup belum benar. Contoh: 120363197216486814@g.us'); return; }
+        loadingBtn(btn, 'Menyimpan...');
+        api('simpanPengaturanBatch', {data: {GrupPengajarWA: v}}).then(function(r){
+          resetBtn(btn, 'Simpan ID grup');
+          el.innerHTML = r && r.ok ? '<span style="color:#166534">&#9989; ID grup tersimpan.</span>' : errBox(esc((r && r.error) || 'Gagal menyimpan.'));
+          muatStatusGba();
+        }).catch(function(){ resetBtn(btn, 'Simpan ID grup'); el.innerHTML = errBox('Gagal menghubungi server.'); });
+      };
+      document.getElementById('waGbaKirim').onclick = function(){
+        var btn = this, el = document.getElementById('waGbaPesan');
+        if (!confirm('Kirim daftar guru yang belum mengisi absen SEKARANG ke grup WA pengajar?')) return;
+        loadingBtn(btn, 'Mengirim...');
+        api('kirimGuruBelumAbsenSekarang', {oleh: STATE.user.nama}).then(function(r){
+          resetBtn(btn, 'Kirim daftar sekarang (uji)');
+          el.innerHTML = r && r.ok ? (r.dilewati ? '<span style="color:#b45309">Tidak dikirim: ' + esc(r.alasan || '') + '</span>' : '<span style="color:#166534">&#9989; Terkirim ke grup' + (r.jumlahBelum != null ? ' (' + r.jumlahBelum + ' guru belum mengisi)' : '') + '.</span>')
+                                   : errBox('Gagal: ' + esc((r && r.error) || ''));
+          muatStatusGba();
+        }).catch(function(){ resetBtn(btn, 'Kirim daftar sekarang (uji)'); el.innerHTML = errBox('Gagal menghubungi server.'); });
       };
 
       document.getElementById('waTesKirim').onclick = function(){
