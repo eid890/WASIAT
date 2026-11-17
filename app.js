@@ -327,7 +327,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.11.12-c';
+  var VERSI_APP = '2026.11.18-a';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -17819,7 +17819,7 @@
   function adminKehadiranGuru(tabAwal){
     var c = getContentEl();
     var tab = tabAwal || 'rekap';
-    var TABS = [['rekap','&#128202; Rekap'],['izin','&#128221; Izin Guru'],['sp','&#128232; Surat SP'],['libur','&#127958; Hari Libur'],['aturan','&#9881;&#65039; Aturan']];
+    var TABS = [['rekap','&#128202; Rekap'],['laporan','&#128424;&#65039; Laporan Bulanan'],['izin','&#128221; Izin Guru'],['sp','&#128232; Surat SP'],['libur','&#127958; Hari Libur'],['aturan','&#9881;&#65039; Aturan']];
     c.innerHTML = '<div class="card" style="padding:10px 12px"><h3 style="margin:0 0 8px">Kehadiran Mengajar Guru</h3><div id="khgTabs" style="display:flex;gap:6px;flex-wrap:wrap"></div></div><div id="khgIsi"></div>';
     function gambarTab(){
       document.getElementById('khgTabs').innerHTML = TABS.map(function(t){
@@ -17832,6 +17832,7 @@
       var isi = document.getElementById('khgIsi');
       isi.innerHTML = '<div class="card"><p class="muted">Memuat...</p></div>';
       if (tab === 'rekap') khgRekap(isi);
+      else if (tab === 'laporan') khgLaporan(isi);
       else if (tab === 'izin') khgIzin(isi);
       else if (tab === 'sp') khgSP(isi);
       else if (tab === 'libur') khgLibur(isi);
@@ -17886,6 +17887,267 @@
           };
         });
       }).catch(function(){ isi.innerHTML = '<div class="card">'+errBox('Gagal memuat rekap.')+'</div>'; });
+    }
+    muat();
+  }
+
+  // ---------- LAPORAN BULANAN ABSEN MENGAJAR GURU (untuk yayasan) ----------
+  // Daftar semua guru + jumlah jam hadir/izin/alfa sebulan, klik nama -> rincian per sesi.
+  // Semua bisa diunduh Excel atau dicetak/simpan PDF (per daftar, per guru, atau lengkap).
+  var LAG_STATUS = {
+    Hadir:['#dcfce7','#166534','Hadir'], Izin:['#dbeafe','#1e40af','Izin'], Alfa:['#fee2e2','#991b1b','Alfa (Ghaib)'],
+    Digantikan:['#e0e7ff','#3730a3','Digantikan'], Belum:['#ffedd5','#9a3412','Belum ada keterangan']
+  };
+  function lagLabel(st){ return (LAG_STATUS[st] || [0,0,st])[2]; }
+  function lagBadge(st, ganti){
+    var w = LAG_STATUS[st] || ['#f1f5f9','#475569',st];
+    return '<span style="background:'+w[0]+';color:'+w[1]+';font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap">'+esc(w[2])+(ganti?' &middot; ganti jam':'')+'</span>';
+  }
+  function lagTglPendek(t){ var p = String(t||'').split('-').map(Number); return p[2] ? (p[2]+' '+SP_NAMA_BULAN[p[1]-1]+' '+p[0]) : esc(t); }
+  function lagPeriode(d){
+    var akhir = new Date(d.tahun, d.bulan, 0).getDate();
+    var nb = SP_NAMA_BULAN[d.bulan-1] + ' ' + d.tahun;
+    var tglAkhir = d.tahun+'-'+String(d.bulan).padStart(2,'0')+'-'+String(akhir).padStart(2,'0');
+    if (d.hariIni && d.hariIni <= tglAkhir) {
+      var kemarin = d.sampai || '';
+      return {judul: nb, teks: kemarin ? ('1 s.d. ' + lagTglPendek(kemarin) + ' (bulan berjalan)') : ('Bulan berjalan, belum ada hari yang dihitung'), berjalan: true};
+    }
+    return {judul: nb, teks: '1 s.d. ' + akhir + ' ' + nb, berjalan: false};
+  }
+  function lagNamaFile(s){ return String(s).replace(/[\\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim(); }
+
+  // ---- PDF (halaman cetak; pilih "Simpan sebagai PDF" atau langsung cetak) ----
+  // Kop surat resmi Wihdatul Ummah: sama dengan kwitansi, rapor, dan surat (pengaturan
+  // Persuratan + logo pondok), lewat muatKopKeu/kopHtmlKeu yang sudah ada.
+  function lagKop(k){ return kopHtmlKeu(k || {settings:{}, images:{}}); }
+  function lagTtd(namaGuru, k){
+    var pg = STATE.pengaturan || {}, st = (k && k.settings) || {};
+    var sg = ((k && k.signers) || []).filter(function(x){ return x && /mudir|pimpinan/i.test(String(x.jabatan||'')); })[0] || {};
+    var nama = sg.nama || pg.SPPenandatangan || '', jabatan = sg.jabatan || pg.SPJabatan || 'Mudir';
+    var tgl = fmtTglIndoSP(todayStr()).replace(/^[^,]+, /,'');
+    var kanan = '<div style="text-align:center;min-width:210px"><div>'+esc(st.kota||pg.SPKotaSurat||'Poso')+', '+tgl+'</div><div>'+esc(jabatan)+'</div><div style="height:62px"></div>' +
+      '<div style="font-weight:700;text-decoration:underline">'+(nama ? esc(nama) : '(................................)')+'</div></div>';
+    var kiri = namaGuru ? '<div style="text-align:center;min-width:210px"><div>&nbsp;</div><div>Guru yang bersangkutan</div><div style="height:58px"></div><div style="font-weight:700;text-decoration:underline">'+esc(namaGuru)+'</div></div>' : '<div></div>';
+    return '<div style="display:flex;justify-content:space-between;margin-top:22px;page-break-inside:avoid">'+kiri+kanan+'</div>';
+  }
+  function lagHtmlRekap(d, k){
+    var per = lagPeriode(d), t = lagTotal(d.guru);
+    var baris = d.guru.map(function(g, i){
+      var r = g.ringkas;
+      return '<tr><td class="c">'+(i+1)+'</td><td>'+esc(g.guru)+'</td><td class="c">'+r.wajib.jam+'</td><td class="c"><b>'+r.Hadir.jam+'</b></td><td class="c">'+r.Izin.jam+'</td>' +
+        '<td class="c"'+(r.Alfa.jam?' style="color:#b91c1c;font-weight:700"':'')+'>'+r.Alfa.jam+'</td><td class="c">'+r.Digantikan.jam+'</td><td class="c">'+r.persen+'%</td></tr>';
+    }).join('');
+    return lagKop(k) + '<div style="text-align:center;margin-bottom:10px"><div style="font-size:14pt;font-weight:700;text-decoration:underline;letter-spacing:1px">REKAP ABSENSI MENGAJAR GURU</div><div>Bulan '+esc(per.judul)+'</div>' +
+      '<div style="font-size:11px;color:#475569">Periode: '+esc(per.teks)+'</div></div>' +
+      '<table class="lag"><thead><tr><th>No</th><th>Nama Guru</th><th>Jam Wajib</th><th>Jam Hadir</th><th>Izin (jam)</th><th>Alfa/Ghaib (jam)</th><th>Digantikan (jam)</th><th>% Hadir</th></tr></thead><tbody>' + baris +
+      '<tr style="background:#f1f5f9;font-weight:700"><td></td><td>Jumlah</td><td class="c">'+t.wajib+'</td><td class="c">'+t.Hadir+'</td><td class="c">'+t.Izin+'</td><td class="c">'+t.Alfa+'</td><td class="c">'+t.Digantikan+'</td><td class="c">'+(t.wajib?Math.round(t.Hadir*1000/t.wajib)/10:100)+'%</td></tr></tbody></table>' +
+      lagKeteranganCetak(d) + lagTtd('', k);
+  }
+  function lagKeteranganCetak(d){
+    return '<p style="font-size:10.5px;color:#334155;margin-top:8px;line-height:1.45"><b>Keterangan:</b> Hadir = absen sesi terisi atau guru mengganti jamnya; Izin = izin yang diajukan guru; ' +
+      'Alfa/Ghaib = sesi wajib tanpa keterangan setelah masa klarifikasi '+(d.batasKlarifikasi||3)+' hari; Digantikan = sesi diisi guru pengganti yang dicatat Admin. ' +
+      'Jumlah jam mengikuti Data Master &rsaquo; Jam Pelajaran. Hari libur pondok tidak dihitung.</p>';
+  }
+  function lagHtmlGuru(d, g, k){
+    var per = lagPeriode(d), r = g.ringkas;
+    var sesi = g.sesi.filter(function(s){ return s.status !== 'Libur'; });
+    var baris = sesi.map(function(s, i){
+      var w = LAG_STATUS[s.status] || ['#fff','#111',s.status];
+      return '<tr><td class="c">'+(i+1)+'</td><td>'+fmtTglIndoSP(s.tanggal)+'</td><td>'+esc(s.nama)+'</td><td class="c">'+esc(s.jamKe||'')+'</td><td class="c">'+s.jam+'</td>' +
+        '<td style="color:'+w[1]+';font-weight:700">'+esc(lagLabel(s.status))+'</td><td style="font-size:10.5px">'+esc(s.ket||'')+'</td></tr>';
+    }).join('');
+    return lagKop(k) + '<div style="text-align:center;margin-bottom:8px"><div style="font-size:14pt;font-weight:700;text-decoration:underline;letter-spacing:1px">LAPORAN ABSENSI MENGAJAR GURU</div><div>Bulan '+esc(per.judul)+'</div></div>' +
+      '<table class="info"><tr><td style="width:120px">Nama Guru</td><td>: <b>'+esc(g.guru)+'</b></td></tr><tr><td>Periode</td><td>: '+esc(per.teks)+'</td></tr></table>' +
+      '<table class="lag" style="margin:8px 0"><thead><tr><th>Jam Wajib</th><th>Jam Hadir</th><th>Izin</th><th>Alfa/Ghaib</th><th>Digantikan</th>'+(r.Belum.sesi?'<th>Belum Ada Ket.</th>':'')+'<th>% Hadir</th></tr></thead><tbody><tr>' +
+        '<td class="c">'+r.wajib.jam+' jam<br><small>'+r.wajib.sesi+' sesi</small></td><td class="c"><b>'+r.Hadir.jam+' jam</b><br><small>'+r.Hadir.sesi+' sesi'+(r.gantiJam?', '+r.gantiJam+' ganti jam':'')+'</small></td>' +
+        '<td class="c">'+r.Izin.jam+' jam<br><small>'+r.Izin.sesi+' sesi</small></td><td class="c" style="color:#b91c1c">'+r.Alfa.jam+' jam<br><small>'+r.Alfa.sesi+' sesi</small></td>' +
+        '<td class="c">'+r.Digantikan.jam+' jam<br><small>'+r.Digantikan.sesi+' sesi</small></td>'+(r.Belum.sesi?'<td class="c">'+r.Belum.jam+' jam<br><small>'+r.Belum.sesi+' sesi</small></td>':'')+'<td class="c"><b>'+r.persen+'%</b></td></tr></tbody></table>' +
+      (sesi.length ? '<table class="lag"><thead><tr><th>No</th><th>Hari, Tanggal</th><th>Sesi</th><th>Jam Ke / Waktu</th><th>Jam</th><th>Keterangan</th><th>Catatan</th></tr></thead><tbody>'+baris+'</tbody></table>'
+                   : '<p>Tidak ada sesi wajib pada periode ini.</p>') +
+      (r.libur ? '<p style="font-size:10.5px;color:#475569;margin-top:4px">'+r.libur+' sesi bertepatan dengan hari libur pondok (tidak dihitung).</p>' : '') +
+      lagKeteranganCetak(d) + lagTtd(g.guru, k);
+  }
+  // buatHalaman(k) -> daftar HTML halaman. Jendela dibuka LANGSUNG saat tombol ditekan
+  // (supaya tidak diblokir pop-up), lalu diisi setelah kop surat resmi termuat.
+  function lagCetak(judul, buatHalaman){
+    var w = window.open('', '_blank');
+    if (w) { try { w.document.write('<p style="font-family:Arial;padding:20px">Menyiapkan dokumen...</p>'); } catch(e){} }
+    muatKopKeu().catch(function(){ return {settings:{kopKiri:'PONDOK PESANTREN SALAFIYAH\nWIHDATUL UMMAH\nPOSO SULAWESI TENGAH', kopKanan:'معهد سلفية\nوحدة الأمة بوسو\nسولاويسي الوسطى'}, images:{}}; }).then(function(k){
+      var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+esc(judul)+'</title><style>' + CSS_DOK_KEU +
+        '@page{size:A4;margin:1.2cm 1.4cm 1.4cm 1.6cm}body{font-size:10.5pt;padding:14px}' +
+        'table.lag{width:100%;border-collapse:collapse}table.lag th,table.lag td{border:1px solid #333;padding:3px 5px;vertical-align:top}table.lag th{background:#e9e9e9;font-size:9.5pt}' +
+        'td.c{text-align:center}table.info td{border:none;padding:1px 4px}small{color:#333}.hal{page-break-after:always}.hal:last-child{page-break-after:auto}' +
+        'tr{page-break-inside:avoid}thead{display:table-header-group}@media print{body{padding:0}.noprint{display:none}}' +
+        '</style></head><body><div class="noprint" style="font-family:Arial;background:#fef9c3;border:1px solid #facc15;border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:12.5px">' +
+        'Jendela cetak terbuka otomatis. Untuk menyimpan sebagai PDF, pilih <b>Simpan sebagai PDF</b> pada pilihan printer. <button onclick="window.print()">Cetak lagi</button></div>' +
+        buatHalaman(k).map(function(h){ return '<div class="hal">'+h+'</div>'; }).join('') + '</body></html>';
+      var CETAK = '<script>window.onload=function(){setTimeout(function(){window.print();},400);};<\/script>';
+      if (w && !w.closed) { w.document.open(); w.document.write(html.replace('</body>', CETAK + '</body>')); w.document.close(); return; }
+      // Pop-up diblokir (mis. aplikasi terpasang di iPhone): cetak lewat bingkai tersembunyi
+      var f = document.createElement('iframe');
+      f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+      document.body.appendChild(f);
+      f.contentDocument.open(); f.contentDocument.write(html); f.contentDocument.close();
+      setTimeout(function(){ try { f.contentWindow.focus(); f.contentWindow.print(); } catch(e){ alert('Tidak bisa membuka jendela cetak. Izinkan pop-up untuk aplikasi ini.'); } setTimeout(function(){ f.remove(); }, 60000); }, 600);
+    });
+  }
+
+  // ---- Excel ----
+  function lagTotal(daftar){
+    var t = {wajib:0, Hadir:0, Izin:0, Alfa:0, Digantikan:0};
+    daftar.forEach(function(g){ var r = g.ringkas; t.wajib += r.wajib.jam; t.Hadir += r.Hadir.jam; t.Izin += r.Izin.jam; t.Alfa += r.Alfa.jam; t.Digantikan += r.Digantikan.jam; });
+    return t;
+  }
+  function lagAoaRekap(d){
+    var per = lagPeriode(d);
+    var aoa = lagKopExcel().concat([['REKAP ABSENSI MENGAJAR GURU - BULAN ' + per.judul.toUpperCase()], ['Periode: ' + per.teks], [],
+      ['No','Nama Guru','Jam Wajib','Jam Hadir','Jam Izin','Jam Alfa (Ghaib)','Jam Digantikan','Sesi Wajib','Sesi Hadir','Sesi Ganti Jam','Sesi Izin','Sesi Alfa (Ghaib)','Sesi Digantikan','Sesi Belum Ada Keterangan','% Hadir (jam)']]);
+    d.guru.forEach(function(g, i){
+      var r = g.ringkas;
+      aoa.push([i+1, g.guru, r.wajib.jam, r.Hadir.jam, r.Izin.jam, r.Alfa.jam, r.Digantikan.jam, r.wajib.sesi, r.Hadir.sesi, r.gantiJam, r.Izin.sesi, r.Alfa.sesi, r.Digantikan.sesi, r.Belum.sesi, r.persen]);
+    });
+    var t = lagTotal(d.guru);
+    aoa.push(['', 'JUMLAH', t.wajib, t.Hadir, t.Izin, t.Alfa, t.Digantikan]);
+    aoa.push([]); aoa.push(['Keterangan: Hadir = absen terisi atau ganti jam; Izin = izin diajukan guru; Alfa (Ghaib) = tanpa keterangan setelah masa klarifikasi ' + (d.batasKlarifikasi||3) + ' hari; Digantikan = diisi guru pengganti yang dicatat Admin.']);
+    return aoa;
+  }
+  function lagAoaGuru(d, g){
+    var per = lagPeriode(d), r = g.ringkas;
+    var aoa = lagKopExcel().concat([['LAPORAN ABSENSI MENGAJAR GURU - BULAN ' + per.judul.toUpperCase()], ['Nama Guru', g.guru], ['Periode', per.teks],
+      ['Jam Wajib', r.wajib.jam, 'Jam Hadir', r.Hadir.jam, 'Jam Izin', r.Izin.jam, 'Jam Alfa (Ghaib)', r.Alfa.jam],
+      ['Sesi Wajib', r.wajib.sesi, 'Sesi Hadir', r.Hadir.sesi, 'Sesi Izin', r.Izin.sesi, 'Sesi Alfa (Ghaib)', r.Alfa.sesi],
+      ['Jam Digantikan', r.Digantikan.jam, 'Ganti Jam (sesi)', r.gantiJam, '% Hadir', r.persen], [],
+      ['No','Hari','Tanggal','Sesi','Jenis','Jam Ke / Waktu','Jumlah Jam','Keterangan','Catatan']]);
+    g.sesi.filter(function(s){ return s.status !== 'Libur'; }).forEach(function(s, i){
+      aoa.push([i+1, s.hari, s.tanggal, s.nama, s.jenis === 'Mapel' ? 'Mata Pelajaran' : s.jenis, s.jamKe || '', s.jam, lagLabel(s.status), s.ket || '']);
+    });
+    if (g.ringkas.libur) { aoa.push([]); aoa.push([g.ringkas.libur + ' sesi bertepatan dengan hari libur pondok (tidak dihitung).']); }
+    return aoa;
+  }
+  function lagKopExcel(){
+    var st = (_kopKeu && _kopKeu.settings) || {};
+    var baris = String(st.kopKiri || 'PONDOK PESANTREN SALAFIYAH\nWIHDATUL UMMAH\nPOSO SULAWESI TENGAH').split(/\r?\n/).filter(Boolean).map(function(x){ return [x]; });
+    if (st.kopBar) baris.push([st.kopBar]);
+    baris.push([]);
+    return baris;
+  }
+  function lagSheet(aoa, lebar){
+    var ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = lebar.map(function(w){ return {wch:w}; });
+    return ws;
+  }
+  function lagNamaSheet(nama, sudah){
+    var dasar = String(nama).replace(/[\[\]:*?\/\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 28) || 'Guru';
+    var n = dasar, i = 2;
+    while (sudah[n.toLowerCase()]) { n = dasar.slice(0, 26) + ' ' + (i++); }
+    sudah[n.toLowerCase()] = true; return n;
+  }
+  function lagExcel(d, g, lengkap){
+    if (typeof XLSX === 'undefined') { alert('Pustaka Excel belum termuat. Periksa koneksi internet lalu muat ulang aplikasi.'); return; }
+    var per = lagPeriode(d), wb = XLSX.utils.book_new(), sudah = {};
+    var LEBAR_REKAP = [5,32,10,10,10,14,13,10,10,12,10,14,13,16,12], LEBAR_GURU = [5,10,12,30,15,15,11,20,40];
+    if (g) {
+      XLSX.utils.book_append_sheet(wb, lagSheet(lagAoaGuru(d, g), LEBAR_GURU), lagNamaSheet(g.guru, sudah));
+      XLSX.writeFile(wb, lagNamaFile('Absen Mengajar ' + g.guru + ' - ' + per.judul) + '.xlsx');
+      return;
+    }
+    XLSX.utils.book_append_sheet(wb, lagSheet(lagAoaRekap(d), LEBAR_REKAP), lagNamaSheet('Rekap', sudah));
+    if (lengkap) d.guru.forEach(function(x){ XLSX.utils.book_append_sheet(wb, lagSheet(lagAoaGuru(d, x), LEBAR_GURU), lagNamaSheet(x.guru, sudah)); });
+    XLSX.writeFile(wb, lagNamaFile('Rekap Absen Mengajar Guru' + (lengkap ? ' (lengkap)' : '') + ' - ' + per.judul) + '.xlsx');
+  }
+
+  // ---- Tampilan ----
+  function khgLaporan(isi){
+    var now = new Date(), bulan = now.getMonth()+1, tahun = now.getFullYear();
+    // Awal bulan: bawaan bulan lalu (bulan yang biasanya dilaporkan)
+    if (now.getDate() <= 7) { var lalu = new Date(tahun, bulan-2, 1); bulan = lalu.getMonth()+1; tahun = lalu.getFullYear(); }
+    var data = null, cari = '';
+    try { muatKopKeu().catch(function(){}); } catch(e){}
+    function pilihan(){
+      return '<div class="grid2"><div><label>Bulan</label><select id="lagBulan">'+SP_NAMA_BULAN.map(function(n,i){ return '<option value="'+(i+1)+'"'+(i+1===bulan?' selected':'')+'>'+n+'</option>'; }).join('')+'</select></div>' +
+        '<div><label>Tahun</label><input id="lagTahun" inputmode="numeric" value="'+tahun+'"></div></div>';
+    }
+    function pasangPilihan(){
+      var b = document.getElementById('lagBulan'), t = document.getElementById('lagTahun');
+      if (b) b.onchange = function(){ bulan = Number(this.value); muat(); };
+      if (t) t.onchange = function(){ var x = Number(this.value); if (x > 2000 && x < 2100) { tahun = x; muat(); } };
+    }
+    function muat(){
+      isi.innerHTML = '<div class="card"><h3 style="margin-top:0">&#128424;&#65039; Laporan Absensi Mengajar Guru</h3>' + pilihan() + '<p class="muted">Menghitung absensi semua guru bulan '+SP_NAMA_BULAN[bulan-1]+' '+tahun+'... (bisa 10&ndash;30 detik)</p></div>';
+      pasangPilihan();
+      api('getLaporanAbsenGuru', {oleh: STATE.user.nama, bulan: bulan, tahun: tahun}).then(function(res){
+        if (!res || !res.ok) {
+          isi.innerHTML = '<div class="card"><h3 style="margin-top:0">&#128424;&#65039; Laporan Absensi Mengajar Guru</h3>' + pilihan() + errBox((res && res.error) || 'Gagal memuat laporan.') +
+            '<button class="small secondary" id="lagUlang" style="margin-top:8px">&#128260; Coba lagi</button></div>';
+          pasangPilihan(); var u = document.getElementById('lagUlang'); if (u) u.onclick = muat;
+          return;
+        }
+        data = res; bulan = Number(res.bulan) || bulan; tahun = Number(res.tahun) || tahun; daftar();
+      }).catch(function(){
+        isi.innerHTML = '<div class="card">'+errBox('Gagal menghubungi server.')+'<button class="small secondary" id="lagUlang">&#128260; Coba lagi</button></div>';
+        document.getElementById('lagUlang').onclick = muat;
+      });
+    }
+    function daftar(){
+      var d = data, per = lagPeriode(d);
+      var html = '<div class="card"><h3 style="margin-top:0">&#128424;&#65039; Laporan Absensi Mengajar Guru</h3>' + pilihan() +
+        '<p style="margin:6px 0 2px"><b>'+esc(per.judul)+'</b> &middot; <span class="muted">'+esc(per.teks)+'</span></p>' +
+        (per.berjalan ? '<p class="muted" style="font-size:12px;margin:2px 0">Hari ini belum dihitung. Untuk laporan ke yayasan, unduh setelah bulan selesai (dan masa klarifikasi '+(d.batasKlarifikasi||3)+' hari lewat).</p>' : '') +
+        (d.jamBelumDiatur ? warnBox('Jumlah jam belum diatur di Data Master > Jam Pelajaran, jadi mapel dihitung 2 jam per jam ke- dan halaqoh 0 jam.') : '') +
+        (!d.hitungHalaqoh ? '<p class="muted" style="font-size:12px;margin:2px 0">Halaqoh tidak dihitung (pengaturan di tab Aturan).</p>' : '') +
+        '<p class="muted" style="font-size:12px;margin:6px 0">Hadir = absen terisi atau guru mengganti jamnya &middot; Izin = izin diajukan guru &middot; <b style="color:#b91c1c">Alfa (Ghaib)</b> = tanpa keterangan &middot; Klik nama guru untuk rincian per sesi.</p>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">' +
+          '<button class="small" id="lagXlsRekap">&#11015;&#65039; Excel Rekap</button>' +
+          '<button class="small secondary" id="lagPdfRekap">&#128424;&#65039; PDF / Cetak Rekap</button>' +
+          '<button class="small secondary" id="lagXlsLengkap">&#11015;&#65039; Excel Lengkap (rekap + tiap guru)</button>' +
+          '<button class="small secondary" id="lagPdfLengkap">&#128424;&#65039; PDF Semua Rincian</button></div>';
+      if (!d.guru.length) html += '<p class="muted">Belum ada sesi wajib pada periode ini.</p>';
+      else {
+        html += '<input id="lagCari" placeholder="Cari nama guru..." value="'+esc(cari)+'" style="margin:4px 0 8px">' +
+          '<div style="overflow-x:auto"><table><tr><th>No</th><th>Nama Guru</th><th>Jam Wajib</th><th>Hadir</th><th>Izin</th><th>Alfa (Ghaib)</th><th>Digantikan</th><th>% Hadir</th></tr>' +
+          d.guru.map(function(g, i){
+            var r = g.ringkas;
+            return '<tr class="lagBaris" data-i="'+i+'" data-nama="'+esc(g.guru.toLowerCase())+'" style="cursor:pointer"><td>'+(i+1)+'</td><td><b style="color:#0f766e;text-decoration:underline">'+esc(g.guru)+'</b></td>' +
+              '<td>'+r.wajib.jam+' <span class="muted" style="font-size:11px">('+r.wajib.sesi+')</span></td><td><b>'+r.Hadir.jam+'</b>'+(r.gantiJam?' <span class="muted" style="font-size:11px">&#8635;'+r.gantiJam+'</span>':'')+'</td>' +
+              '<td>'+r.Izin.jam+'</td><td><b style="color:'+(r.Alfa.jam?'#dc2626':'#94a3b8')+'">'+r.Alfa.jam+'</b>'+(r.Belum.sesi?' <span style="font-size:11px;color:#9a3412" title="belum ada keterangan">+'+r.Belum.sesi+'?</span>':'')+'</td>' +
+              '<td>'+r.Digantikan.jam+'</td><td><b style="color:'+(r.persen>=90?'#16a34a':r.persen>=75?'#d97706':'#dc2626')+'">'+r.persen+'%</b></td></tr>';
+          }).join('') + '</table></div><p class="muted" style="font-size:11.5px;margin-top:6px">Angka = jumlah jam; (angka dalam kurung) = jumlah sesi; &#8635; = sesi ganti jam.</p>';
+      }
+      isi.innerHTML = html + '</div>';
+      pasangPilihan();
+      document.getElementById('lagXlsRekap').onclick = function(){ lagExcel(d, null, false); };
+      document.getElementById('lagXlsLengkap').onclick = function(){ lagExcel(d, null, true); };
+      document.getElementById('lagPdfRekap').onclick = function(){ lagCetak('Rekap Absen Mengajar Guru - ' + per.judul, function(k){ return [lagHtmlRekap(d, k)]; }); };
+      document.getElementById('lagPdfLengkap').onclick = function(){ lagCetak('Rekap & Rincian Absen Mengajar Guru - ' + per.judul, function(k){ return [lagHtmlRekap(d, k)].concat(d.guru.map(function(g){ return lagHtmlGuru(d, g, k); })); }); };
+      var kc = document.getElementById('lagCari');
+      if (kc) kc.oninput = function(){
+        cari = this.value; var q = cari.toLowerCase().trim();
+        isi.querySelectorAll('.lagBaris').forEach(function(tr){ tr.style.display = !q || tr.dataset.nama.indexOf(q) >= 0 ? '' : 'none'; });
+      };
+      if (kc && cari) kc.oninput.call(kc);
+      isi.querySelectorAll('.lagBaris').forEach(function(tr){ tr.onclick = function(){ rincian(d.guru[Number(tr.dataset.i)]); }; });
+    }
+    function rincian(g){
+      var d = data, per = lagPeriode(d), r = g.ringkas;
+      var sesi = g.sesi.filter(function(s){ return s.status !== 'Libur'; });
+      function kotak(judul, jam, sesiN, warna){ return '<div style="flex:1;min-width:92px;border:1px solid #e2e8f0;border-radius:10px;padding:6px 8px;text-align:center"><div class="muted" style="font-size:11px">'+judul+'</div><div style="font-size:17px;font-weight:700;color:'+(warna||'#0f172a')+'">'+jam+' <span style="font-size:11px">jam</span></div><div class="muted" style="font-size:11px">'+sesiN+' sesi</div></div>'; }
+      isi.innerHTML = '<div class="card"><button class="small secondary" id="lagKembali">&#8592; Kembali ke daftar guru</button>' +
+        '<h3 style="margin:10px 0 2px">'+esc(g.guru)+'</h3><div class="muted" style="font-size:12.5px">'+esc(per.judul)+' &middot; '+esc(per.teks)+'</div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">' + kotak('Wajib', r.wajib.jam, r.wajib.sesi) + kotak('Hadir', r.Hadir.jam, r.Hadir.sesi + (r.gantiJam?' (&#8635;'+r.gantiJam+')':''), '#166534') +
+          kotak('Izin', r.Izin.jam, r.Izin.sesi, '#1e40af') + kotak('Alfa (Ghaib)', r.Alfa.jam, r.Alfa.sesi, '#b91c1c') + kotak('Digantikan', r.Digantikan.jam, r.Digantikan.sesi, '#3730a3') +
+          (r.Belum.sesi ? kotak('Belum ada ket.', r.Belum.jam, r.Belum.sesi, '#9a3412') : '') +
+          '<div style="flex:1;min-width:92px;border:1px solid #e2e8f0;border-radius:10px;padding:6px 8px;text-align:center"><div class="muted" style="font-size:11px">Kehadiran</div><div style="font-size:17px;font-weight:700">'+r.persen+'%</div></div></div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"><button class="small" id="lagXlsGuru">&#11015;&#65039; Excel '+esc(g.guru)+'</button><button class="small secondary" id="lagPdfGuru">&#128424;&#65039; PDF / Cetak</button></div>' +
+        (sesi.length ? '<div style="overflow-x:auto"><table><tr><th>No</th><th>Hari, Tanggal</th><th>Sesi</th><th>Jam Ke / Waktu</th><th>Jam</th><th>Keterangan</th></tr>' +
+          sesi.map(function(s, i){
+            return '<tr><td>'+(i+1)+'</td><td style="white-space:nowrap">'+fmtTglIndoSP(s.tanggal)+'</td><td>'+esc(s.nama)+'</td><td>'+esc(s.jamKe||'')+'</td><td>'+s.jam+'</td>' +
+              '<td>'+lagBadge(s.status, s.gantiJam)+(s.ket?'<div class="muted" style="font-size:11.5px">'+esc(s.ket)+'</div>':'')+'</td></tr>';
+          }).join('') + '</table></div>' : '<p class="muted">Tidak ada sesi wajib pada periode ini.</p>') +
+        (r.libur ? '<p class="muted" style="font-size:12px;margin-top:6px">'+r.libur+' sesi bertepatan dengan hari libur pondok (tidak dihitung).</p>' : '') + '</div>';
+      document.getElementById('lagKembali').onclick = daftar;
+      document.getElementById('lagXlsGuru').onclick = function(){ lagExcel(d, g, false); };
+      document.getElementById('lagPdfGuru').onclick = function(){ lagCetak('Absen Mengajar ' + g.guru + ' - ' + per.judul, function(k){ return [lagHtmlGuru(d, g, k)]; }); };
+      try { isi.scrollIntoView({behavior:'smooth', block:'start'}); } catch(e){}
     }
     muat();
   }
