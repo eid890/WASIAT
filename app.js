@@ -327,7 +327,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.11.18-a';
+  var VERSI_APP = '2026.11.18-b';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -17941,7 +17941,7 @@
       '<div style="font-size:11px;color:#475569">Periode: '+esc(per.teks)+'</div></div>' +
       '<table class="lag"><thead><tr><th>No</th><th>Nama Guru</th><th>Jam Wajib</th><th>Jam Hadir</th><th>Izin (jam)</th><th>Alfa/Ghaib (jam)</th><th>Digantikan (jam)</th><th>% Hadir</th></tr></thead><tbody>' + baris +
       '<tr style="background:#f1f5f9;font-weight:700"><td></td><td>Jumlah</td><td class="c">'+t.wajib+'</td><td class="c">'+t.Hadir+'</td><td class="c">'+t.Izin+'</td><td class="c">'+t.Alfa+'</td><td class="c">'+t.Digantikan+'</td><td class="c">'+(t.wajib?Math.round(t.Hadir*1000/t.wajib)/10:100)+'%</td></tr></tbody></table>' +
-      lagKeteranganCetak(d) + lagTtd('', k);
+      lagKeteranganCetak(d);
   }
   function lagKeteranganCetak(d){
     return '<p style="font-size:10.5px;color:#334155;margin-top:8px;line-height:1.45"><b>Keterangan:</b> Hadir = absen sesi terisi atau guru mengganti jamnya; Izin = izin yang diajukan guru; ' +
@@ -17965,7 +17965,7 @@
       (sesi.length ? '<table class="lag"><thead><tr><th>No</th><th>Hari, Tanggal</th><th>Sesi</th><th>Jam Ke / Waktu</th><th>Jam</th><th>Keterangan</th><th>Catatan</th></tr></thead><tbody>'+baris+'</tbody></table>'
                    : '<p>Tidak ada sesi wajib pada periode ini.</p>') +
       (r.libur ? '<p style="font-size:10.5px;color:#475569;margin-top:4px">'+r.libur+' sesi bertepatan dengan hari libur pondok (tidak dihitung).</p>' : '') +
-      lagKeteranganCetak(d) + lagTtd(g.guru, k);
+      lagKeteranganCetak(d);
   }
   // buatHalaman(k) -> daftar HTML halaman. Jendela dibuka LANGSUNG saat tombol ditekan
   // (supaya tidak diblokir pop-up), lalu diisi setelah kop surat resmi termuat.
