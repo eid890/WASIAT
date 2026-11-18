@@ -327,7 +327,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.11.18-b';
+  var VERSI_APP = '2026.11.19-a';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -1659,8 +1659,8 @@
       })
       .catch(function(err){
         if (penanda) clearTimeout(penanda);
-        tandaiJaringanBuruk();
         var habisWaktu = err && err.name === 'AbortError';
+        if (!(habisWaktu && AKSI_BERAT.indexOf(action) !== -1)) tandaiJaringanBuruk();
         var httpStatus = err && err.httpStatus;
         var pesan = (typeof navigator !== 'undefined' && navigator.onLine === false)
           ? 'Tidak ada koneksi internet.'
@@ -1675,6 +1675,11 @@
   // baris), baca 25 detik -- tapi hanya 10 detik bila salinan tersimpan sudah ada,
   // supaya di sinyal lemah aplikasi cepat beralih ke data di perangkat.
   var BATAS_TULIS_MS = 45000, BATAS_BACA_MS = 25000, BATAS_BACA_ADA_CACHE_MS = 8000;
+  // Rekap yang menghitung data sebulan semua guru: server butuh waktu lebih lama (hasilnya
+  // lalu disimpan di server, permintaan berikutnya cepat). Ditunggu sampai 2 menit, dan
+  // lamanya hitungan tidak dianggap "internet putus" (aplikasi tidak beralih ke mode offline).
+  var AKSI_BERAT = ['getRekapJamMengajarGuru', 'getRekapKehadiranGuru', 'getLaporanAbsenGuru', 'getKehadiranSaya'];
+  var BATAS_BERAT_MS = 120000;
   // Penyimpanan yang belum dijawab server dalam 20 detik langsung diamankan ke antrian HP
   // (guru tidak dibiarkan menunggu), sementara kiriman aslinya tetap berjalan. Kunci
   // _idem membuat server mengabaikan kiriman ganda, jadi aman dari data dobel.
@@ -1752,6 +1757,7 @@
     }
 
     var batas = butuhSegar ? (putus ? 15000 : BATAS_BACA_MS) : (entriTersimpan ? BATAS_BACA_ADA_CACHE_MS : (putus ? 12000 : BATAS_BACA_MS));
+    if (AKSI_BERAT.indexOf(action) !== -1 && !putus) batas = BATAS_BERAT_MS;
     return apiJaringan(action, payload, batas).then(function(res){
       if (bisaDiCache && !res.ok && res._jaringanGagal && entriTersimpan) {
         tandaiSedangPakaiDataTersimpan(entriTersimpan.waktu);
@@ -16916,13 +16922,25 @@
       })();
 
       var lastHasil = null, lastLabel = '';
-      function muatRekap(){
+      var nomorMuat = 0;
+      function muatRekap(paksa){
         var guru = document.getElementById('rgGuru').value;
         var bulan = document.getElementById('rgBulan').value, tahun = document.getElementById('rgTahun').value;
-        document.getElementById('hasilRekapGuru').innerHTML = 'Memuat...';
-        api('getRekapJamMengajarGuru', {pengampu:guru, bulan:bulan, tahun:tahun}).then(function(res){
-          if(!res.ok){ document.getElementById('hasilRekapGuru').innerHTML = errBox(res.error); return; }
+        var nomorIni = ++nomorMuat;   // hasil permintaan lama (mis. pilihan guru sebelumnya) diabaikan
+        var mulai = Date.now();
+        document.getElementById('hasilRekapGuru').innerHTML = '<p class="muted" id="rgProses">&#9203; Menghitung rekap '+(guru ? esc(guru) : 'semua guru')+'... Bila belum pernah dihitung, bisa 20&ndash;60 detik; berikutnya cepat.</p>';
+        var detik = setInterval(function(){ var el = document.getElementById('rgProses'); if (!el || nomorIni !== nomorMuat) { clearInterval(detik); return; } el.innerHTML = '&#9203; Menghitung rekap '+(guru ? esc(guru) : 'semua guru')+'... '+Math.round((Date.now()-mulai)/1000)+' detik'; }, 1000);
+        var payloadRekap = {pengampu:guru, bulan:bulan, tahun:tahun}; if (paksa) payloadRekap.paksa = true;
+        api('getRekapJamMengajarGuru', payloadRekap).then(function(res){
+          clearInterval(detik);
+          if (nomorIni !== nomorMuat) return;
+          if(!res.ok){
+            document.getElementById('hasilRekapGuru').innerHTML = errBox(res.error) + '<button class="small secondary" id="rgCobaLagi" style="margin-top:8px">&#128260; Coba lagi</button>';
+            document.getElementById('rgCobaLagi').onclick = function(){ muatRekap(); };
+            return;
+          }
           var d = res.data;
+          var infoHitung = '<p class="muted" style="font-size:12px;margin-top:8px">'+(d.dihitung ? 'Data dihitung pukul '+esc(d.dihitung)+' &middot; ' : '')+'<a href="#" id="rgHitungUlang">&#128260; Hitung ulang dengan data terbaru</a></p>';
           lastHasil = d; lastLabel = (guru||'Semua Guru') + ' - Bulan ' + bulan + '/' + tahun;
           if (d.mode === 'detail') {
             var html = '<h4>Riwayat Mengajar: '+esc(d.pengampu)+'</h4>';
@@ -16931,7 +16949,7 @@
               d.riwayat.map(function(r){return '<tr><td>'+esc(r.tanggal)+'</td><td>'+esc(r.jenis)+'</td><td>'+esc(r.keterangan)+'</td><td>'+selJamRekap(r)+'</td></tr>';}).join('') + '</table>' + catatanJamBawaan(d.riwayat);
             html += '<h4 style="margin-top:14px">Sesi yang Tidak Terisi &amp; Alasannya</h4>' + tabelSesiTidakTerisi(d.tidakMengajar);
             html += '<p style="font-size:16px;margin-top:10px">Total Jam Mengajar: <b>'+d.totalJam+' jam</b></p>';
-            document.getElementById('hasilRekapGuru').innerHTML = html;
+            document.getElementById('hasilRekapGuru').innerHTML = html + infoHitung;
           } else {
             var html2 = '<h4>Total Jam Mengajar Semua Guru &mdash; ' + ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][Number(bulan)-1] + ' ' + tahun + '</h4>';
             if (!d.daftar.length) html2 += '<p class="muted">Belum ada data mengajar pada bulan ini.</p>';
@@ -16939,11 +16957,12 @@
               d.daftar.map(function(r){return '<tr><td>'+esc(r.pengampu)+'</td><td><b>'+r.totalJam+' jam</b></td>' +
                 '<td>'+(r.persen!==null&&r.persen!==undefined?r.persen+'%':'-')+'</td>' +
                 '<td style="font-size:12px">'+ringkasAlasanSesi(r.kehadiran)+'</td></tr>';}).join('') + '</table>';
-            document.getElementById('hasilRekapGuru').innerHTML = html2;
+            document.getElementById('hasilRekapGuru').innerHTML = html2 + infoHitung;
           }
+          var hu = document.getElementById('rgHitungUlang'); if (hu) hu.onclick = function(e){ e.preventDefault(); muatRekap(true); };
         });
       }
-      document.getElementById('btnRekapGuru').onclick = muatRekap;
+      document.getElementById('btnRekapGuru').onclick = function(){ muatRekap(); };
       document.getElementById('btnPdfRekapGuru').onclick = function(){
         if (!lastHasil) return alert('Tampilkan rekap dulu.');
         if (lastHasil.mode === 'detail') {
@@ -18072,10 +18091,11 @@
       if (b) b.onchange = function(){ bulan = Number(this.value); muat(); };
       if (t) t.onchange = function(){ var x = Number(this.value); if (x > 2000 && x < 2100) { tahun = x; muat(); } };
     }
-    function muat(){
-      isi.innerHTML = '<div class="card"><h3 style="margin-top:0">&#128424;&#65039; Laporan Absensi Mengajar Guru</h3>' + pilihan() + '<p class="muted">Menghitung absensi semua guru bulan '+SP_NAMA_BULAN[bulan-1]+' '+tahun+'... (bisa 10&ndash;30 detik)</p></div>';
+    function muat(paksa){
+      isi.innerHTML = '<div class="card"><h3 style="margin-top:0">&#128424;&#65039; Laporan Absensi Mengajar Guru</h3>' + pilihan() + '<p class="muted">&#9203; Menghitung absensi semua guru bulan '+SP_NAMA_BULAN[bulan-1]+' '+tahun+'... Bila belum pernah dihitung, bisa 20&ndash;60 detik; berikutnya cepat.</p></div>';
       pasangPilihan();
-      api('getLaporanAbsenGuru', {oleh: STATE.user.nama, bulan: bulan, tahun: tahun}).then(function(res){
+      var pl = {oleh: STATE.user.nama, bulan: bulan, tahun: tahun}; if (paksa) pl.paksa = true;
+      api('getLaporanAbsenGuru', pl).then(function(res){
         if (!res || !res.ok) {
           isi.innerHTML = '<div class="card"><h3 style="margin-top:0">&#128424;&#65039; Laporan Absensi Mengajar Guru</h3>' + pilihan() + errBox((res && res.error) || 'Gagal memuat laporan.') +
             '<button class="small secondary" id="lagUlang" style="margin-top:8px">&#128260; Coba lagi</button></div>';
@@ -18092,6 +18112,7 @@
       var d = data, per = lagPeriode(d);
       var html = '<div class="card"><h3 style="margin-top:0">&#128424;&#65039; Laporan Absensi Mengajar Guru</h3>' + pilihan() +
         '<p style="margin:6px 0 2px"><b>'+esc(per.judul)+'</b> &middot; <span class="muted">'+esc(per.teks)+'</span></p>' +
+        '<p class="muted" style="font-size:12px;margin:2px 0">'+(d.dihitung ? 'Data dihitung pukul '+esc(d.dihitung)+' &middot; ' : '')+'<a href="#" id="lagHitungUlang">&#128260; Hitung ulang dengan data terbaru</a></p>' +
         (per.berjalan ? '<p class="muted" style="font-size:12px;margin:2px 0">Hari ini belum dihitung. Untuk laporan ke yayasan, unduh setelah bulan selesai (dan masa klarifikasi '+(d.batasKlarifikasi||3)+' hari lewat).</p>' : '') +
         (d.jamBelumDiatur ? warnBox('Jumlah jam belum diatur di Data Master > Jam Pelajaran, jadi mapel dihitung 2 jam per jam ke- dan halaqoh 0 jam.') : '') +
         (!d.hitungHalaqoh ? '<p class="muted" style="font-size:12px;margin:2px 0">Halaqoh tidak dihitung (pengaturan di tab Aturan).</p>' : '') +
@@ -18116,6 +18137,7 @@
       isi.innerHTML = html + '</div>';
       pasangPilihan();
       document.getElementById('lagXlsRekap').onclick = function(){ lagExcel(d, null, false); };
+      document.getElementById('lagHitungUlang').onclick = function(e){ e.preventDefault(); muat(true); };
       document.getElementById('lagXlsLengkap').onclick = function(){ lagExcel(d, null, true); };
       document.getElementById('lagPdfRekap').onclick = function(){ lagCetak('Rekap Absen Mengajar Guru - ' + per.judul, function(k){ return [lagHtmlRekap(d, k)]; }); };
       document.getElementById('lagPdfLengkap').onclick = function(){ lagCetak('Rekap & Rincian Absen Mengajar Guru - ' + per.judul, function(k){ return [lagHtmlRekap(d, k)].concat(d.guru.map(function(g){ return lagHtmlGuru(d, g, k); })); }); };
