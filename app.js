@@ -327,7 +327,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.11.26-a';
+  var VERSI_APP = '2026.11.26-b';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -5060,6 +5060,13 @@
     if (n >= 1 && n <= 6) return n + ' (' + kata[n] + ')';
     return kelas;
   }
+  // Kelas yang memakai rapor ini: dari pengaturan, bawaan = kelas 2 dan 3 Wustha (kelas 8 & 9).
+  // Kelas 1 belum memakai format ini.
+  function rwuTingkat(aturan, kelas){ var m = String(rwuLabelKelas(aturan, kelas)).match(/\d+/); return m ? Number(m[0]) : 0; }
+  function rwuBerlaku(aturan, kelas){
+    if (aturan && Array.isArray(aturan.kelasBerlaku)) return aturan.kelasBerlaku.indexOf(kelas) >= 0;
+    var t = rwuTingkat(aturan || {}, kelas); return t === 2 || t === 3;
+  }
   function rwuTerbilang(n){ var k=['','SATU','DUA','TIGA','EMPAT','LIMA','ENAM','TUJUH','DELAPAN','SEMBILAN','SEPULUH','SEBELAS','DUA BELAS']; n = parseInt(n,10); return k[n] || (n ? String(n) : ''); }
   function rwuTglIndo(t){ var p = String(t||'').slice(0,10).split('-').map(Number); return p[2] ? (p[2] + ' ' + SP_NAMA_BULAN[p[1]-1] + ' ' + p[0]).toUpperCase() : ''; }
   // Identitas awal: Buku Induk tersimpan > data formulir PPDB > data santri WASIAT
@@ -5117,13 +5124,15 @@
       var r = h[0];
       if (!r.ok) { c.innerHTML = '<div class="card">'+errBox(r.error)+'</div>'; return; }
       info = r.data;
-      var daftarKelas = kelasTetap ? String(kelasTetap).split(/[,;\/]/).map(function(x){ return x.trim(); }).filter(Boolean) : info.kelas;
+      var semuaKelas = kelasTetap ? String(kelasTetap).split(/[,;\/]/).map(function(x){ return x.trim(); }).filter(Boolean) : info.kelas;
+      var daftarKelas = semuaKelas.filter(function(k){ return rwuBerlaku(info.aturan || {}, k); });
       c.innerHTML = '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center"><h3 style="margin:0">&#128216; Rapor PK PPS (Wustha)</h3>' +
         (info.bolehAtur ? '<button class="small secondary" id="rwuAtur">&#9881;&#65039; Pengaturan rapor</button>' : '') + '</div>' +
         '<p class="muted" style="font-size:12.5px;margin:6px 0">Semester aktif: <b>'+esc(info.semester.nama || '-')+'</b>. Nilai dari Rekap Nilai guru, ketidakhadiran dari <b>Halaqoh Maghrib</b> dan <b>absensi asrama</b> (bila satu tanggal ada keduanya, dipakai catatan Halaqoh Maghrib). Format cetak sama dengan Aplikasi Rapor Santri WU.</p>' +
+        (daftarKelas.length ? '' : warnBox('Rapor PK PPS saat ini berlaku untuk kelas 2 dan 3 (Wustha).' + (semuaKelas.length ? ' Kelas ' + semuaKelas.join(', ') + ' belum memakai rapor ini.' : ''))) +
         '<label>Kelas</label><select id="rwuKelas">'+(daftarKelas.length ? daftarKelas.map(function(k){ return '<option>'+esc(k)+'</option>'; }).join('') : '<option value="">(tidak ada kelas)</option>')+'</select>' +
         '<div id="rwuIsi" style="margin-top:12px"></div></div>';
-      var bA = document.getElementById('rwuAtur'); if (bA) bA.onclick = function(){ aturRaporWU(info, function(){ muatKelas(); }); };
+      var bA = document.getElementById('rwuAtur'); if (bA) bA.onclick = function(){ aturRaporWU(info, function(){ halRaporWU(kelasTetap); }); };
       document.getElementById('rwuKelas').onchange = muatKelas;
       muatKelas();
     }).catch(function(e){ c.innerHTML = '<div class="card">'+errBox(e && e.message || 'Gagal memuat.')+'</div>'; });
@@ -5266,8 +5275,8 @@
       '<div><label>Nilai huruf</label><select id="raHuruf"><option value="asli"'+((a.opsi||{}).huruf!=='lengkap'?' selected':'')+'>Seperti Excel (Delapan Dua)</option><option value="lengkap"'+((a.opsi||{}).huruf==='lengkap'?' selected':'')+'>Lengkap (Delapan Puluh Dua)</option></select></div></div>' +
       '<h4>Mata pelajaran rapor &amp; sumber nilainya di WASIAT</h4><div style="overflow-x:auto"><table><tr><th>Baris rapor</th><th>KKM</th><th>SKK</th><th>Ambil nilai dari</th></tr>' +
         mp.map(function(m, i){ return '<tr><td><input class="raN" data-i="'+i+'" value="'+esc(m.nama)+'"></td><td><input class="raK" data-i="'+i+'" value="'+esc(m.kkm)+'" style="width:60px"></td><td><input class="raQ" data-i="'+i+'" value="'+esc(m.skk)+'" style="width:60px"></td><td>'+opsiSumber(i, m.nama)+'</td></tr>'; }).join('') + '</table></div>' +
-      '<h4>Kelas di rapor &amp; NIY wali kelas</h4><p class="muted" style="font-size:12px">Contoh kelas: "1 (Satu)". Kosongkan untuk otomatis (7&rarr;1, 8&rarr;2, 9&rarr;3).</p><div class="grid2">' +
-        info.kelas.map(function(k){ return '<div><label>Kelas '+esc(k)+'</label><input class="raKl" data-k="'+esc(k)+'" value="'+esc((a.kelasLabel||{})[k]||'')+'" placeholder="'+esc(rwuLabelKelas({}, k))+'"></div>'; }).join('') + '</div>' +
+      '<h4>Kelas yang memakai rapor ini, kelas di rapor &amp; NIY wali kelas</h4><p class="muted" style="font-size:12px">Centang kelas yang memakai rapor ini (bawaan: kelas 2 dan 3). Kolom teks = tulisan kelas di rapor, contoh "2 (Dua)"; kosongkan untuk otomatis (7&rarr;1, 8&rarr;2, 9&rarr;3).</p><div class="grid2">' +
+        info.kelas.map(function(k){ return '<div><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="raB" data-k="'+esc(k)+'" style="width:auto"'+(rwuBerlaku(a, k)?' checked':'')+'> Kelas '+esc(k)+'</label><input class="raKl" data-k="'+esc(k)+'" value="'+esc((a.kelasLabel||{})[k]||'')+'" placeholder="'+esc(rwuLabelKelas({}, k))+'"></div>'; }).join('') + '</div>' +
       '<label style="margin-top:8px">NIY wali kelas (satu per baris: Nama = NIY)</label><textarea id="raNiy" rows="4">'+esc(Object.keys(a.niyTampil||{}).map(function(n){ return n + ' = ' + a.niyTampil[n]; }).join('\n'))+'</textarea>';
     var m = keuModal(html, 820);
     m.el.querySelector('#raSimpan').onclick = function(){
@@ -5278,7 +5287,8 @@
       var kl = {}; q('.raKl').forEach(function(x){ if (x.value.trim()) kl[x.dataset.k] = x.value.trim(); });
       var baru = { lembaga: lem, tglIdentitas: m.el.querySelector('#raTgl').value.trim(), opsi: {huruf: m.el.querySelector('#raHuruf').value},
         mapel: q('.raN').map(function(x, i){ return {nama: x.value.trim(), kkm: q('.raK')[i].value.trim(), skk: q('.raQ')[i].value.trim()}; }),
-        sumber: q('.raS').map(function(x){ return x.value; }), kelasLabel: kl, niy: niy, niyTampil: niyTampil };
+        sumber: q('.raS').map(function(x){ return x.value; }), kelasLabel: kl, niy: niy, niyTampil: niyTampil,
+        kelasBerlaku: q('.raB').filter(function(x){ return x.checked; }).map(function(x){ return x.dataset.k; }) };
       loadingBtn(btn, 'Menyimpan...');
       apiPrm('raporWuAtur', {aturan: baru}).then(function(r){
         resetBtn(btn, 'Simpan');
