@@ -327,7 +327,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.11.19-a';
+  var VERSI_APP = '2026.11.25-a';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -2681,9 +2681,8 @@
     var jamLayanan = String(p.JamLayananInfo||'').trim();
     var aksiHero = '<div class="bv-aksi">' +
       '<button class="bv-cta" id="btnHeroCta" type="button">Jelajahi Lebih Lanjut &#8595;</button>' +
-      (p.LinkPPDBEksternal
-        ? '<a class="bv-cta garis" href="'+esc(p.LinkPPDBEksternal)+'" target="_blank" rel="noopener">Daftar Santri Baru</a>'
-        : '<button class="bv-cta garis" id="btnHeroPpdb" type="button">Daftar Santri Baru</button>') +
+      // Formulir SPMB bawaan (halaman /spmb.html, tersambung ke menu PPDB Online)
+      '<a class="bv-cta garis" href="/spmb.html">Daftar Santri Baru</a>' +
       '</div>';
     // Menu ibadah (tautan & ikon sama seperti sebelumnya)
     var menuIbadah = [
@@ -2780,7 +2779,10 @@
           '<div>' +
             '<div class="bv-head reveal"><span class="bv-label">Pendaftaran</span><h2>Penerimaan Santri Baru (PPDB)</h2></div>' +
             '<p class="bv-ppdb-teks reveal">'+esc(p.InfoPPDB||'-')+'</p>' +
-            (p.LinkPPDBEksternal ? '<div class="reveal"><a class="bv-cta emas" href="'+esc(p.LinkPPDBEksternal)+'" target="_blank" rel="noopener">Daftar Sekarang</a></div>' : '') +
+            '<div class="reveal" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">' +
+              '<a class="bv-cta emas" href="/spmb.html">Isi Formulir Pendaftaran</a>' +
+              '<a class="bv-cta garis" href="/spmb.html?cek">Cek Status Pendaftaran</a></div>' +
+            (p.LinkPPDBEksternal ? '<p class="reveal" style="margin-top:10px;font-size:13px;opacity:.85">Atau melalui <a href="'+esc(p.LinkPPDBEksternal)+'" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">tautan pendaftaran lain</a>.</p>' : '') +
           '</div>' +
           // Brosur PPDB (opsional) -- bisa diketuk untuk dibuka ukuran penuh di tab baru.
           (p.BrosurPPDBURL
@@ -4953,7 +4955,7 @@
   function halPpdb(){
     var c=getContentEl();
     var adm=punyaPeranKeu(['Admin','Mudir']);
-    c.innerHTML='<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center"><h3 style="margin:0">&#128221; PPDB Online</h3><a href="/ppdb/" target="_blank" rel="noopener"><button class="small secondary">&#128279; Buka halaman pendaftaran</button></a></div>' +
+    c.innerHTML='<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center"><h3 style="margin:0">&#128221; PPDB Online</h3><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="small secondary" id="ppXls">&#11015;&#65039; Excel pendaftar</button><a href="/spmb.html" target="_blank" rel="noopener"><button class="small secondary">&#128279; Buka formulir SPMB</button></a></div></div>' +
       '<div id="ppIsi" style="margin-top:10px"><p class="muted">Memuat...</p></div></div>';
     var semua=[], filter='';
     function muat(){
@@ -4961,7 +4963,7 @@
         var box=document.getElementById('ppIsi'); if(!box) return;
         if(!r.ok){ box.innerHTML=errBox(r.error); return; }
         var d=r.data, a=d.aturan; semua=d.data;
-        box.innerHTML='<div style="padding:8px 12px;border-radius:10px;font-size:13px;margin-bottom:10px;background:'+(a.buka?'#f0fdf4;border:1px solid #bbf7d0':'#f8fafc;border:1px solid #e2e8f0')+'">Pendaftaran <b>'+(a.buka?'DIBUKA':'DITUTUP')+'</b> · Tahun ajaran '+esc(a.tahun)+(a.kuota?' · kuota '+a.kuota:'')+' · alamat: <b>'+esc(location.origin)+'/ppdb/</b></div>' +
+        box.innerHTML='<div style="padding:8px 12px;border-radius:10px;font-size:13px;margin-bottom:10px;background:'+(a.buka?'#f0fdf4;border:1px solid #bbf7d0':'#f8fafc;border:1px solid #e2e8f0')+'">Pendaftaran <b>'+(a.buka?'DIBUKA':'DITUTUP')+'</b> · Tahun ajaran '+esc(a.tahun)+(a.kuota?' · kuota '+a.kuota:'')+' · formulir: <b>'+esc(location.origin)+'/spmb.html</b></div>' +
           (adm?'<details style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:600;font-size:13px">&#9881;&#65039; Pengaturan pendaftaran</summary><div style="margin-top:8px">' +
             '<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="paBuka" '+(a.buka?'checked':'')+' style="width:auto"> Buka pendaftaran</label>' +
             '<div class="grid2"><div><label>Tahun ajaran</label><input id="paTahun" value="'+esc(a.tahun)+'"></div><div><label>Kuota santri (0 = tanpa batas)</label><input id="paKuota" type="number" value="'+(a.kuota||0)+'"></div></div>' +
@@ -4972,6 +4974,7 @@
             '<button class="small" id="paSimpan" style="margin-top:6px">Simpan pengaturan</button></div></details>':'') +
           '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"><button class="small ppF" data-s="">Semua ('+semua.length+')</button>'+d.status.filter(function(s){ return d.rekap[s]; }).map(function(s){ return '<button class="small secondary ppF" data-s="'+esc(s)+'">'+esc(s)+' ('+d.rekap[s]+')</button>'; }).join('')+'</div>' +
           '<div id="ppList"></div>';
+        var bx=document.getElementById('ppXls'); if(bx) bx.onclick=function(){ unduhExcelPpdb(semua, a); };
         box.querySelectorAll('.ppF').forEach(function(b){ b.onclick=function(){ filter=b.dataset.s; box.querySelectorAll('.ppF').forEach(function(x){ x.classList.toggle('secondary', x!==b); }); gambar(); }; });
         var sv=document.getElementById('paSimpan'); if(sv) sv.onclick=function(){
           loadingBtn(sv,'Menyimpan...');
@@ -4983,15 +4986,16 @@
           var l=semua.filter(function(x){ return !filter || x.status===filter; });
           document.getElementById('ppList').innerHTML = l.length ? l.map(function(x){
             return '<div style="border:1px solid #e2e8f0;border-left:5px solid '+(WARNA_PPDB[x.status]||'#94a3b8')+';border-radius:10px;padding:10px 12px;margin-bottom:8px">' +
-              '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><div><b>'+esc(x.nama)+'</b> <span class="muted" style="font-size:12px">'+esc(x.noDaftar)+' · '+esc(x.jenjang)+'</span></div><b style="color:'+(WARNA_PPDB[x.status]||'#334155')+';font-size:12.5px">'+esc(x.status)+'</b></div>' +
+              '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><div><b>'+esc(x.nama)+'</b> <span class="muted" style="font-size:12px">'+esc(x.noDaftar)+' · '+esc(x.jenjang)+'</span>'+(x.jalur?' <span style="background:#e0f2fe;color:#075985;font-size:11px;font-weight:700;padding:1px 8px;border-radius:10px">'+esc(x.jalur)+'</span>':'')+'</div><b style="color:'+(WARNA_PPDB[x.status]||'#334155')+';font-size:12.5px">'+esc(x.status)+'</b></div>' +
               '<div class="muted" style="font-size:12.5px;margin-top:2px">'+esc(x.jk)+' · '+esc(x.tempatLahir)+', '+tglPanjangKeu(x.tanggalLahir)+' · asal '+esc(x.asalSekolah||'-')+'</div>' +
               '<div class="muted" style="font-size:12.5px">Ayah '+esc(x.ayah||'-')+' · Ibu '+esc(x.ibu||'-')+' · WA '+esc(x.noWa)+(x.alamat?' · '+esc(x.alamat):'')+'</div>' +
               (x.catatan?'<div style="font-size:12.5px">&#128172; '+esc(x.catatan)+'</div>':'') + (x.catatanPanitia?'<div style="font-size:12.5px;color:#b45309">Catatan panitia: '+esc(x.catatanPanitia)+'</div>':'') +
-              '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'+x.berkas.map(function(bk){ return '<button class="small secondary ppB" data-id="'+esc(x.id)+'" data-i="'+bk.i+'">&#128206; '+esc(bk.label)+'</button>'; }).join('') +
+              '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'+(x.detail && Object.keys(x.detail).length ? '<button class="small secondary ppD" data-id="'+esc(x.id)+'">&#128203; Data lengkap</button>' : '')+x.berkas.map(function(bk){ return '<button class="small secondary ppB" data-id="'+esc(x.id)+'" data-i="'+bk.i+'">&#128206; '+esc(bk.label)+'</button>'; }).join('') +
               (x.status!=='Menjadi Santri'?'<button class="small ppS" data-id="'+esc(x.id)+'">Ubah status</button>':'<span class="muted" style="font-size:12px">NISN '+esc(x.nisn)+'</span>') +
               (adm && x.status==='Diterima'?'<button class="small ppJ" data-id="'+esc(x.id)+'">&#10133; Masukkan ke Data Santri</button>':'')+'</div></div>';
           }).join('') : '<p class="muted">Belum ada pendaftar.</p>';
           document.querySelectorAll('.ppB').forEach(function(b){ b.onclick=function(){ lihatBerkasKeu(apiPrm('ppdbBerkas',{id:b.dataset.id, i:b.dataset.i}), 'Berkas pendaftar'); }; });
+          document.querySelectorAll('.ppD').forEach(function(b){ b.onclick=function(){ dataLengkapPpdb(semua.find(function(x){ return x.id===b.dataset.id; })); }; });
           document.querySelectorAll('.ppS').forEach(function(b){ b.onclick=function(){ ubahStatus(semua.find(function(x){ return x.id===b.dataset.id; })); }; });
           document.querySelectorAll('.ppJ').forEach(function(b){ b.onclick=function(){ jadikan(semua.find(function(x){ return x.id===b.dataset.id; })); }; });
         }
@@ -5007,13 +5011,56 @@
     }
     function jadikan(x){
       var m=keuModal('<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b>Masukkan '+esc(x.nama)+' ke Data Santri</b><button class="secondary small" data-tutup>Batal</button></div>' +
-        '<label>NISN</label><input id="pjNisn" inputmode="numeric"><div class="grid2"><div><label>Tahun masuk</label><input id="pjTahun" value="'+new Date().getFullYear()+'"></div><div><label>Kelas <span class="muted">(opsional)</span></label><input id="pjKelas" placeholder="contoh 7A"></div></div>' +
+        '<label>NISN</label><input id="pjNisn" inputmode="numeric" value="'+esc((x.detail && x.detail.nisn) || '')+'"><div class="grid2"><div><label>Tahun masuk</label><input id="pjTahun" value="'+new Date().getFullYear()+'"></div><div><label>Kelas <span class="muted">(opsional)</span></label><input id="pjKelas" placeholder="contoh 7A"></div></div>' +
         '<button id="pjOk" style="margin-top:8px">Masukkan</button><div id="pjPesan"></div>', 460);
       m.el.querySelector('#pjOk').onclick=function(){ var b=this; loadingBtn(b,'Menyimpan...');
         apiPrm('ppdbJadikanSantri',{id:x.id, nisn:m.el.querySelector('#pjNisn').value.trim(), tahunMasuk:m.el.querySelector('#pjTahun').value.trim(), kelas:m.el.querySelector('#pjKelas').value.trim()}).then(function(r){
           resetBtn(b,'Masukkan'); if(!r.ok){ m.el.querySelector('#pjPesan').innerHTML=errBox(r.error); return; } alert(r.data.nama+' kini terdaftar sebagai santri (NISN '+r.data.nisn+').'+(r.data.catatan?'\n'+r.data.catatan:'')); m.tutup(); muat(); }); };
     }
     muat();
+  }
+
+  // ---- Data lengkap formulir SPMB & unduhan Excel pendaftar ----
+  var PPDB_LABEL = [
+    ['Calon santri', [['nama','Nama lengkap'],['nisn','NISN'],['nik','NIK'],['jk','Jenis kelamin'],['tmp_lahir','Tempat lahir'],['tgl_lahir','Tanggal lahir'],['agama','Agama'],['anak_ke','Anak ke-'],['saudara','Dari ... bersaudara'],['tinggi','Tinggi badan (cm)'],['berat','Berat badan (kg)'],['abk','Kebutuhan khusus'],['abk_ket','Keterangan kebutuhan khusus']]],
+    ['Alamat & kontak', [['jalan','Jalan / dusun'],['rtrw','RT/RW'],['desa','Desa/kelurahan'],['kecamatan','Kecamatan'],['kabupaten','Kabupaten/kota'],['provinsi','Provinsi'],['kodepos','Kode pos'],['hp','Nomor HP/WA'],['email','Email']]],
+    ['Sekolah asal', [['sekolah','Nama sekolah'],['npsn','NPSN'],['sekolah_alamat','Alamat sekolah'],['tahun_lulus','Tahun lulus'],['nilai_rapor','Nilai rata-rata rapor kelas 5']]],
+    ['Ayah', [['ayah_status','Status'],['ayah_nama','Nama'],['ayah_nik','NIK'],['ayah_tahun_lahir','Tahun lahir'],['ayah_pendidikan','Pendidikan'],['ayah_pekerjaan','Pekerjaan'],['ayah_penghasilan','Penghasilan'],['ayah_hp','Nomor HP']]],
+    ['Ibu', [['ibu_status','Status'],['ibu_nama','Nama'],['ibu_nik','NIK'],['ibu_tahun_lahir','Tahun lahir'],['ibu_pendidikan','Pendidikan'],['ibu_pekerjaan','Pekerjaan'],['ibu_penghasilan','Penghasilan'],['ibu_hp','Nomor HP']]],
+    ['Wali', [['ada_wali','Ada wali'],['wali_nama','Nama'],['wali_hubungan','Hubungan'],['wali_nik','NIK'],['wali_tahun_lahir','Tahun lahir'],['wali_pendidikan','Pendidikan'],['wali_pekerjaan','Pekerjaan'],['wali_penghasilan','Penghasilan'],['wali_hp','Nomor HP']]],
+    ['Jalur & pendukung', [['jalur','Jalur pendaftaran'],['afirmasi_jenis','Jenis bukti afirmasi'],['afirmasi_nomor','Nomor kartu / keterangan'],['sdit_yayasan','Dari SDIT satu yayasan'],['hafalan_juz','Hafalan (juz)'],['hafalan_ket','Juz / surat yang dihafal'],['tahun_ajaran','Tahun ajaran'],['waktu_daftar','Waktu daftar']]]
+  ];
+  function dataLengkapPpdb(x){
+    if (!x) return;
+    var d = x.detail || {}, dipakai = {};
+    var html = PPDB_LABEL.map(function(grp){
+      var baris = grp[1].filter(function(k){ dipakai[k[0]] = 1; return d[k[0]] !== undefined && d[k[0]] !== ''; });
+      if (!baris.length) return '';
+      return '<h4 style="margin:12px 0 4px;color:#0f766e">'+esc(grp[0])+'</h4><table style="width:100%;font-size:13px">' +
+        baris.map(function(k){ return '<tr><td style="width:42%;color:#64748b;padding:3px 6px;vertical-align:top">'+esc(k[1])+'</td><td style="padding:3px 6px;font-weight:600">'+esc(d[k[0]])+'</td></tr>'; }).join('') + '</table>';
+    }).join('');
+    var lain = Object.keys(d).filter(function(k){ return !dipakai[k] && d[k] !== ''; });
+    if (lain.length) html += '<h4 style="margin:12px 0 4px;color:#0f766e">Lainnya</h4><table style="width:100%;font-size:13px">' + lain.map(function(k){ return '<tr><td style="width:42%;color:#64748b;padding:3px 6px">'+esc(k)+'</td><td style="padding:3px 6px;font-weight:600">'+esc(d[k])+'</td></tr>'; }).join('') + '</table>';
+    keuModal('<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>'+esc(x.nama)+' &middot; '+esc(x.noDaftar)+'</b><button class="secondary small" data-tutup>Tutup</button></div>' +
+      '<div class="muted" style="font-size:12.5px">Status: <b>'+esc(x.status)+'</b>'+(x.jalur?' &middot; Jalur: <b>'+esc(x.jalur)+'</b>':'')+'</div>' + html, 640);
+  }
+  function unduhExcelPpdb(list, aturan){
+    if (typeof XLSX === 'undefined') { alert('Pustaka Excel belum termuat. Periksa koneksi internet lalu muat ulang aplikasi.'); return; }
+    if (!list || !list.length) { alert('Belum ada pendaftar.'); return; }
+    var kolomDetail = [];
+    PPDB_LABEL.forEach(function(grp){ grp[1].forEach(function(k){ kolomDetail.push([k[0], grp[0] === 'Calon santri' || grp[0] === 'Alamat & kontak' || grp[0] === 'Sekolah asal' || grp[0] === 'Jalur & pendukung' ? k[1] : grp[0] + ' - ' + k[1]]); }); });
+    var head = ['No','No Daftar','Waktu Daftar','Status','Catatan Panitia','Nama','Jenis Kelamin','Jenjang','Jalur','No WA','Alamat'].concat(kolomDetail.map(function(k){ return k[1]; })).concat(['Berkas']);
+    var aoa = [['DATA PENDAFTAR SPMB ' + String((aturan && aturan.tahun) || '')], [], head];
+    list.forEach(function(x, i){
+      var d = x.detail || {};
+      aoa.push([i+1, x.noDaftar, x.waktu, x.status, x.catatanPanitia || '', x.nama, x.jk, x.jenjang, x.jalur || d.jalur || '', x.noWa, x.alamat]
+        .concat(kolomDetail.map(function(k){ return d[k[0]] == null ? '' : String(d[k[0]]); }))
+        .concat([(x.berkas || []).map(function(b){ return b.label; }).join(', ')]));
+    });
+    var ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = head.map(function(h){ return {wch: Math.min(30, Math.max(10, String(h).length + 2))}; });
+    var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Pendaftar');
+    XLSX.writeFile(wb, ('Pendaftar SPMB ' + String((aturan && aturan.tahun) || '')).replace(/[\\\/:*?"<>|]/g, '-').trim() + '.xlsx');
   }
 
   // =====================================================================

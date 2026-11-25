@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SPMB Wihdatul Ummah 2027/2028</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=Amiri:wght@700&display=swap" rel="stylesheet">
+<style>
+/* VOICE: ramah, rapi, berwibawa — formulir resmi pesantren yang mudah diisi orang tua di HP
+   IDEA: buku induk pendaftaran santri; tiap tahap = satu lembar yang dicentang selesai
+   PICTURE: formulir itu sendiri, di bawah pita hijau bermotif bintang delapan
+   COLOUR and TYPE: navy #0b3a66 dominan (suasana desain Canva), putih, biru langit #3bb4ee aksen; DM Sans
+   LAYOUT: satu kolom tenang 760px, stepper di atas, tombol lanjut menempel di bawah layar */
+:root{color-scheme:light dark;
+--bg:light-dark(#eef4fa,#08121d);--card:light-dark(#fff,#0f1c2a);--ink:light-dark(#10304f,#e5eef7);
+--mute:light-dark(#5d7389,#93a8bd);--line:light-dark(#d9e4ef,#203246);--field:light-dark(#fff,#0b1724);
+--g:#0b3a66;--g2:light-dark(#1462a8,#5fb3f0);--gold:#3bb4ee;--goldsoft:light-dark(#e8f3fc,#11283d);
+--red:light-dark(#b42318,#ff8a7a);--redsoft:light-dark(#fdecea,#3a1713);--ok:light-dark(#0f7a52,#4cd39a)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "DM Sans",system-ui,sans-serif;overflow-x:clip}
+h1,h2,h3{letter-spacing:-.02em;font-weight:700;font-family:"DM Sans",system-ui,sans-serif;line-height:1.1;text-wrap:balance;margin:0}
+.hero{position:relative;background:var(--g);color:#fff;padding:36px max(5vw,16px) 92px;overflow:hidden}
+.hero svg.pat{position:absolute;inset:0;width:100%;height:100%;opacity:.16}
+.hero .in{position:relative;max-width:760px;margin:0 auto;display:flex;gap:18px;align-items:center}
+.seal{flex:none;width:76px;height:76px}
+.hero small{display:block;color:#7fd0f7;font-weight:700;font-size:13px;margin-bottom:8px}
+.hero h1{font-size:clamp(28px,5vw,42px)}
+.hero p{margin:8px 0 0;color:#c9dcef;font-size:15px}
+.wrap{max-width:760px;margin:-64px auto 0;padding:0 max(3vw,12px) 120px;position:relative}
+.steps{display:flex;gap:6px;overflow-x:auto;padding:10px;background:var(--card);border:1px solid var(--line);border-radius:16px;margin-bottom:14px;scrollbar-width:none}
+.steps button{flex:1 0 auto;display:flex;align-items:center;gap:8px;border:0;background:none;color:var(--mute);font-family:inherit;font-weight:600;font-size:13px/1.2;padding:8px 10px;border-radius:10px;cursor:pointer;white-space:nowrap;min-height:44px}
+.steps button i{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:12px;border:1.5px solid var(--line);flex:none}
+.steps button.on{background:var(--goldsoft);color:var(--ink)}
+.steps button.on i{border-color:var(--gold);background:var(--gold);color:#fff}
+.steps button.done i{background:var(--g2);border-color:var(--g2);color:#fff}
+.steps button:disabled{cursor:default;opacity:.6}
+.bar{height:4px;background:var(--line);border-radius:4px;margin:0 6px 16px;overflow:hidden}
+.bar span{display:block;height:100%;background:linear-gradient(90deg,var(--g2),var(--gold));width:0;transition:width .4s}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:clamp(18px,4vw,34px)}
+.card h2{font-size:clamp(24px,4vw,32px)}
+.card>p.lead{color:var(--mute);margin:6px 0 22px}
+fieldset{border:0;margin:0 0 22px;padding:0}
+legend,.sub{font:700 16px "DM Sans",sans-serif;color:var(--ink);margin:4px 0 12px;display:flex;align-items:center;gap:8px;border-left:4px solid var(--gold);padding:0 0 0 10px}
+.grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:14px 14px}
+.c6{grid-column:span 6}.c4{grid-column:span 4}.c3{grid-column:span 3}.c2{grid-column:span 2}
+.f label,.f .lab{display:block;font-weight:600;font-size:14px;margin-bottom:6px}
+.f b{color:var(--red)}
+input,select,textarea{width:100%;font:16px/1.3 inherit;color:var(--ink);background:var(--field);border:1.5px solid var(--line);border-radius:12px;padding:12px 13px;min-height:48px;transition:border .15s,box-shadow .15s}
+textarea{min-height:84px;resize:vertical}
+input:focus,select:focus,textarea:focus{outline:0;border-color:var(--g2);box-shadow:0 0 0 4px color-mix(in srgb,var(--g2) 18%,transparent)}
+.f small{display:block;font-size:13px;color:var(--mute);margin-top:5px}
+.f .err{color:var(--red);display:none}
+.f.bad input,.f.bad select,.f.bad textarea,.f.bad .seg,.f.bad .drop{border-color:var(--red)}
+.f.bad .err{display:block}
+.seg{display:flex;flex-wrap:wrap;gap:8px;border:1.5px solid transparent;border-radius:14px}
+.seg label{flex:1 1 140px;display:flex;align-items:center;gap:10px;margin:0;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;background:var(--field);cursor:pointer;font-weight:500;min-height:48px}
+.seg input{width:20px;height:20px;min-height:0;margin:0;accent-color:var(--g2);flex:none}
+.seg label:has(input:checked){border-color:var(--g2);background:color-mix(in srgb,var(--g2) 9%,var(--field))}
+.jalur label{flex-direction:column;align-items:flex-start;gap:4px;flex:1 1 200px}
+.jalur label strong{font-family:"DM Sans",system-ui,sans-serif;font-size:17px}.jalur label span{font-size:13px;color:var(--mute)}
+.jalur label input{position:absolute;opacity:0}.jalur label{position:relative}
+.jalur label:has(input:focus-visible){box-shadow:0 0 0 4px color-mix(in srgb,var(--g2) 25%,transparent)}
+.box{border:1.5px dashed var(--line);border-radius:16px;padding:16px;margin-top:4px}
+.parent{border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px}
+.parent h3{font-size:18px;margin-bottom:12px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
+.check{display:flex;gap:12px;align-items:flex-start;padding:14px;border-radius:12px;background:var(--goldsoft);cursor:pointer;font-weight:500}
+.check input{width:22px;height:22px;min-height:0;flex:none;margin-top:2px;accent-color:var(--g2)}
+.drop{position:relative;display:flex;gap:14px;align-items:center;border:1.5px dashed var(--line);border-radius:14px;padding:12px;background:var(--field);min-height:76px;cursor:pointer}
+.drop:hover,.drop.over{border-color:var(--g2)}
+.drop input{position:absolute;inset:0;opacity:0;cursor:pointer;min-height:0}
+.drop .th{width:52px;height:52px;border-radius:10px;background:var(--line);flex:none;display:grid;place-items:center;overflow:hidden;color:var(--mute);font:700 12px "DM Sans",system-ui,sans-serif}
+.drop .th img{width:100%;height:100%;object-fit:cover}
+.drop .tx{flex:1;font-size:14px}.drop .tx strong{display:block;font-size:15px}
+.drop .tx em{font-style:normal;color:var(--mute);font-size:13px;overflow-wrap:anywhere}
+.drop.has{border-style:solid;border-color:var(--ok)}
+.drop .x{position:relative;z-index:2;border:0;background:var(--redsoft);color:var(--red);border-radius:10px;font-family:inherit;font-weight:600;font-size:13px;padding:8px 10px;cursor:pointer;min-height:40px}
+.rv{border:1px solid var(--line);border-radius:14px;margin-bottom:12px;overflow:hidden}
+.rv header{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:color-mix(in srgb,var(--g2) 8%,var(--card));font:600 15px "DM Sans",system-ui,sans-serif}
+.rv header button{border:0;background:none;color:var(--g2);font-family:inherit;font-weight:600;font-size:14px;cursor:pointer;min-height:36px}
+.rv dl{margin:0;padding:6px 14px 12px;display:grid;grid-template-columns:minmax(0,15em) minmax(0,1fr);gap:6px 14px;font-size:14px}
+.rv dt{color:var(--mute)}.rv dd{margin:0;font-weight:600;overflow-wrap:anywhere}
+.nav{position:sticky;bottom:0;margin-top:16px;display:flex;gap:10px;justify-content:space-between;padding:12px;background:color-mix(in srgb,var(--card) 92%,transparent);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:16px}
+.btn{border:0;border-radius:12px;padding:12px 22px;font-family:inherit;font-weight:600;font-size:16px;cursor:pointer;min-height:48px}
+.btn.pri{background:var(--g);color:#fff}.btn.pri:hover{background:#082d50}
+.btn.gold{background:var(--g2);color:#fff}
+.btn.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
+.btn:disabled{opacity:.55;cursor:wait}
+.btn:focus-visible,.steps button:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.note{display:flex;gap:10px;padding:12px 14px;border-radius:12px;background:var(--goldsoft);font-size:14px;margin-bottom:16px}
+.note.err{background:var(--redsoft);color:var(--red)}
+.draft{display:none}.draft.show{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap}
+.draft button{border:0;background:none;color:var(--g2);font-family:inherit;font-weight:600;font-size:14px;cursor:pointer}
+[hidden]{display:none!important}
+.sec{display:none}.sec.on{display:block;animation:in .35s ease}
+@keyframes in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.sec.on{animation:none}.bar span{transition:none}}
+/* Bukti pendaftaran */
+.proof{background:var(--card);border:1px solid var(--line);border-radius:20px;overflow:hidden}
+.proof .top{background:var(--g);color:#fff;padding:22px;display:flex;gap:14px;align-items:center;position:relative;overflow:hidden}
+.proof .top h2{font-size:22px}.proof .top p{margin:2px 0 0;color:#c9dcef;font-size:14px}
+.proof .no{padding:20px 22px;border-bottom:1px dashed var(--line);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center}
+.proof .no strong{font:700 clamp(24px,5vw,32px) "DM Sans",system-ui,sans-serif;letter-spacing:.02em;color:var(--g2)}
+.proof .body{padding:20px 22px;display:grid;grid-template-columns:120px minmax(0,1fr);gap:20px}
+.proof .ph{width:120px;height:160px;border-radius:10px;background:#b8282f;overflow:hidden}
+.proof .ph img{width:100%;height:100%;object-fit:cover}
+.proof dl{margin:0;display:grid;grid-template-columns:minmax(0,10em) minmax(0,1fr);gap:6px 12px;font-size:14px}
+.proof dt{color:var(--mute)}.proof dd{margin:0;font-weight:600}
+.proof .foot{padding:16px 22px 22px;font-size:13px;color:var(--mute)}
+.acts{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+.acts a.btn{text-decoration:none;display:inline-flex;align-items:center}
+@media(max-width:600px){.c4,.c3,.c2{grid-column:span 6}.c2.h{grid-column:span 3}
+ .hero{padding-top:26px}.seal{width:56px;height:56px}.steps button span{display:none}.steps button.on span{display:inline}
+ .rv dl,.proof dl{grid-template-columns:1fr}.rv dt,.proof dt{margin-top:6px}.proof .body{grid-template-columns:1fr}.proof .ph{margin:0 auto}
+ .nav .btn{flex:1;padding:12px}}
+/* Tambahan WASIAT: bilah atas, status pendaftaran, cek status */
+.topbar{position:relative;max-width:760px;margin:0 auto 18px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.topbar a,.topbar button{display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.08);color:#fff;text-decoration:none;font:600 14px "DM Sans",system-ui,sans-serif;padding:8px 14px;border-radius:999px;cursor:pointer;min-height:40px}
+.topbar a:hover,.topbar button:hover{background:rgba(255,255,255,.18)}
+.seal-img{flex:none;width:76px;height:76px;border-radius:50%;background:#fff;object-fit:contain;padding:6px}
+.info{white-space:pre-line}
+.cek{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:clamp(18px,4vw,30px);margin-bottom:14px}
+.cek h2{font-size:22px;margin-bottom:6px}
+.cek .hasil{margin-top:14px}
+.stbadge{display:inline-block;padding:4px 12px;border-radius:999px;font-weight:700;font-size:14px;background:var(--goldsoft);color:var(--g2)}
+.hp{position:absolute!important;left:-9999px!important;width:1px!important;height:1px!important;opacity:0!important}
+.kode{font:700 22px "DM Sans",system-ui,sans-serif;letter-spacing:.08em;color:var(--ink)}
+@media(max-width:600px){.seal-img{width:56px;height:56px}}
+@media print{body{background:#fff}.hero,.steps,.bar,.nav,.acts,.draft,#form,#cekBox,#statusNote{display:none!important}.wrap{margin:0;padding:0}.proof{border:1px solid #999}#done{display:block!important}}
+</style>
+</head>
+<body>
+<header class="hero">
+ <svg class="pat" aria-hidden="true"><defs><pattern id="st" width="64" height="64" patternUnits="userSpaceOnUse"><g fill="none" stroke="#7fd0f7" stroke-width="1.2"><rect x="16" y="16" width="32" height="32"/><rect x="16" y="16" width="32" height="32" transform="rotate(45 32 32)"/><circle cx="32" cy="32" r="6"/><path d="M0 0L16 16M64 0L48 16M0 64L16 48M64 64L48 48"/></g></pattern></defs><rect width="100%" height="100%" fill="url(#st)"/></svg>
+ <div class="topbar"><a href="/" id="keBeranda">&#8592; Beranda</a><button type="button" id="bukaCek">&#128269; Cek status pendaftaran</button></div>
+ <div class="in">
+  <img class="seal-img" id="logoPondok" alt="" hidden>
+  <svg class="seal" viewBox="0 0 80 80" aria-hidden="true"><g transform="translate(40 40)"><rect x="-30" y="-30" width="60" height="60" rx="6" fill="#3bb4ee"/><rect x="-30" y="-30" width="60" height="60" rx="6" fill="#3bb4ee" transform="rotate(45)"/><circle r="24" fill="#0b3a66"/><circle r="20" fill="none" stroke="#bfe6fb" stroke-width="1.2"/><text y="8" text-anchor="middle" font-family="Amiri,serif" font-size="22" font-weight="700" fill="#fff">و أ</text></g></svg>
+  <div><small id="heroLembaga">Penerimaan Murid Baru · PPS Wihdatul Ummah Poso</small>
+  <h1>Formulir Pendaftaran Santri Baru</h1>
+  <p>SPMB Tahun Ajaran <span class="thn">2027/2028</span> · isi bertahap, data tersimpan otomatis di perangkat ini</p></div>
+ </div>
+</header>
+
+<main class="wrap">
+ <section class="cek" id="cekBox" hidden>
+  <h2>Cek status pendaftaran</h2>
+  <p style="color:var(--mute);margin:0 0 14px;font-size:14px">Masukkan nomor pendaftaran dan kode cek yang Anda terima setelah mendaftar (juga dikirim lewat WhatsApp).</p>
+  <div class="grid">
+   <div class="f c3"><label for="cekNo">Nomor pendaftaran</label><input id="cekNo" placeholder="PPDB-2027-0001" autocomplete="off"></div>
+   <div class="f c3"><label for="cekKode">Kode cek</label><input id="cekKode" placeholder="6 huruf/angka" autocomplete="off"></div>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button type="button" class="btn pri" id="cekKirim">Cek status</button><button type="button" class="btn ghost" id="cekTutup">Tutup</button></div>
+  <div class="hasil" id="cekHasil"></div>
+ </section>
+ <div class="note" id="statusNote" hidden></div>
+ <nav class="steps" id="steps" aria-label="Tahapan formulir"></nav>
+ <div class="bar"><span id="bar"></span></div>
+
+ <form id="form" novalidate>
+ <input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+ <div class="note draft" id="draft"><span>Draf sebelumnya dipulihkan. Lanjutkan pengisian.</span><button type="button" id="clearDraft">Mulai dari awal</button></div>
+
+ <!-- A -->
+ <section class="sec card" data-t="Calon murid">
+  <h2>Data calon murid</h2><p class="lead">Tulis sesuai akta kelahiran dan Kartu Keluarga.</p>
+  <fieldset><legend>Identitas</legend><div class="grid">
+   <div class="f c6"><label for="nama">Nama lengkap <b>*</b></label><input id="nama" name="nama" required autocomplete="name" placeholder="Sesuai akta kelahiran"><small class="err">Nama lengkap wajib diisi.</small></div>
+   <div class="f c3"><label for="nisn">NISN <b>*</b></label><input id="nisn" name="nisn" required inputmode="numeric" pattern="\d{10}" maxlength="10" placeholder="10 digit"><small class="hint">Cek di nisn.data.kemdikbud.go.id</small><small class="err">NISN harus 10 digit angka.</small></div>
+   <div class="f c3"><label for="nik">NIK <b>*</b></label><input id="nik" name="nik" required inputmode="numeric" pattern="\d{16}" maxlength="16" placeholder="16 digit, lihat KK"><small class="err">NIK harus 16 digit angka.</small></div>
+   <div class="f c6"><span class="lab">Jenis kelamin <b>*</b></span><div class="seg"><label><input type="radio" name="jk" value="Laki-laki" required>Laki-laki (putra)</label><label><input type="radio" name="jk" value="Perempuan">Perempuan (putri)</label></div><small class="err">Pilih jenis kelamin.</small></div>
+   <div class="f c3"><label for="tmp_lahir">Tempat lahir <b>*</b></label><input id="tmp_lahir" name="tmp_lahir" required><small class="err">Tempat lahir wajib diisi.</small></div>
+   <div class="f c3"><label for="tgl_lahir">Tanggal lahir <b>*</b></label><input id="tgl_lahir" name="tgl_lahir" type="date" required min="2008-01-01" max="2022-12-31"><small class="err">Tanggal lahir belum valid.</small></div>
+   <div class="f c2"><label for="agama">Agama <b>*</b></label><select id="agama" name="agama" required><option>Islam</option></select></div>
+   <div class="f c2 h"><label for="anak_ke">Anak ke- <b>*</b></label><input id="anak_ke" name="anak_ke" type="number" min="1" max="20" required inputmode="numeric"><small class="err">Isi angka yang benar.</small></div>
+   <div class="f c2 h"><label for="saudara">Dari … bersaudara <b>*</b></label><input id="saudara" name="saudara" type="number" min="1" max="20" required inputmode="numeric"><small class="err">Tidak boleh lebih kecil dari "anak ke-".</small></div>
+   <div class="f c3 h"><label for="tinggi">Tinggi badan (cm) <b>*</b></label><input id="tinggi" name="tinggi" type="number" min="80" max="220" required inputmode="numeric"><small class="err">Isi 80–220 cm.</small></div>
+   <div class="f c3 h"><label for="berat">Berat badan (kg) <b>*</b></label><input id="berat" name="berat" type="number" min="10" max="150" required inputmode="numeric"><small class="err">Isi 10–150 kg.</small></div>
+   <div class="f c6"><span class="lab">Kebutuhan khusus</span><div class="seg"><label><input type="radio" name="abk" value="Tidak ada" checked>Tidak ada</label><label><input type="radio" name="abk" value="Ada">Ada</label></div></div>
+   <div class="f c6" id="abkBox" hidden><label for="abk_ket">Jelaskan kebutuhan khusus <b>*</b></label><textarea id="abk_ket" name="abk_ket" required placeholder="Misal: gangguan pendengaran ringan, perlu duduk di depan"></textarea><small class="err">Mohon dijelaskan singkat.</small></div>
+  </div></fieldset>
+  <fieldset><legend>Alamat dan kontak</legend><div class="grid">
+   <div class="f c4"><label for="jalan">Jalan / dusun <b>*</b></label><input id="jalan" name="jalan" required autocomplete="address-line1"><small class="err">Alamat wajib diisi.</small></div>
+   <div class="f c2 h"><label for="rt">RT/RW</label><input id="rt" name="rtrw" placeholder="001/002"></div>
+   <div class="f c3"><label for="desa">Desa/kelurahan <b>*</b></label><input id="desa" name="desa" required><small class="err">Wajib diisi.</small></div>
+   <div class="f c3"><label for="kec">Kecamatan <b>*</b></label><input id="kec" name="kecamatan" required><small class="err">Wajib diisi.</small></div>
+   <div class="f c3"><label for="kab">Kabupaten/kota <b>*</b></label><input id="kab" name="kabupaten" required value="Poso"><small class="err">Wajib diisi.</small></div>
+   <div class="f c2 h"><label for="prov">Provinsi <b>*</b></label><input id="prov" name="provinsi" required value="Sulawesi Tengah"><small class="err">Wajib diisi.</small></div>
+   <div class="f c1 c2 h"><label for="kodepos">Kode pos</label><input id="kodepos" name="kodepos" inputmode="numeric" pattern="\d{5}" maxlength="5"><small class="err">5 digit.</small></div>
+   <div class="f c3"><label for="hp">Nomor HP/WhatsApp aktif <b>*</b></label><input id="hp" name="hp" type="tel" required inputmode="tel" pattern="(\+62|62|0)8\d{7,12}" placeholder="08xxxxxxxxxx"><small class="hint">Pengumuman dikirim ke nomor ini.</small><small class="err">Format nomor belum benar, contoh 081234567890.</small></div>
+   <div class="f c3"><label for="email">Email</label><input id="email" name="email" type="email" autocomplete="email"><small class="err">Format email belum benar.</small></div>
+  </div></fieldset>
+ </section>
+
+ <!-- B -->
+ <section class="sec card" data-t="Sekolah asal">
+  <h2>Data sekolah asal</h2><p class="lead">Sekolah dasar atau madrasah ibtidaiyah calon santri.</p>
+  <div class="grid">
+   <div class="f c4"><label for="sek">Nama sekolah asal <b>*</b></label><input id="sek" name="sekolah" required placeholder="Misal: SDIT Wahdah Islamiyah Poso"><small class="err">Wajib diisi.</small></div>
+   <div class="f c2"><label for="npsn">NPSN sekolah</label><input id="npsn" name="npsn" inputmode="numeric" pattern="\d{8}" maxlength="8" placeholder="8 digit"><small class="hint">Lihat di rapor atau referensi.data.kemdikbud.go.id</small><small class="err">NPSN 8 digit angka.</small></div>
+   <div class="f c6"><label for="sek_almt">Alamat sekolah asal <b>*</b></label><input id="sek_almt" name="sekolah_alamat" required><small class="err">Wajib diisi.</small></div>
+   <div class="f c3"><label for="lulus">Tahun lulus <b>*</b></label><select id="lulus" name="tahun_lulus" required><option value="">Pilih</option></select><small class="err">Pilih tahun lulus.</small></div>
+   <div class="f c3"><label for="nilai">Nilai rata-rata rapor kelas 5 <b>*</b></label><input id="nilai" name="nilai_rapor" type="number" step="0.01" min="0" max="100" required inputmode="decimal" placeholder="Contoh 86,5"><small class="err">Isi angka 0–100.</small></div>
+  </div>
+ </section>
+
+ <!-- C -->
+ <section class="sec card" data-t="Orang tua">
+  <h2>Data orang tua / wali</h2><p class="lead">Jika orang tua sudah meninggal, pilih statusnya; isian lain boleh dilewati.</p>
+  <div id="parents"></div>
+  <label class="check"><input type="checkbox" name="ada_wali" id="adaWali" value="Ya"> Calon santri tinggal bersama atau dibiayai oleh wali (selain ayah/ibu)</label>
+  <div id="waliWrap" hidden style="margin-top:14px"></div>
+ </section>
+
+ <!-- D -->
+ <section class="sec card" data-t="Jalur">
+  <h2>Jalur pendaftaran dan data pendukung</h2><p class="lead">Pilih satu jalur. Data pendukung menyesuaikan pilihan Anda.</p>
+  <div class="f" style="margin-bottom:20px"><span class="lab">Jalur pendaftaran <b>*</b></span><div class="seg jalur">
+   <label><input type="radio" name="jalur" value="Reguler" required><strong>Reguler</strong><span>Seleksi umum untuk semua pendaftar</span></label>
+   <label><input type="radio" name="jalur" value="Afirmasi"><strong>Afirmasi</strong><span>Pemegang KIP/PKH/KKS/DTSEN, anak panti, ABK</span></label>
+   <label><input type="radio" name="jalur" value="Prestasi Tahfizh"><strong>Prestasi tahfizh</strong><span>Berdasarkan jumlah hafalan juz</span></label>
+  </div><small class="err">Pilih salah satu jalur.</small></div>
+  <div id="afBox" class="box" hidden><div class="sub">Data afirmasi</div><div class="grid">
+   <div class="f c3"><label for="af_jenis">Jenis bukti <b>*</b></label><select id="af_jenis" name="afirmasi_jenis" required><option value="">Pilih</option><option>KIP</option><option>PKH</option><option>KKS</option><option>DTSEN</option><option>Anak panti asuhan</option><option>Anak berkebutuhan khusus (ABK)</option></select><small class="err">Pilih jenis bukti.</small></div>
+   <div class="f c3"><label for="af_no">Nomor kartu / keterangan <b>*</b></label><input id="af_no" name="afirmasi_nomor" required placeholder="Nomor kartu atau nama panti"><small class="err">Wajib diisi.</small></div>
+  </div></div>
+  <div class="grid" style="margin-top:18px">
+   <div class="f c6"><span class="lab">Berasal dari SDIT satu yayasan (An-Najiyah Wahdah Islamiyah)? <b>*</b></span><div class="seg"><label><input type="radio" name="sdit_yayasan" value="Ya" required>Ya</label><label><input type="radio" name="sdit_yayasan" value="Tidak">Tidak</label></div><small class="err">Pilih Ya atau Tidak.</small></div>
+   <div class="f c3"><label for="juz">Jumlah hafalan Al-Qur'an <b id="juzReq" hidden>*</b></label><select id="juz" name="hafalan_juz"></select><small class="err">Jalur prestasi tahfizh minimal 1 juz.</small></div>
+   <div class="f c3"><label for="juz_ket">Juz / surat yang dihafal</label><input id="juz_ket" name="hafalan_ket" placeholder="Misal: Juz 30 dan 29"></div>
+  </div>
+ </section>
+
+ <!-- F -->
+ <section class="sec card" data-t="Dokumen">
+  <h2>Unggah dokumen</h2><p class="lead">Foto dengan HP boleh, asal jelas dan tidak terpotong. Gambar dikecilkan otomatis; PDF maksimal 2 MB.</p>
+  <div class="grid" id="docs"></div>
+ </section>
+
+ <!-- G -->
+ <section class="sec card" data-t="Tinjau & kirim">
+  <h2>Tinjau dan kirim</h2><p class="lead">Periksa sekali lagi. Tekan "Ubah" untuk memperbaiki bagian yang keliru.</p>
+  <div id="review"></div>
+  <div class="f" style="margin-top:18px"><label class="check"><input type="checkbox" name="setuju" value="Setuju" required id="setuju"><span>Saya menyatakan bahwa seluruh data yang diisi dan dokumen yang diunggah adalah benar. Apabila di kemudian hari terbukti tidak benar, saya bersedia dibatalkan kelulusannya dan menerima sanksi sesuai ketentuan yang berlaku.</span></label><small class="err">Centang pernyataan untuk mengirim.</small></div>
+  <div class="note err" id="sendErr" hidden></div>
+ </section>
+
+ <div class="nav"><button type="button" class="btn ghost" id="prev">Kembali</button><button type="button" class="btn pri" id="next">Lanjut</button></div>
+ </form>
+
+ <div id="done" hidden></div>
+</main>
+
+<script src="/config.js"></script>
+<script>
+{
+/* ====== PENGATURAN ======
+   Alamat server diambil dari /config.js WASIAT (sama dengan aplikasi). Tahun ajaran, buka/tutup,
+   jenjang, dan kontak panitia diatur Admin/Mudir di WASIAT: menu PPDB Online > Pengaturan. */
+const CONFIG = {
+  GAS_URL: (window.WASIAT_CONFIG && window.WASIAT_CONFIG.webAppUrl) || "",
+  WA_ADMIN: "",       // diisi otomatis dari "Kontak panitia" (nomor HP di dalamnya)
+  TAHUN: "2027/2028", // diisi otomatis dari pengaturan PPDB
+  JENJANG: "",
+  BUKA: true
+};
+/* ======================================= */
+
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const KEY='spmb-wu-draft';
+const store={get(){try{return JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){return null}},set(v){try{localStorage.setItem(KEY,JSON.stringify(v))}catch(e){}},clear(){try{localStorage.removeItem(KEY)}catch(e){}}};
+
+/* Orang tua */
+const PEND=['Tidak sekolah','SD/MI','SMP/MTs','SMA/MA/SMK','D1–D3','D4/S1','S2','S3'];
+const GAJI=['Tidak berpenghasilan','< Rp1.000.000','Rp1.000.000 – Rp2.000.000','Rp2.000.000 – Rp3.000.000','Rp3.000.000 – Rp5.000.000','Rp5.000.000 – Rp10.000.000','> Rp10.000.000'];
+const opt=(a)=>'<option value="">Pilih</option>'+a.map(x=>`<option>${x}</option>`).join('');
+const parentHTML=(k,t,isWali)=>`<div class="parent"><h3>${t}${isWali?'':`<span class="seg" style="flex:0 1 auto"><label style="flex:0 0 auto;padding:6px 12px;min-height:40px;font-size:14px"><input type="radio" name="${k}_status" value="Masih hidup" checked>Masih hidup</label><label style="flex:0 0 auto;padding:6px 12px;min-height:40px;font-size:14px"><input type="radio" name="${k}_status" value="Meninggal">Meninggal</label></span>`}</h3><div class="grid">
+ <div class="f c6"><label for="${k}_nama">Nama lengkap <b>*</b></label><input id="${k}_nama" name="${k}_nama" required><small class="err">Wajib diisi.</small></div>
+ <div class="more c6" id="${k}_more"><div class="grid">
+ <div class="f c4"><label for="${k}_nik">NIK <b>*</b></label><input id="${k}_nik" name="${k}_nik" required inputmode="numeric" pattern="\\d{16}" maxlength="16"><small class="err">NIK 16 digit angka.</small></div>
+ <div class="f c2"><label for="${k}_thn">Tahun lahir <b>*</b></label><input id="${k}_thn" name="${k}_tahun_lahir" type="number" min="1940" max="2008" required inputmode="numeric"><small class="err">Tahun 1940–2008.</small></div>
+ <div class="f c3"><label for="${k}_pend">Pendidikan terakhir <b>*</b></label><select id="${k}_pend" name="${k}_pendidikan" required>${opt(PEND)}</select><small class="err">Pilih salah satu.</small></div>
+ <div class="f c3"><label for="${k}_kerja">Pekerjaan <b>*</b></label><input id="${k}_kerja" name="${k}_pekerjaan" required list="kerjaList"><small class="err">Wajib diisi.</small></div>
+ <div class="f c3"><label for="${k}_gaji">Penghasilan per bulan <b>*</b></label><select id="${k}_gaji" name="${k}_penghasilan" required>${opt(GAJI)}</select><small class="err">Pilih salah satu.</small></div>
+ <div class="f c3"><label for="${k}_hp">Nomor HP${isWali?' <b>*</b>':''}</label><input id="${k}_hp" name="${k}_hp" type="tel" inputmode="tel" pattern="(\\+62|62|0)8\\d{7,12}" ${isWali?'required':''} placeholder="08xxxxxxxxxx"><small class="err">Format nomor belum benar.</small></div>
+ ${isWali?`<div class="f c6"><label for="wali_hub">Hubungan dengan calon santri <b>*</b></label><input id="wali_hub" name="wali_hubungan" required placeholder="Misal: paman, kakek"><small class="err">Wajib diisi.</small></div>`:''}
+ </div></div></div></div>`;
+$('#parents').innerHTML=parentHTML('ayah','Ayah')+parentHTML('ibu','Ibu')+`<datalist id="kerjaList">${['PNS','TNI/Polri','Guru/Dosen','Karyawan swasta','Wiraswasta','Pedagang','Petani','Nelayan','Buruh','Ustadz/Dai','Ibu rumah tangga','Tidak bekerja'].map(x=>`<option value="${x}">`).join('')}</datalist>`;
+$('#waliWrap').innerHTML=parentHTML('wali','Wali',true);
+function isiTahunLulus(){const y=parseInt(CONFIG.TAHUN,10)||new Date().getFullYear()+1;const sel=$('#lulus'),lama=sel.value;
+ sel.innerHTML='<option value="">Pilih</option>'+[y,y-1,y-2].map(x=>`<option>${x}</option>`).join('');if(lama)sel.value=lama}
+isiTahunLulus();
+$('#juz').innerHTML='<option value="0">Belum ada / kurang dari 1 juz</option>'+Array.from({length:30},(_,i)=>`<option value="${i+1}">${i+1} juz</option>`).join('');
+
+/* Dokumen */
+const DOCS=[
+ {k:'kk',t:'Kartu Keluarga (KK)',req:1,acc:'image/*,application/pdf'},
+ {k:'akta',t:'Akta kelahiran',req:1,acc:'image/*,application/pdf'},
+ {k:'rapor',t:'Rapor kelas 5',req:1,acc:'image/*,application/pdf',hint:'Halaman identitas dan nilai; gabungkan dalam 1 PDF bila lebih dari satu halaman'},
+ {k:'foto',t:'Pas foto 3×4 latar merah',req:1,acc:'image/*',hint:'Wajah menghadap depan, pakaian rapi'},
+ {k:'kip',t:'KIP / PKH / KKS',req:0,acc:'image/*,application/pdf',hint:'Wajib untuk jalur afirmasi dengan kartu'},
+ {k:'sertifikat',t:'Sertifikat prestasi / tahfizh',req:0,acc:'image/*,application/pdf',hint:'Jika ada'}];
+const files={};
+$('#docs').innerHTML=DOCS.map(d=>`<div class="f c3" data-doc="${d.k}"><span class="lab">${d.t} ${d.req?'<b>*</b>':'<span style="color:var(--mute);font-weight:500">(jika ada)</span>'}</span>
+ <div class="drop" id="dz_${d.k}"><input type="file" accept="${d.acc}" aria-label="${d.t}"><div class="th">${d.acc==='image/*'?'FOTO':'FILE'}</div><div class="tx"><strong>Pilih atau seret berkas</strong><em>${d.hint||'JPG, PNG, atau PDF'}</em></div></div>
+ <small class="err">Dokumen ini wajib diunggah.</small></div>`).join('');
+
+function toDataURL(file){return new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(file)})}
+async function shrink(file){
+ if(!file.type.startsWith('image/'))return toDataURL(file);
+ const url=URL.createObjectURL(file);
+ try{const img=await new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=no;i.src=url});
+  const m=1600,s=Math.min(1,m/Math.max(img.width,img.height));const c=document.createElement('canvas');
+  c.width=Math.round(img.width*s);c.height=Math.round(img.height*s);c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+  return c.toDataURL('image/jpeg',.82)}finally{URL.revokeObjectURL(url)}}
+function paintDoc(k){
+ const dz=$('#dz_'+k),f=files[k],d=DOCS.find(x=>x.k===k);
+ dz.classList.toggle('has',!!f);
+ dz.querySelector('.th').innerHTML=f?(f.type.startsWith('image/')?`<img src="${f.data}" alt="">`:'PDF'):(d.acc==='image/*'?'FOTO':'FILE');
+ dz.querySelector('.tx').innerHTML=f?`<strong>Terunggah ✓</strong><em>${esc(f.name)} · ${Math.round(f.size/1024)} KB</em>`:`<strong>Pilih atau seret berkas</strong><em>${esc(d.hint||'JPG, PNG, atau PDF')}</em>`;
+ const old=dz.querySelector('.x');if(old)old.remove();
+ if(f){const b=document.createElement('button');b.type='button';b.className='x';b.textContent='Hapus';b.onclick=e=>{e.preventDefault();delete files[k];dz.querySelector('input').value='';paintDoc(k)};dz.appendChild(b)}
+}
+async function takeFile(k,file){
+ const box=$(`[data-doc="${k}"]`),err=box.querySelector('.err');
+ if(!file)return;
+ if(k==='foto'&&!file.type.startsWith('image/')){err.textContent='Pas foto harus berupa gambar (JPG/PNG).';box.classList.add('bad');return}
+ if(file.type==='application/pdf'&&file.size>2*1024*1024){err.textContent='PDF lebih dari 2 MB. Kompres dulu, atau unggah sebagai foto.';box.classList.add('bad');return}
+ if(!file.type.startsWith('image/')&&file.type!=='application/pdf'){err.textContent='Format harus JPG, PNG, atau PDF.';box.classList.add('bad');return}
+ box.classList.remove('bad');err.textContent='Dokumen ini wajib diunggah.';
+ try{const data=await shrink(file);const size=Math.round((data.length-data.indexOf(',')-1)*.75);
+  files[k]={name:file.name.replace(/\.(heic|png|webp)$/i,'.jpg'),type:data.slice(5,data.indexOf(';')),data,size};paintDoc(k)}
+ catch(e){err.textContent='Berkas tidak bisa dibaca. Coba berkas lain.';box.classList.add('bad')}
+}
+DOCS.forEach(d=>{const dz=$('#dz_'+d.k),inp=dz.querySelector('input');
+ inp.addEventListener('change',()=>takeFile(d.k,inp.files[0]));
+ dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('over')});
+ dz.addEventListener('dragleave',()=>dz.classList.remove('over'));
+ dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('over');takeFile(d.k,e.dataTransfer.files[0])})});
+
+/* Kondisional */
+const form=$('#form');
+function show(el,on){el.hidden=!on;el.querySelectorAll('input,select,textarea').forEach(i=>i.disabled=!on)}
+function sync(){
+ const v=n=>form.querySelector(`[name="${n}"]:checked`)?.value;
+ show($('#abkBox'),v('abk')==='Ada');
+ ['ayah','ibu'].forEach(k=>show($('#'+k+'_more'),v(k+'_status')!=='Meninggal'));
+ const wali=$('#adaWali').checked;show($('#waliWrap'),wali);
+ const j=v('jalur');show($('#afBox'),j==='Afirmasi');
+ $('#juzReq').hidden=j!=='Prestasi Tahfizh';
+ $(`[data-doc="kip"]`).hidden=j!=='Afirmasi';
+}
+form.addEventListener('change',sync);
+
+/* Tahapan */
+const secs=$$('.sec');let cur=0,maxReached=0;
+$('#steps').innerHTML=secs.map((s,i)=>`<button type="button" data-i="${i}"><i>${i+1}</i><span>${s.dataset.t}</span></button>`).join('');
+function go(i,quiet){
+ cur=i;maxReached=Math.max(maxReached,i);
+ secs.forEach((s,j)=>s.classList.toggle('on',j===i));
+ $$('#steps button').forEach((b,j)=>{b.classList.toggle('on',j===i);b.classList.toggle('done',j<maxReached&&j!==i);b.disabled=j>maxReached;b.querySelector('i').textContent=(j<maxReached&&j!==i)?'✓':j+1;if(j===i)b.scrollIntoView({block:'nearest',inline:'center'})});
+ $('#bar').style.width=((i+1)/secs.length*100)+'%';
+ $('#prev').style.visibility=i?'visible':'hidden';
+ $('#next').textContent=i===secs.length-1?'Kirim pendaftaran':'Lanjut';
+ $('#next').className='btn '+(i===secs.length-1?'gold':'pri');
+ if(i===secs.length-1)renderReview();
+ save();if(!quiet)window.scrollTo({top:$('.wrap').offsetTop-10,behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth'});
+}
+$('#steps').addEventListener('click',e=>{const b=e.target.closest('button');if(b&&!b.disabled){const i=+b.dataset.i;if(i<=cur||validate(cur))go(i)}});
+$('#prev').onclick=()=>cur&&go(cur-1);
+$('#next').onclick=()=>{if(!validate(cur))return;if(cur<secs.length-1)go(cur+1);else submit()};
+
+/* Validasi */
+function custom(sec){
+ const a=$('#anak_ke'),s=$('#saudara');
+ if(sec.contains(a)){s.setCustomValidity(a.value&&s.value&&+s.value<+a.value?'x':'')}
+ const juz=$('#juz');if(sec.contains(juz)){const j=form.querySelector('[name=jalur]:checked')?.value;juz.setCustomValidity(j==='Prestasi Tahfizh'&&+juz.value<1?'x':'')}
+}
+function validate(i){
+ const sec=secs[i];custom(sec);let first=null;
+ sec.querySelectorAll('.f').forEach(f=>{
+  if(f.closest('[hidden]'))return f.classList.remove('bad');
+  let ok=true;
+  if(f.dataset.doc){const d=DOCS.find(x=>x.k===f.dataset.doc);const j=form.querySelector('[name=jalur]:checked')?.value;const aj=$('#af_jenis').value;
+   const need=d.req||(d.k==='kip'&&j==='Afirmasi'&&['KIP','PKH','KKS'].includes(aj));ok=!need||!!files[d.k];
+   if(!ok&&d.k==='kip')f.querySelector('.err').textContent='Jalur afirmasi dengan '+aj+' wajib mengunggah kartunya.'}
+  else f.querySelectorAll('input,select,textarea').forEach(el=>{if(!el.disabled&&!el.checkValidity())ok=false});
+  f.classList.toggle('bad',!ok);if(!ok&&!first)first=f});
+ if(first){first.scrollIntoView({block:'center',behavior:'smooth'});const el=first.querySelector('input:not([type=file]),select,textarea');if(el)setTimeout(()=>el.focus({preventScroll:true}),300)}
+ return !first;
+}
+form.addEventListener('input',e=>{const f=e.target.closest('.f');if(f&&f.classList.contains('bad')){custom(secs[cur]);if([...f.querySelectorAll('input,select,textarea')].every(x=>x.disabled||x.checkValidity()))f.classList.remove('bad')}
+ if(e.target.inputMode==='numeric'&&e.target.type!=='number')e.target.value=e.target.value.replace(/\D/g,'');save()});
+
+/* Simpan draf */
+function collect(){const o={};new FormData(form).forEach((v,k)=>{if(typeof v==='string')o[k]=v});return o}
+let t,terkirim=false;function save(){clearTimeout(t);if(terkirim)return;t=setTimeout(()=>{const v=collect();
+ // Draf hanya disimpan bila sudah ada isian pengenal (bukan sekadar nilai bawaan formulir)
+ if(!['nama','nisn','nik','hp','tmp_lahir','sekolah','ayah_nama','ibu_nama'].some(k=>String(v[k]||'').trim()))return store.clear();
+ store.set({v,w:$('#adaWali').checked,step:maxReached})},300)}
+const d=store.get();
+if(d&&d.v&&Object.keys(d.v).length>3){
+ $('#adaWali').checked=!!d.w;sync();
+ Object.entries(d.v).forEach(([k,v])=>{form.querySelectorAll(`[name="${k}"]`).forEach(el=>{if(el.type==='radio'||el.type==='checkbox')el.checked=el.value===v;else if(el.type!=='file')el.value=v})});
+ $('#draft').classList.add('show');maxReached=Math.min(d.step||0,secs.length-2);
+}
+$('#clearDraft').onclick=()=>{store.clear();location.reload()};
+sync();go(Math.min(maxReached,secs.length-2),true);
+
+/* Info pendaftaran dari WASIAT */
+function tampilkanStatus(info){
+ const n=$('#statusNote');
+ if(!info)return;
+ if(!info.buka){n.hidden=false;n.className='note err';n.innerHTML='<span><strong>Pendaftaran '+(info.penuh?'sudah penuh':'belum dibuka / sedang ditutup')+'.</strong> Anda tetap bisa mengisi formulir; data tersimpan di perangkat ini dan bisa dikirim saat pendaftaran dibuka.'+(info.kontak?' Info: '+esc(info.kontak):'')+'</span>';return}
+ if(info.info){n.hidden=false;n.className='note';n.innerHTML='<span class="info">'+esc(info.info)+(info.kontak?'\nKontak panitia: '+esc(info.kontak):'')+'</span>'}
+}
+if(CONFIG.GAS_URL){
+ panggil('ppdbInfo',{}).then(j=>{
+  if(!j||!j.ok||!j.data)return;const info=j.data;
+  CONFIG.TAHUN=info.tahun||CONFIG.TAHUN;CONFIG.BUKA=!!info.buka;
+  const jj=info.jenjang||[];CONFIG.JENJANG=jj.find(x=>/smp|mts|tsanawiyah|wust/i.test(x))||jj[0]||'';
+  const digit=String(info.kontak||'').replace(/[^\d]/g,'').match(/(62|0)8\d{7,12}/);if(digit)CONFIG.WA_ADMIN=digit[0].replace(/^0/,'62');
+  $$('.thn').forEach(e=>e.textContent=CONFIG.TAHUN);document.title='SPMB '+(info.lembaga||'Wihdatul Ummah')+' '+CONFIG.TAHUN;
+  if(info.lembaga)$('#heroLembaga').textContent='Penerimaan Murid Baru · '+info.lembaga;
+  isiTahunLulus();tampilkanStatus(info);
+ }).catch(()=>{});
+ fetch(CONFIG.GAS_URL,{method:'POST',body:JSON.stringify({action:'getPengaturan',payload:{}})}).then(r=>r.json()).then(j=>{
+  const u=j&&j.ok&&j.data&&j.data.LogoURL;if(!u)return;const im=$('#logoPondok');
+  im.onload=()=>{im.hidden=false;const sv=$('.hero .seal');if(sv)sv.style.display='none'};im.src=u;
+ }).catch(()=>{});
+}
+
+/* Cek status pendaftaran */
+$('#bukaCek').onclick=()=>{$('#cekBox').hidden=false;$('#cekNo').focus();window.scrollTo({top:$('.wrap').offsetTop-10,behavior:'smooth'})};
+$('#cekTutup').onclick=()=>{$('#cekBox').hidden=true};
+$('#cekKirim').onclick=async()=>{
+ const no=$('#cekNo').value.trim(),kd=$('#cekKode').value.trim(),h=$('#cekHasil'),b=$('#cekKirim');
+ if(!no||!kd){h.innerHTML='<div class="note err"><span>Isi nomor pendaftaran dan kode cek.</span></div>';return}
+ if(!CONFIG.GAS_URL){h.innerHTML='<div class="note err"><span>Alamat server belum terbaca. Muat ulang halaman.</span></div>';return}
+ b.disabled=true;b.textContent='Memeriksa…';
+ try{const j=await panggil('ppdbCek',{noDaftar:no,kodeCek:kd});
+  if(!j.ok)throw new Error(j.error||'Data tidak ditemukan');const d=j.data;
+  h.innerHTML=`<div class="rv"><header>${esc(d.nama)}<span class="stbadge">${esc(d.status)}</span></header><dl><dt>Nomor pendaftaran</dt><dd>${esc(d.noDaftar)}</dd><dt>Jenjang</dt><dd>${esc(d.jenjang||'-')}</dd><dt>Tanggal daftar</dt><dd>${esc(d.waktu||'-')}</dd>${d.catatan?`<dt>Catatan panitia</dt><dd>${esc(d.catatan)}</dd>`:''}</dl></div>`;
+ }catch(e){h.innerHTML='<div class="note err"><span>'+esc(/fetch|network/i.test(String(e))?'Tidak dapat terhubung ke server. Periksa internet.':e.message)+'</span></div>'}
+ b.disabled=false;b.textContent='Cek status';
+};
+if(/[?&#]cek\b/.test(location.search+location.hash))$('#bukaCek').click();
+
+/* Tinjau */
+function valOf(el){if(el.tagName==='SELECT')return el.selectedOptions[0]?.text||'';return el.value}
+function renderReview(){
+ $('#review').innerHTML=secs.slice(0,-1).map((s,i)=>{
+  const rows=[...s.querySelectorAll('.f')].filter(f=>!f.closest('[hidden]')).map(f=>{
+   const pt=f.closest('.parent')?.querySelector('h3')?.childNodes[0]?.textContent;
+   const lab=((pt?pt+' – ':'')+(f.querySelector('label:not(.seg label),.lab')?.childNodes[0]?.textContent||'')).trim();
+   let v;
+   if(f.dataset.doc){const x=files[f.dataset.doc];v=x?'✓ '+x.name:'—'}
+   else{const r=f.querySelector('input[type=radio]:checked');v=r?r.value:[...f.querySelectorAll('input:not([type=radio]):not([type=checkbox]),select,textarea')].map(valOf).filter(Boolean).join(', ')}
+   return lab?`<dt>${esc(lab)}</dt><dd>${esc(v||'—')}</dd>`:''}).join('');
+  const parentsExtra=i===2?[...s.querySelectorAll('.parent')].filter(p=>!p.closest('[hidden]')).map(p=>{const k=p.querySelector('input').name.split('_')[0];const st=form.querySelector(`[name=${k}_status]:checked`);return st?`<dt>Status ${k}</dt><dd>${esc(st.value)}</dd>`:''}).join(''):'';
+  return `<div class="rv"><header>${esc(s.dataset.t)}<button type="button" data-go="${i}">Ubah</button></header><dl>${parentsExtra}${rows}</dl></div>`}).join('');
+}
+$('#review').addEventListener('click',e=>{const b=e.target.closest('[data-go]');if(b)go(+b.dataset.go)});
+
+/* Kirim -> PPDB WASIAT (modul premium, aksi publik ppdbDaftar) */
+function panggil(action,payload){return fetch(CONFIG.GAS_URL,{method:'POST',body:JSON.stringify({modul:'premium',action,payload})}).then(r=>r.json())}
+function alamatLengkap(v){return [v.jalan,v.rtrw?('RT/RW '+v.rtrw):'',v.desa,v.kecamatan?('Kec. '+v.kecamatan):'',v.kabupaten,v.provinsi,v.kodepos].filter(Boolean).join(', ')}
+async function submit(){
+ const btn=$('#next'),er=$('#sendErr');er.hidden=true;
+ if(!CONFIG.BUKA){er.hidden=false;er.innerHTML='<span>Pendaftaran sedang ditutup. Data Anda tetap tersimpan di perangkat ini; silakan kirim saat pendaftaran dibuka.</span>';return}
+ btn.disabled=true;btn.textContent='Mengirim…';
+ const data=collect();delete data.setuju;const hp=data.website||'';delete data.website;
+ data.waktu_daftar=new Date().toISOString();data.tahun_ajaran=CONFIG.TAHUN;
+ const ringkas=['Jalur: '+(data.jalur||'-')+(data.jalur==='Afirmasi'?(' ('+(data.afirmasi_jenis||'-')+' '+(data.afirmasi_nomor||'')+')'):''),'NISN: '+(data.nisn||'-'),'Hafalan: '+(data.hafalan_juz||0)+' juz'+(data.hafalan_ket?(' ('+data.hafalan_ket+')'):''),'SDIT satu yayasan: '+(data.sdit_yayasan||'-')].join(' · ');
+ const payload={nama:data.nama,jk:data.jk,tempatLahir:data.tmp_lahir,tanggalLahir:data.tgl_lahir,asalSekolah:data.sekolah,jenjang:CONFIG.JENJANG||'',
+  namaAyah:data.ayah_nama||'',namaIbu:data.ibu_nama||'',noWa:data.hp,alamat:alamatLengkap(data),catatan:ringkas,website:hp,jalur:data.jalur||'',detail:data,
+  berkas:DOCS.filter(d=>files[d.k]).map(d=>({label:d.t,mime:files[d.k].type,base64:files[d.k].data.split(',')[1]}))};
+ let nomor,kode='',demo=false;
+ try{
+  if(CONFIG.GAS_URL){
+   const j=await panggil('ppdbDaftar',payload);
+   if(!j||!j.ok)throw new Error((j&&j.error)||'Server menolak data');
+   nomor=j.data.noDaftar;kode=j.data.kodeCek||'';
+  }else{demo=true;nomor=localNo()}
+  terkirim=true;clearTimeout(t);store.clear();done(nomor,data,demo,kode);
+ }catch(e){
+  const msg=String(e&&e.message||e);
+  const jaringan=/fetch|network|Failed/i.test(msg);
+  er.hidden=false;er.innerHTML='<span>Pengiriman gagal: '+esc(jaringan?'tidak dapat terhubung ke server':msg)+'. '+(jaringan?'Periksa sinyal internet lalu tekan "Kirim pendaftaran" lagi. ':'')+'Data Anda masih tersimpan.</span>';
+  btn.disabled=false;btn.textContent='Kirim pendaftaran';
+ }
+}
+function localNo(){const r=Math.random().toString(36).slice(2,7).toUpperCase();return 'UJI-'+r}
+function done(no,v,demo,kode){
+ form.hidden=true;$('#steps').hidden=true;$('.bar').hidden=true;
+ const tgl=new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
+ const wa=CONFIG.WA_ADMIN?`https://wa.me/${CONFIG.WA_ADMIN}?text=${encodeURIComponent(`Assalamu'alaikum, saya sudah mendaftar SPMB Wihdatul Ummah ${CONFIG.TAHUN}.\nNo. pendaftaran: ${no}\nNama: ${v.nama}\nNISN: ${v.nisn}\nJalur: ${v.jalur}\nMohon konfirmasinya. Jazakumullah khairan.`)}`:'';
+ kode=kode||'';
+ const rows=[['Nama',v.nama],['NISN',v.nisn],['Jenis kelamin',v.jk],['Tempat, tgl lahir',v.tmp_lahir+', '+new Date(v.tgl_lahir).toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'})],['Sekolah asal',v.sekolah],['Jalur',v.jalur],['Hafalan',(v.hafalan_juz||0)+' juz'],['Orang tua',[v.ayah_nama,v.ibu_nama].filter(Boolean).join(' & ')],['Nomor HP',v.hp]];
+ $('#done').hidden=false;
+ $('#done').innerHTML=`${demo?'<div class="note"><span><strong>Mode uji coba.</strong> Data belum terkirim ke server karena alamat server WASIAT belum terbaca.</span></div>':''}
+ <div class="proof"><div class="top"><svg width="48" height="48" viewBox="0 0 80 80" aria-hidden="true"><g transform="translate(40 40)"><rect x="-30" y="-30" width="60" height="60" rx="6" fill="#3bb4ee"/><rect x="-30" y="-30" width="60" height="60" rx="6" fill="#3bb4ee" transform="rotate(45)"/><circle r="24" fill="#0b3a66"/></g></svg><div><h2>Bukti pendaftaran santri baru</h2><p>Pondok Pesantren Wihdatul Ummah Poso · SPMB ${CONFIG.TAHUN}</p></div></div>
+ <div class="no"><div><div style="font-size:13px;color:var(--mute)">Nomor pendaftaran</div><strong>${esc(no)}</strong>${kode?`<div style="font-size:13px;color:var(--mute);margin-top:6px">Kode cek status</div><div class="kode">${esc(kode)}</div>`:''}</div><div style="font-size:14px;text-align:right">Terdaftar ${tgl}<br><span style="color:var(--ok);font-weight:700">Berkas diterima ✓</span></div></div>
+ <div class="body"><div class="ph">${files.foto?`<img src="${files.foto.data}" alt="Pas foto">`:''}</div><dl>${rows.map(r=>`<dt>${r[0]}</dt><dd>${esc(r[1]||'—')}</dd>`).join('')}</dl></div>
+ <div class="foot">Simpan bukti ini (nomor pendaftaran dan kode cek). Status pendaftaran bisa dicek kapan saja lewat tombol "Cek status pendaftaran" di atas. Informasi seleksi dan jadwal tes dikirim ke nomor WhatsApp yang didaftarkan.</div></div>
+ <div class="acts"><button class="btn pri" id="pr">Cetak / simpan PDF</button>${wa?`<a class="btn gold" href="${wa}" target="_blank" rel="noopener">Konfirmasi ke panitia via WhatsApp</a>`:''}<button class="btn ghost" id="again">Daftarkan anak lain</button></div>
+ <p id="prMsg" style="font-size:14px;color:var(--mute)"></p>`;
+ $('#pr').onclick=()=>{try{window.print()}catch(e){$('#prMsg').textContent='Cetak tidak tersedia di tampilan ini; ambil tangkapan layar sebagai bukti.'}};
+ $('#again').onclick=()=>location.reload();
+ window.scrollTo({top:0});
+}
+}
+</script>
+</body>
+</html>
