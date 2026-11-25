@@ -410,6 +410,16 @@ if(d&&d.v&&Object.keys(d.v).length>3){
 $('#clearDraft').onclick=()=>{store.clear();location.reload()};
 sync();go(Math.min(maxReached,secs.length-2),true);
 
+/* Logo pondok */
+let LOGO='';
+function pasangLogo(daftar,i){
+ i=i||0;if(!daftar||i>=daftar.length)return;
+ const src=daftar[i],uji=new Image();
+ uji.onload=()=>{LOGO=src;const im=$('#logoPondok');im.src=src;im.hidden=false;const sv=$('.hero .seal');if(sv)sv.style.display='none';
+  let fav=document.querySelector('link[rel=icon]');if(!fav){fav=document.createElement('link');fav.rel='icon';document.head.appendChild(fav)}fav.href=src;
+  try{if(src.length<300000)localStorage.setItem('spmb-logo',JSON.stringify([src]))}catch(e){}};
+ uji.onerror=()=>pasangLogo(daftar,i+1);uji.src=src;
+}
 /* Info pendaftaran dari WASIAT */
 function tampilkanStatus(info){
  const n=$('#statusNote');
@@ -427,9 +437,12 @@ if(CONFIG.GAS_URL){
   if(info.lembaga)$('#heroLembaga').textContent='Penerimaan Murid Baru · '+info.lembaga;
   isiTahunLulus();tampilkanStatus(info);
  }).catch(()=>{});
+ // Logo pondok = logo yang sama dengan aplikasi WASIAT: Logo URL dari pengaturan, bila gagal
+ // dimuat pakai logo bawaan WASIAT (cara yang sama dengan halaman utama).
+ try{const lama=JSON.parse(localStorage.getItem('spmb-logo')||'null');if(lama)pasangLogo(lama)}catch(e){}
  fetch(CONFIG.GAS_URL,{method:'POST',body:JSON.stringify({action:'getPengaturan',payload:{}})}).then(r=>r.json()).then(j=>{
-  const u=j&&j.ok&&j.data&&j.data.LogoURL;if(!u)return;const im=$('#logoPondok');
-  im.onload=()=>{im.hidden=false;const sv=$('.hero .seal');if(sv)sv.style.display='none'};im.src=u;
+  const d=j&&j.ok&&j.data||{};const daftar=[d.LogoURL,d.LogoDataUriDefault].filter(Boolean);
+  if(daftar.length)pasangLogo(daftar);
  }).catch(()=>{});
 }
 
@@ -502,7 +515,7 @@ function done(no,v,demo,kode){
  const rows=[['Nama',v.nama],['NISN',v.nisn],['Jenis kelamin',v.jk],['Tempat, tgl lahir',v.tmp_lahir+', '+new Date(v.tgl_lahir).toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'})],['Sekolah asal',v.sekolah],['Jalur',v.jalur],['Hafalan',(v.hafalan_juz||0)+' juz'],['Orang tua',[v.ayah_nama,v.ibu_nama].filter(Boolean).join(' & ')],['Nomor HP',v.hp]];
  $('#done').hidden=false;
  $('#done').innerHTML=`${demo?'<div class="note"><span><strong>Mode uji coba.</strong> Data belum terkirim ke server karena alamat server WASIAT belum terbaca.</span></div>':''}
- <div class="proof"><div class="top"><svg width="48" height="48" viewBox="0 0 80 80" aria-hidden="true"><g transform="translate(40 40)"><rect x="-30" y="-30" width="60" height="60" rx="6" fill="#3bb4ee"/><rect x="-30" y="-30" width="60" height="60" rx="6" fill="#3bb4ee" transform="rotate(45)"/><circle r="24" fill="#0b3a66"/></g></svg><div><h2>Bukti pendaftaran santri baru</h2><p>Pondok Pesantren Wihdatul Ummah Poso · SPMB ${CONFIG.TAHUN}</p></div></div>
+ <div class="proof"><div class="top">${LOGO?`<img src="${LOGO}" alt="" style="width:52px;height:52px;border-radius:50%;background:#fff;object-fit:contain;padding:4px;flex:none">`:`<svg width="48" height="48" viewBox="0 0 80 80" aria-hidden="true"><g transform="translate(40 40)"><rect x="-30" y="-30" width="60" height="60" rx="6" fill="#3bb4ee"/><rect x="-30" y="-30" width="60" height="60" rx="6" fill="#3bb4ee" transform="rotate(45)"/><circle r="24" fill="#0b3a66"/></g></svg>`}<div><h2>Bukti pendaftaran santri baru</h2><p>Pondok Pesantren Wihdatul Ummah Poso · SPMB ${CONFIG.TAHUN}</p></div></div>
  <div class="no"><div><div style="font-size:13px;color:var(--mute)">Nomor pendaftaran</div><strong>${esc(no)}</strong>${kode?`<div style="font-size:13px;color:var(--mute);margin-top:6px">Kode cek status</div><div class="kode">${esc(kode)}</div>`:''}</div><div style="font-size:14px;text-align:right">Terdaftar ${tgl}<br><span style="color:var(--ok);font-weight:700">Berkas diterima ✓</span></div></div>
  <div class="body"><div class="ph">${files.foto?`<img src="${files.foto.data}" alt="Pas foto">`:''}</div><dl>${rows.map(r=>`<dt>${r[0]}</dt><dd>${esc(r[1]||'—')}</dd>`).join('')}</dl></div>
  <div class="foot">Simpan bukti ini (nomor pendaftaran dan kode cek). Status pendaftaran bisa dicek kapan saja lewat tombol "Cek status pendaftaran" di atas. Informasi seleksi dan jadwal tes dikirim ke nomor WhatsApp yang didaftarkan.</div></div>
