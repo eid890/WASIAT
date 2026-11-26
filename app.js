@@ -32,7 +32,8 @@
     {value:'WaliSantri',   label:'Orang Tua Santri'},
   ];
   function labelRole(value){ var r = DAFTAR_ROLE.find(function(x){return x.value===value;}); return r ? r.label : value; }
-  var HARI_LIST = ['Minggu','Senin','Selasa','Rabu','Kamis',"Jum'at",'Sabtu'];
+  // Nama hari seragam "Ahad" (data lama "Minggu" tetap dikenali sebagai Ahad)
+  var HARI_LIST = ['Ahad','Senin','Selasa','Rabu','Kamis',"Jum'at",'Sabtu'];
   function hariDariTanggal(tglStr){
     if (!tglStr) return '';
     var parts = tglStr.split('-').map(Number);
@@ -327,7 +328,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.11.27-d';
+  var VERSI_APP = '2026.11.27-e';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -8800,7 +8801,7 @@
     return daftar.split('|').some(function(n){ return normNamaFE(n) === target; });
   }
   function normNamaFE(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
-  function normHariFE(h){ return String(h||'').toLowerCase().replace(/[^a-z]/g,''); } // "Jum'at" == "Jumat"
+  function normHariFE(h){ var t = String(h||'').toLowerCase().replace(/[^a-z]/g,''); return t === 'minggu' ? 'ahad' : t; } // "Jum'at" == "Jumat", "Minggu" == "Ahad"
 
   // Tanggal terakhir (hari ini atau sebelumnya) yang jatuh pada nama hari tertentu --
   // dipakai sebagai tanggal bawaan form absen susulan.
@@ -17739,7 +17740,7 @@
           function bukaForm(existing){
             var fieldsHtml = header.map(function(h){
               if(sheet==='MataPelajaran' && h==='Kelas') return fieldSelect('f_'+h,h,daftarKelas, existing?existing[h]:(daftarKelas[0]||''));
-              if(sheet==='MataPelajaran' && h==='Hari') return fieldSelect('f_'+h,h,['Senin','Selasa','Rabu','Kamis',"Jum'at",'Sabtu','Minggu'], existing?existing[h]:'Senin');
+              if(sheet==='MataPelajaran' && h==='Hari') return fieldSelect('f_'+h,h,['Senin','Selasa','Rabu','Kamis',"Jum'at",'Sabtu','Ahad'], existing?(/^\s*minggu\s*$/i.test(existing[h]) ? 'Ahad' : existing[h]):'Senin');
               if(sheet==='MataPelajaran' && h==='Pengampu') return fieldPilihGuru('f_'+h,h,daftarNamaGuru, existing?existing[h]:'');
               if(sheet==='MataPelajaran' && h==='Nama Mapel') return fieldAutocomplete('f_'+h,h,daftarNamaMapel, existing?existing[h]:'', 'Ketik nama mapel (boleh baru)...');
               if(sheet==='RoleAkses' && h==='Level') {
@@ -19225,8 +19226,8 @@
     api('getPengaturanBatch', {keys: KUNCI}).then(function(res){
       var d = res.ok ? res.data : {};
       function v(k, def){ return (d[k] === undefined || d[k] === null || d[k] === '') ? def : d[k]; }
-      var hariAktif = String(v('SPHariHalaqoh', "Senin,Selasa,Rabu,Kamis,Jum'at,Sabtu,Minggu")).split(',').map(function(h){ return h.trim(); });
-      var HARI_URUT = ['Senin','Selasa','Rabu','Kamis',"Jum'at",'Sabtu','Minggu'];
+      var hariAktif = String(v('SPHariHalaqoh', "Senin,Selasa,Rabu,Kamis,Jum'at,Sabtu,Ahad")).split(',').map(function(h){ h = h.trim(); return /^minggu$/i.test(h) ? 'Ahad' : h; });
+      var HARI_URUT = ['Senin','Selasa','Rabu','Kamis',"Jum'at",'Sabtu','Ahad'];
       function num(id, label, val){ return '<div><label style="font-size:12.5px">'+label+'</label><input type="number" min="0" id="'+id+'" value="'+esc(val)+'"></div>'; }
       function b(k, def){ var x = v(k, def); return x === true || String(x).toLowerCase() === 'true'; }
       isi.innerHTML = '<div class="card"><h4>Aturan Kehadiran &amp; Surat Peringatan</h4>' +
@@ -19957,7 +19958,7 @@
         '</div>' +
 
         '<div class="card"><h4>2. Jam Mulai Tiap Jam Pelajaran</h4>' +
-          warnBox('Jadwal di aplikasi ini memakai "jam ke-" (jam ke-1, ke-2, dst), bukan jam dinding. Supaya sistem tahu kapan harus mengingatkan, isi jam mulainya di sini.\n\nFormat tiap baris: JamKe|JamMulai-JamSelesai|Hari\n\nBagian Hari boleh dikosongkan kalau jamnya sama untuk semua hari. Kalau jam Sabtu berbeda, tulis barisnya sendiri dengan keterangan hari.') +
+          warnBox('Jadwal di aplikasi ini memakai "jam ke-" (jam ke-1, ke-2, dst), bukan jam dinding. Supaya sistem tahu kapan harus mengingatkan, isi jam mulainya di sini.\n\nFormat tiap baris: JamKe|JamMulai-JamSelesai|Hari\n\nBagian Hari boleh dikosongkan kalau jamnya sama untuk semua hari. Kalau jam Sabtu atau Ahad berbeda, tulis barisnya sendiri dengan keterangan hari.\n\nNama hari: Senin, Selasa, Rabu, Kamis, Jum\'at, Sabtu, Ahad. Contoh: 1|07:30-08:30|Ahad') +
           '<label>Daftar Jam Pelajaran</label>' +
           '<textarea id="nsJamPelajaran" rows="16" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-family:monospace;font-size:13px" placeholder="1|08:00-09:00|Senin,Selasa">'+esc(d.JamPelajaranWaktu||'')+'</textarea>' +
           '<button class="secondary small" id="btnIsiJamBawaan" style="margin-top:6px">Isi Otomatis Sesuai Jadwal Pesantren</button>' +
@@ -21288,9 +21289,12 @@
   function cjOlah(res){
     var guru = {}; (res.guru||[]).forEach(function(n){ if (String(n).trim()) guru[cjKunciGuru(n)] = String(n).trim(); });
     var namaLengkap = function(g){ var s = String(g||'').trim(); return guru[cjKunciGuru(s)] || s; };
-    var waktu = {};
-    String(res.waktu||'').split(/\n/).forEach(function(b){ var a = b.split('|'); if (a.length < 3) return;
-      a[2].split(',').forEach(function(x){ var h = cjNormHari(x); if (h) waktu[h+'|'+String(a[0]).trim()] = String(a[1]).trim(); }); });
+    var waktu = {}, waktuUmum = {};
+    String(res.waktu||'').split(/\n/).forEach(function(b){ var a = b.split('|'); if (a.length < 2 || !String(a[0]).trim() || !String(a[1]).trim()) return;
+      var jk = String(Number(String(a[0]).trim()) || String(a[0]).trim());
+      if (a.length < 3 || !String(a[2]).trim()) { waktuUmum[jk] = String(a[1]).trim(); return; } // tanpa hari = berlaku semua hari
+      a[2].split(/[,;]/).forEach(function(x){ var h = cjNormHari(x); if (h) waktu[h+'|'+jk] = String(a[1]).trim(); }); });
+    CJ_HARI.forEach(function(h){ Object.keys(waktuUmum).forEach(function(jk){ if (!waktu[h+'|'+jk]) waktu[h+'|'+jk] = waktuUmum[jk]; }); });
     var wali = {}, urutKelas = [];
     (res.wali||[]).forEach(function(w){ wali[w[0]] = namaLengkap(w[1]); urutKelas.push(w[0]); });
     (res.jadwal||[]).forEach(function(r){ if (urutKelas.indexOf(r[1]) === -1) urutKelas.push(r[1]); });
@@ -21334,7 +21338,7 @@
     x.bentrokGuru.forEach(function(a){ out.push({jenis:'Guru di dua kelas', teks: a[0].guru+', '+a[0].hari+' jam ke-'+a[0].jam+': '+a.map(function(i){ return i.kelas+' '+i.singkat; }).join(' dan ')}); });
     x.gabung.forEach(function(a){ out.push({jenis:'Kelas digabung?', teks: a[0].guru+' mengajar '+a[0].singkat+' di '+a.map(function(i){ return i.kelas; }).join(' & ')+' bersamaan ('+a[0].hari+' jam ke-'+a[0].jam+')'}); });
     if (x.belum.length) out.push({jenis:'Belum terjadwal', teks: x.belum.map(function(i){ return i.singkat+' '+i.kelas; }).join(', ')+' (hari/jam/pengajar masih kosong)'});
-    if (x.tanpaWaktu.length) out.push({jenis:'Jam belum punya waktu', teks: x.tanpaWaktu.map(function(b){ return b.hari+' jam ke-'+b.jam; }).join(', ')+' (Pengaturan waktu jam pelajaran)'});
+    if (x.tanpaWaktu.length) out.push({jenis:'Jam belum punya waktu', teks: x.tanpaWaktu.map(function(b){ return b.hari+' jam ke-'+b.jam; }).join(', ')+'. Tambahkan di menu Notifikasi Push > Jam Mulai Tiap Jam Pelajaran, satu baris per jam, contoh: '+x.tanpaWaktu.slice(0,1).map(function(b){ return b.jam+'|07:30-08:30|'+b.hari; }).join('')});
     return out;
   }
 
