@@ -327,7 +327,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.11.27-c';
+  var VERSI_APP = '2026.11.27-d';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -3082,6 +3082,7 @@
       {key:'inputnilai',      label:'Input Nilai',         icon:'&#9999;&#65039;'},
       {key:'riwayatnilai',    label:'Riwayat Nilai',       icon:'&#128202;'},
       {key:'rekapnilai',      label:'Rekap Nilai Rapor',   icon:'&#128196;'},
+      {key:'materirapor',     label:'Materi Capaian Rapor', icon:'&#128221;'},
       {key:'rekapsantriguru', label:'Rekap Per Santri',    icon:'&#128209;'},
       {key:'raporkelassaya',  label:'Rapor Santri',        icon:'&#128203;'},
       {key:'pelanggaran',     label:'Catat Pelanggaran',   icon:'&#9888;&#65039;'},
@@ -3199,7 +3200,7 @@
       // Guru
       jadwal:guruJadwal, jammengajar:guruJamMengajar, izinsaya:guruIzinSaya, riwayatabsen:guruRiwayat, rekapabsen:guruRekapAbsensi,
       hafalan:guruIsiHafalan, riwayathafalan:guruRiwayatHafalan, progresshafalan:function(){ renderRekapProgressHafalan({pengampu:STATE.user.nama}); }, rekaphafalanbulan:halamanRekapHafalanBulanan, kotaksurat:halamanPersuratan, persuratan:halamanPersuratan,
-      inputnilai:guruInputNilai, riwayatnilai:guruRiwayatNilai, rekapnilai:guruRekapNilaiRapor, rekapsantriguru:guruRekapPerSantri,
+      inputnilai:guruInputNilai, riwayatnilai:guruRiwayatNilai, rekapnilai:guruRekapNilaiRapor, materirapor:halMateriRaporGuru, rekapsantriguru:guruRekapPerSantri,
       raporkelassaya:guruRaporKelas,
       pelanggaran:guruCatatPelanggaran, santrisaya:guruSantriSaya, profilsaya:guruProfilSaya,
       modulajar:guruModulAjar, riwayatjurnal:guruRiwayatJurnal, sop:guruSOP,
@@ -5484,6 +5485,7 @@
   function rkmBarisHafalan(row){ return row._src === '#hafalan' || /tahfi[dz]|tahfiz/.test(row._key || ''); }
   function rkmMateri(ctx, row, ex){
     var kc = (ctx.km && ctx.km.kelasCfg) || {}, m = String(((kc.materi || {})[row._key]) || '').trim();
+    if (!m && row._src && row._src !== '#hafalan') m = String((kc.materiMapel || {})[rwuKunci(row._src)] || '').trim();
     var haf = rkmTeksHafalan(ex && ex.hafalan);
     if (/\{hafalan\}/i.test(m)) return m.replace(/\{hafalan\}/ig, haf || "menghafal Al-Qur'an").trim();
     if (!m && rkmBarisHafalan(row)) return haf;
@@ -5565,7 +5567,7 @@
   function rkmPanel(box, info, daftarKelas, semuaKelas){
     var ctx = null;
     box.innerHTML = (info.kmServerLama ? warnBox('Kode server (Code.gs) belum versi terbaru. Rapor Kurikulum Merdeka tetap bisa dicetak, tetapi pengaturan, materi kelas, dan data prestasi/hafalan otomatis baru aktif setelah Code.gs diperbarui.') : '') +
-      '<p class="muted" style="font-size:12.5px;margin:0 0 6px">Semester aktif: <b>'+esc(info.semester.nama || '-')+'</b>. Nilai akhir = Nilai Pengetahuan di Rekap Nilai guru. Capaian kompetensi = predikat dari nilai + materi yang diisi per kelas (saran diambil dari Jurnal Mengajar). Ketidakhadiran dari <b>Halaqoh Maghrib</b> dan <b>absensi asrama</b> (bentrok &rarr; Halaqoh Maghrib).</p>' +
+      '<p class="muted" style="font-size:12.5px;margin:0 0 6px">Semester aktif: <b>'+esc(info.semester.nama || '-')+'</b>. Nilai akhir = Nilai Pengetahuan di Rekap Nilai guru. Capaian kompetensi = predikat dari nilai + materi tiap mapel, yang diisi guru mapel di menu <b>Materi Capaian Rapor</b> atau oleh wali kelas. Ketidakhadiran dari <b>Halaqoh Maghrib</b> dan <b>absensi asrama</b> (bentrok &rarr; Halaqoh Maghrib).</p>' +
       (daftarKelas.length ? '' : warnBox('Belum ada kelas yang memakai rapor Kurikulum Merdeka.' + (info.bolehAtur ? ' Atur di "Jenis rapor per kelas".' : ''))) +
       '<label>Kelas</label><select id="rkmKelas">'+(daftarKelas.length ? daftarKelas.map(function(k){ return '<option>'+esc(k)+'</option>'; }).join('') : '<option value="">(tidak ada kelas)</option>')+'</select>' +
       '<div id="rkmIsi" style="margin-top:12px"></div>';
@@ -5603,7 +5605,7 @@
         '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"><button class="small" id="rkmMateri">&#128221; Materi capaian kelas ini</button>' +
         '<button class="small" id="rkmCetakSemua">&#128424;&#65039; Cetak rapor semua santri ('+ctx.santri.length+')</button>' +
         '<select id="rkmLembar" style="width:auto;padding:4px 8px"><option value="">Semua halaman</option>'+window.RaporKM.LEMBAR.map(function(l){ return '<option value="'+l[0]+'">Hanya: '+esc(l[1])+'</option>'; }).join('')+'</select></div>' +
-        (tanpaMateri.length ? warnBox('Materi capaian belum diisi untuk ' + tanpaMateri.length + ' mapel (' + tanpaMateri.map(function(r){ return r.nama; }).join(', ') + '). Deskripsi di rapor akan berhenti di "Menunjukkan penguasaan yang ...". Isi lewat tombol "Materi capaian kelas ini".') : '') +
+        (tanpaMateri.length ? warnBox('Materi capaian belum diisi untuk ' + tanpaMateri.length + ' mapel (' + tanpaMateri.map(function(r){ return r.nama; }).join(', ') + '). Deskripsi di rapor akan berhenti di "Menunjukkan penguasaan yang ...". Minta guru mapel mengisinya di menu Materi Capaian Rapor, atau isi sendiri lewat tombol "Materi capaian kelas ini".') : '') +
         '<p class="muted" style="font-size:12px;margin:0 0 6px">Wali kelas: <b>'+esc(ctx.wali || '(belum diatur di Data Guru)')+'</b> &middot; Kelas di rapor: <b>'+esc(cfg.periode.kelas)+'</b> &middot; Fase <b>'+esc(cfg.periode.fase)+'</b> &middot; Tanggal rapor: <b>'+esc(window.RaporKM.tglIndo(cfg.tglRapor))+'</b> &middot; Mapel dicetak: '+tampil.length+'</p>' +
         (ctx.santri.length ? '<div style="overflow-x:auto"><table><tr><th>No</th><th>Santri</th><th>Nilai</th><th>Rata-rata</th><th>S / I / A</th><th>Hafalan baru</th><th>Isian</th><th></th></tr>'+baris+'</table></div>' : '<p class="muted">Belum ada santri di kelas ini.</p>');
       var lembar = function(){ var v = document.getElementById('rkmLembar').value; return v ? [v] : null; };
@@ -5704,8 +5706,10 @@
       '<div class="grid2"><div><label>Tanggal rapor (tanda tangan)</label><input type="date" id="rmTgl" value="'+esc(kc.tglRapor || '')+'"></div><div><label>Catatan wali kelas bawaan (bila catatan santri kosong)</label><input id="rmCat" value="'+esc(kc.catatanDefault || '')+'"></div></div>' +
       rows.map(function(r){
         var sar = (jurnal[r._src] || []).slice(0, 10);
-        return '<div style="border-top:1px solid #e2e8f0;padding:8px 0;margin-top:6px"><label style="font-weight:700">'+esc(r.nama)+' <span class="muted" style="font-weight:400;font-size:11.5px">'+(r._src === '#hafalan' ? '(nilai dari hafalan)' : r._src ? '(nilai dari: '+esc(r._src)+')' : '(nilai diisi manual)')+(rkmBarisHafalan(r) ? ' &middot; kosongkan = otomatis cakupan hafalan santri' : '')+(r._tampil ? '' : ' &middot; belum ada nilai, tidak dicetak')+'</span></label>' +
-          '<textarea class="rmM" data-k="'+esc(r._key)+'" rows="2" placeholder="'+(rkmBarisHafalan(r) ? 'Kosongkan = otomatis {hafalan}' : 'contoh: memahami hukum bacaan mad dan menerapkannya dalam tilawah')+'">'+esc(materi[r._key] || '')+'</textarea>' +
+        var gk = r._src ? rwuKunci(r._src) : '', guru = gk ? ((kc.materiMapel || {})[gk] || '') : '', olehG = gk ? (kc.materiOleh || {})[gk] : null;
+        var catG = guru ? '<div class="muted" style="font-size:11.5px;margin:2px 0">'+(materi[r._key] && materi[r._key] !== guru ? 'Tulisan guru mapel'+(olehG ? ' ('+esc(olehG.nama)+')' : '')+': <i>'+esc(guru)+'</i>. Rapor memakai tulisan Antum di bawah; kosongkan bila ingin memakai tulisan guru.' : 'Diisi guru mapel'+(olehG ? ' <b>'+esc(olehG.nama)+'</b>' : '')+'. Ubah bila perlu.')+'</div>' : '';
+        return '<div style="border-top:1px solid #e2e8f0;padding:8px 0;margin-top:6px" data-guru="'+esc(guru)+'"><label style="font-weight:700">'+esc(r.nama)+' <span class="muted" style="font-weight:400;font-size:11.5px">'+(r._src === '#hafalan' ? '(nilai dari hafalan)' : r._src ? '(nilai dari: '+esc(r._src)+')' : '(nilai diisi manual)')+(rkmBarisHafalan(r) ? ' &middot; kosongkan = otomatis cakupan hafalan santri' : '')+(r._tampil ? '' : ' &middot; belum ada nilai, tidak dicetak')+'</span></label>' +
+          catG + '<textarea class="rmM" data-k="'+esc(r._key)+'" data-guru="'+esc(guru)+'" rows="2" placeholder="'+(rkmBarisHafalan(r) ? 'Kosongkan = otomatis {hafalan}' : (guru ? guru : 'contoh: memahami hukum bacaan mad dan menerapkannya dalam tilawah'))+'">'+esc(materi[r._key] || guru || '')+'</textarea>' +
           (sar.length ? '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px"><span class="muted" style="font-size:11px;align-self:center">Dari Jurnal Mengajar:</span>'+sar.map(function(x, j){ return '<button type="button" class="small secondary rmSar" data-k="'+esc(r._key)+'" data-s="'+esc(r._src)+'" data-j="'+j+'" style="font-size:11px" title="'+esc(x.t+' ('+x.n+' kali, terakhir '+x.tgl+')')+'">+ '+esc(x.t.length > 70 ? x.t.slice(0, 70) + '...' : x.t)+'</button>'; }).join('')+'</div>' : '') +
           '</div>';
       }).join('');
@@ -5720,14 +5724,73 @@
     }; });
     m.el.querySelector('#rmSimpan').onclick = function(){
       var btn = this, baru = {materi: {}, tglRapor: m.el.querySelector('#rmTgl').value, catatanDefault: m.el.querySelector('#rmCat').value.trim()};
-      m.el.querySelectorAll('.rmM').forEach(function(t){ if (t.value.trim()) baru.materi[t.dataset.k] = t.value.trim(); });
+      m.el.querySelectorAll('.rmM').forEach(function(t){ var v = t.value.trim(); if (v && v !== (t.dataset.guru || '').trim()) baru.materi[t.dataset.k] = v; });
       loadingBtn(btn, 'Menyimpan...');
       apiPrm('raporKmSimpanKelas', {kelas: ctx.kelas, kelasCfg: baru}).then(function(r){
         resetBtn(btn, 'Simpan');
         if (!r.ok) { m.el.querySelector('#rmPesan').innerHTML = errBox(r.error); return; }
+        baru.materiMapel = kc.materiMapel || {}; baru.materiOleh = kc.materiOleh || {};
         ctx.km.kelasCfg = baru; m.tutup(); if (selesai) selesai();
       });
     };
+  }
+
+  // ---- Menu guru: "Materi Capaian Rapor" -- guru mapel mengisi materi mapelnya sendiri ----
+  function halMateriRaporGuru(){
+    var c = getContentEl();
+    c.innerHTML = '<div class="card"><h3 style="margin-top:0">&#128221; Materi Capaian Rapor</h3><p class="muted">Memuat...</p></div>';
+    apiPrm('raporKmGuru', {}).then(function(r){
+      if (!r.ok) { c.innerHTML = '<div class="card"><h3 style="margin-top:0">&#128221; Materi Capaian Rapor</h3>'+errBox(/tidak dikenal|unknown/i.test(r.error || '') ? 'Fitur ini belum aktif di server. Admin perlu memperbarui Code.gs ke versi 2026.11.27-d.' : r.error)+'</div>'; return; }
+      var d = r.data, info = {aturan: d.aturan || {}, aturanKm: d.aturanKm || {}};
+      var ctxSumber = {aturan: info.aturan, mapelWasiat: d.mapelWasiat || []};
+      var semuaRow = rkmMapel(info.aturanKm).map(function(x){ return Object.assign({}, x, {_src: rkmSumber(x, info.aturan, ctxSumber.mapelWasiat), _key: rkmKey(x)}); });
+      var item = (d.daftar || []).map(function(x){
+        x.jenis = rkmJenisKelas(info, x.kelas);
+        x.rows = semuaRow.filter(function(rw){ return !rw.judul && rw._src && rwuKunci(rw._src) === rwuKunci(x.mapel); });
+        x.wali = x.rows.map(function(rw){ return (x.materiWali || {})[rw._key]; }).filter(Boolean)[0] || '';
+        x.hafalan = x.rows.some(rkmBarisHafalan);
+        return x;
+      });
+      var km = item.filter(function(x){ return x.jenis === 'km'; }), lain = item.filter(function(x){ return x.jenis !== 'km'; });
+      var contoh = function(t){ t = String(t || '').trim().replace(/[.\s]+$/, ''); return t ? 'Menunjukkan penguasaan yang <b>baik</b> dalam ' + esc(t) + '.' : '<span class="muted">(belum diisi)</span>'; };
+      var kartu = function(x, i){
+        var sar = x.jurnal || [];
+        var status = x.materi ? '&#9989; Tersimpan' + (x.oleh ? ' oleh ' + esc(x.oleh.nama) + (x.oleh.waktu ? ', ' + esc(String(x.oleh.waktu).slice(0, 16)) : '') : '') : '<span style="color:#b45309">Belum diisi</span>';
+        return '<div class="card" style="margin:10px 0;padding:12px;border:1px solid #e2e8f0" data-i="'+i+'">' +
+          '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center"><b>'+esc(x.mapel)+' &middot; Kelas '+esc(x.kelas)+'</b><span class="mgStatus" style="font-size:12.5px">'+status+'</span></div>' +
+          (x.rows.length ? '<div class="muted" style="font-size:12px;margin:2px 0 6px">Tercetak di rapor sebagai: <b>'+esc(x.rows.map(function(rw){ return rw.nama; }).join(', '))+'</b></div>'
+            : '<div style="font-size:12px;margin:2px 0 6px;color:#b45309">Mapel ini belum dipetakan ke baris rapor Kurmer. Materi tetap tersimpan; Admin dapat memetakannya di Pengaturan rapor.</div>') +
+          (x.hafalan ? '<div class="muted" style="font-size:12px;margin-bottom:6px">Untuk tahfizh, boleh dikosongkan: rapor otomatis menulis cakupan hafalan tiap santri. Tulis <code>{hafalan}</code> bila ingin menyisipkannya ke kalimat Antum.</div>' : '') +
+          (x.wali ? '<div style="font-size:12px;margin-bottom:6px;background:#fef9c3;padding:6px 8px;border-radius:6px">Wali kelas sudah menulis materi sendiri untuk mapel ini, dan tulisan wali kelas yang dipakai di rapor: <i>'+esc(x.wali)+'</i></div>' : '') +
+          '<textarea class="mgT" rows="2" maxlength="600" placeholder="contoh: memahami tata cara thaharah dan menerapkannya dalam wudhu dan tayammum">'+esc(x.materi)+'</textarea>' +
+          '<div style="font-size:12.5px;margin:4px 0"><span class="muted">Contoh di rapor:</span> <span class="mgPrev">'+contoh(x.materi)+'</span></div>' +
+          (sar.length ? '<div style="display:flex;gap:4px;flex-wrap:wrap;margin:4px 0"><span class="muted" style="font-size:11px;align-self:center">Dari jurnal mengajar:</span>'+sar.map(function(s, j){ return '<button type="button" class="small secondary mgSar" data-j="'+j+'" style="font-size:11px" title="'+esc(s.t+' ('+s.n+' kali, terakhir '+s.tgl+')')+'">+ '+esc(s.t.length > 60 ? s.t.slice(0, 60) + '...' : s.t)+'</button>'; }).join('')+'</div>' : '') +
+          '<button class="small mgSimpan" style="margin-top:4px">&#128190; Simpan</button></div>';
+      };
+      c.innerHTML = '<div class="card"><h3 style="margin-top:0">&#128221; Materi Capaian Rapor</h3>' +
+        '<p class="muted" style="font-size:13px;margin:0 0 6px">Semester: <b>'+esc((d.semester || {}).nama || '-')+'</b>. Tulis 1&ndash;2 materi atau tujuan pembelajaran terpenting yang Antum ajarkan semester ini. Rapor Kurikulum Merdeka menyusunnya menjadi kalimat capaian tiap santri, dan predikatnya (sangat baik / baik / cukup baik / perlu bimbingan) dipilih otomatis dari nilai santri.</p>' +
+        '<p class="muted" style="font-size:12.5px;margin:0 0 6px">Tips: mulai dengan kata kerja (memahami, menerapkan, membaca, menulis, menyelesaikan ...), bukan judul bab. Jangan menulis kata "baik", karena predikat sudah otomatis.</p>' +
+        (km.length ? km.map(kartu).join('') : (item.length ? warnBox('Kelas yang Antum ajar belum memakai rapor Kurikulum Merdeka, jadi belum perlu mengisi materi capaian.') : warnBox('Antum belum terdaftar sebagai pengampu mapel di semester ini (Data Master &rarr; Mata Pelajaran).'))) +
+        (lain.length && km.length ? '<p class="muted" style="font-size:12px">Kelas lain yang Antum ajar memakai rapor K13, tidak perlu materi capaian: '+esc(lain.map(function(x){ return x.mapel + ' ' + x.kelas; }).join(', '))+'.</p>' : '') + '</div>';
+      c.querySelectorAll('.card[data-i]').forEach(function(el){
+        var x = km[Number(el.dataset.i)], t = el.querySelector('.mgT'), prev = el.querySelector('.mgPrev'), st = el.querySelector('.mgStatus');
+        t.oninput = function(){ prev.innerHTML = contoh(t.value); st.innerHTML = t.value.trim() === (x.materi || '') ? st.innerHTML : '<span style="color:#b45309">Belum disimpan</span>'; };
+        el.querySelectorAll('.mgSar').forEach(function(b){ b.onclick = function(){
+          var s = (x.jurnal || [])[Number(b.dataset.j)]; if (!s) return;
+          var teks = s.t.replace(/[.\s]+$/, ''); teks = teks.charAt(0).toLowerCase() + teks.slice(1);
+          t.value = t.value.trim() ? t.value.trim().replace(/[.\s]+$/, '') + ', ' + teks : teks; t.oninput();
+        }; });
+        el.querySelector('.mgSimpan').onclick = function(){
+          var btn = this; loadingBtn(btn, 'Menyimpan...');
+          apiPrm('raporKmSimpanMateriGuru', {kelas: x.kelas, mapel: x.mapel, materi: t.value.trim()}).then(function(res){
+            resetBtn(btn, '&#128190; Simpan');
+            if (!res.ok) { st.innerHTML = '<span style="color:#b91c1c">'+esc(res.error)+'</span>'; return; }
+            x.materi = res.data.materi; x.oleh = {nama: STATE.user.nama, waktu: res.data.waktu};
+            st.innerHTML = x.materi ? '&#9989; Tersimpan' : '<span style="color:#b45309">Dikosongkan</span>';
+          });
+        };
+      });
+    }).catch(function(e){ c.innerHTML = '<div class="card">'+errBox(e && e.message || 'Gagal memuat.')+'</div>'; });
   }
 
   // Jenis rapor tiap kelas (Admin/Mudir)
@@ -8049,6 +8112,7 @@
       {key:'inputnilai', label:'Input Nilai', icon:'&#9999;&#65039;'},
       {key:'riwayatnilai', label:'Riwayat Nilai', icon:'&#128202;'},
       {key:'rekapnilai', label:'Rekap Nilai Rapor', icon:'&#128196;'},
+      {key:'materirapor', label:'Materi Capaian Rapor', icon:'&#128221;'},
       {key:'rekapsantriguru', label:'Rekap Per Santri', icon:'&#128209;'},
       {key:'pelanggaran', label:'Catat Pelanggaran', icon:'&#9888;&#65039;'},
       {key:'modulajar', label:'Modul Ajar & RPP', icon:'&#128218;'},
@@ -8060,7 +8124,7 @@
     var map = {
       jadwal:guruJadwal, jammengajar:guruJamMengajar, izinsaya:guruIzinSaya, riwayatabsen:guruRiwayat, rekapabsen:guruRekapAbsensi,
       hafalan:guruIsiHafalan, riwayathafalan:guruRiwayatHafalan, progresshafalan:function(){ renderRekapProgressHafalan({pengampu:STATE.user.nama}); }, rekaphafalanbulan:halamanRekapHafalanBulanan, kotaksurat:halamanPersuratan, persuratan:halamanPersuratan,
-      inputnilai:guruInputNilai, riwayatnilai:guruRiwayatNilai, rekapnilai:guruRekapNilaiRapor, rekapsantriguru:guruRekapPerSantri,
+      inputnilai:guruInputNilai, riwayatnilai:guruRiwayatNilai, rekapnilai:guruRekapNilaiRapor, materirapor:halMateriRaporGuru, rekapsantriguru:guruRekapPerSantri,
       pelanggaran:guruCatatPelanggaran, santrisaya:guruSantriSaya, profilsaya:guruProfilSaya,
       modulajar:guruModulAjar, riwayatjurnal:guruRiwayatJurnal, sop:guruSOP
     };
