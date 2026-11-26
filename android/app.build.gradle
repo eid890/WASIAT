@@ -1,0 +1,44 @@
+plugins {
+    id 'com.android.application'
+}
+
+def kodeVersi = (project.findProperty('kodeVersi') ?: '1').toString().toInteger()
+
+android {
+    namespace 'id.ponpeswu.wasiat'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'id.ponpeswu.wasiat'
+        minSdk 24
+        targetSdk 34
+        versionCode kodeVersi
+        versionName "1.0.${kodeVersi}"
+    }
+
+    signingConfigs {
+        rilis {
+            storeFile file(System.getenv('KS_FILE') ?: 'kunci.jks')
+            storePassword System.getenv('KS_PASS')
+            keyAlias System.getenv('KS_ALIAS') ?: 'wasiat'
+            keyPassword System.getenv('KS_PASS')
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.rilis
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
