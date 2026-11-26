@@ -327,7 +327,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.11.26-b';
+  var VERSI_APP = '2026.11.27-c';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -3098,7 +3098,7 @@
       {key:'wk_hafalan',      label:'Rekap Hafalan',       icon:'&#128214;'},
       {key:'wk_pelanggaran',  label:'Rekap Pelanggaran',   icon:'&#9888;&#65039;'},
       {key:'wk_rapor',        label:'Rapor Santri',        icon:'&#128203;'},
-      {key:'wk_raporwu',      label:'Rapor PK PPS (Wustha)', icon:'&#128216;'},
+      {key:'wk_raporwu',      label:'Rapor Semester (K13 / Kurmer)', icon:'&#128216;'},
       {key:'wk_kas',          label:'Kas Kelas',           icon:'&#128176;'},
       {key:'wk_laporan',      label:'Laporan Bulanan Santri', icon:'&#128202;'},
       {key:'wk_peringatan',   label:'Peringatan Dini',     icon:'&#9888;&#65039;'}
@@ -3168,7 +3168,7 @@
       {key:'adminpenuh',      label:'Dashboard Admin',     icon:'&#9881;&#65039;'},
       {key:'kondisipondok',   label:'Kondisi Pondok Hari Ini', icon:'&#127979;'},
       {key:'raporkelas',      label:'Rapor Santri',        icon:'&#128203;'},
-      {key:'raporwu',         label:'Rapor PK PPS (Wustha)', icon:'&#128216;'},
+      {key:'raporwu',         label:'Rapor Semester (K13 / Kurmer)', icon:'&#128216;'},
       {key:'rekaphalaqoh',    label:'Rekap Halaqoh',       icon:'&#128218;'},
       {key:'cetakjadwal',     label:'Cetak Jadwal Pelajaran', icon:'&#128197;'},
       {key:'rekapjurnal',     label:'Rekap Jurnal Guru',   icon:'&#128221;'},
@@ -3180,7 +3180,7 @@
       {key:'adminpenuh',      label:'Dashboard Mudir',     icon:'&#9881;&#65039;'},
       {key:'kondisipondok',   label:'Kondisi Pondok Hari Ini', icon:'&#127979;'},
       {key:'raporkelas',      label:'Rapor Santri',        icon:'&#128203;'},
-      {key:'raporwu',         label:'Rapor PK PPS (Wustha)', icon:'&#128216;'},
+      {key:'raporwu',         label:'Rapor Semester (K13 / Kurmer)', icon:'&#128216;'},
       {key:'rekaphalaqoh',    label:'Rekap Halaqoh',       icon:'&#128218;'},
       {key:'cetakjadwal',     label:'Cetak Jadwal Pelajaran', icon:'&#128197;'},
       {key:'persuratan',      label:'Persuratan',          icon:'&#9993;&#65039;'},
@@ -5116,54 +5116,98 @@
   }
   function normNamaRwu(x){ return String(x||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
 
+  // ---- Halaman Rapor Santri: dua jenis rapor yang bisa dipilih -------------------------
+  //  * K13  = Rapor PK PPS Wustha (format Aplikasi Rapor Santri WU, mesin /rapor-wu.js)
+  //  * Kurmer = Laporan Hasil Belajar Kurikulum Merdeka (mesin /rapor-km.js)
+  // Jenis rapor tiap kelas diatur Admin/Mudir ("Jenis rapor per kelas"). Bila belum diatur:
+  // kelas 2 & 3 (atau pilihan lama di pengaturan K13) = K13, kelas 1 = Kurikulum Merdeka.
+  function rkmJenisKelas(info, kelas){
+    var jk = ((info && info.aturanKm) || {}).jenisKelas;
+    if (jk && Object.prototype.hasOwnProperty.call(jk, kelas)) return jk[kelas];
+    var a = (info && info.aturan) || {};
+    if (rwuBerlaku(a, kelas)) return 'k13';
+    return rwuTingkat(a, kelas) === 1 ? 'km' : '';
+  }
   function halRaporWU(kelasTetap){
     var c = getContentEl();
-    c.innerHTML = '<div class="card"><h3 style="margin-top:0">&#128216; Rapor PK PPS (Wustha)</h3><p class="muted">Memuat...</p></div>';
-    var info = null, ctx = null;
-    Promise.all([apiPrm('raporWuInfo', {}), muatMesinRaporWU()]).then(function(h){
-      var r = h[0];
+    c.innerHTML = '<div class="card"><h3 style="margin-top:0">&#128216; Rapor Santri<#128216; Rapor Semester</h3><p class="muted">Memuat...</p></div>';
+    apiPrm('raporWuInfo', {}).then(function(r){
       if (!r.ok) { c.innerHTML = '<div class="card">'+errBox(r.error)+'</div>'; return; }
-      info = r.data;
+      var info = r.data; info.kmServerLama = !Object.prototype.hasOwnProperty.call(info, 'aturanKm'); info.aturan = info.aturan || {}; info.aturanKm = info.aturanKm || {};
       var semuaKelas = kelasTetap ? String(kelasTetap).split(/[,;\/]/).map(function(x){ return x.trim(); }).filter(Boolean) : info.kelas;
-      var daftarKelas = semuaKelas.filter(function(k){ return rwuBerlaku(info.aturan || {}, k); });
-      c.innerHTML = '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center"><h3 style="margin:0">&#128216; Rapor PK PPS (Wustha)</h3>' +
-        (info.bolehAtur ? '<button class="small secondary" id="rwuAtur">&#9881;&#65039; Pengaturan rapor</button>' : '') + '</div>' +
-        '<p class="muted" style="font-size:12.5px;margin:6px 0">Semester aktif: <b>'+esc(info.semester.nama || '-')+'</b>. Nilai dari Rekap Nilai guru, ketidakhadiran dari <b>Halaqoh Maghrib</b> dan <b>absensi asrama</b> (bila satu tanggal ada keduanya, dipakai catatan Halaqoh Maghrib). Format cetak sama dengan Aplikasi Rapor Santri WU.</p>' +
-        (daftarKelas.length ? '' : warnBox('Rapor PK PPS saat ini berlaku untuk kelas 2 dan 3 (Wustha).' + (semuaKelas.length ? ' Kelas ' + semuaKelas.join(', ') + ' belum memakai rapor ini.' : ''))) +
+      var per = {k13: [], km: [], belum: []};
+      semuaKelas.forEach(function(k){ var j = rkmJenisKelas(info, k); (per[j === 'k13' || j === 'km' ? j : 'belum']).push(k); });
+      var simpanan = ''; try { simpanan = localStorage.getItem('wasiat-rapor-jenis') || ''; } catch(e){}
+      var jenis = (simpanan === 'km' || simpanan === 'k13') && per[simpanan].length ? simpanan : (per.k13.length || !per.km.length ? 'k13' : 'km');
+      var ulang = function(){ halRaporWU(kelasTetap); };
+      c.innerHTML = '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center"><h3 style="margin:0">&#128216; Rapor Santri<#128216; Rapor Semester</h3>' +
+        (info.bolehAtur ? '<span style="display:flex;gap:6px;flex-wrap:wrap"><button class="small secondary" id="rapJenis">&#128450;&#65039; Jenis rapor per kelas</button><button class="small secondary" id="rapAtur">&#9881;&#65039; Pengaturan</button></span>' : '') + '</div>' +
+        '<div class="rap-tab" style="display:flex;gap:6px;margin:12px 0 4px;flex-wrap:wrap">' +
+          [['k13','Rapor K13 (PK PPS Wustha)'],['km','Rapor Kurikulum Merdeka']].map(function(t){ return '<button class="small'+(t[0]===jenis?'':' secondary')+'" data-jenis="'+t[0]+'">'+t[1]+' <span style="opacity:.75">('+per[t[0]].length+' kelas)</span></button>'; }).join('') + '</div>' +
+        (info.bolehAtur && per.belum.length ? '<p class="muted" style="font-size:12px;margin:4px 0">Kelas yang belum memakai rapor apa pun: <b>'+esc(per.belum.join(', '))+'</b>. Atur di "Jenis rapor per kelas".</p>' : '') +
+        '<div id="rapIsi" style="margin-top:8px"></div></div>';
+      var bJ = document.getElementById('rapJenis'); if (bJ) bJ.onclick = function(){ rkmAturJenis(info, ulang); };
+      var bA = document.getElementById('rapAtur'); if (bA) bA.onclick = function(){
+        if (jenis === 'km') rkmAtur(info, ulang);
+        else muatMesinRaporWU().then(function(){ aturRaporWU(info, ulang); }).catch(function(e){ alert(e.message); });
+      };
+      c.querySelectorAll('[data-jenis]').forEach(function(b){ b.onclick = function(){
+        jenis = b.dataset.jenis; try { localStorage.setItem('wasiat-rapor-jenis', jenis); } catch(e){}
+        c.querySelectorAll('[data-jenis]').forEach(function(x){ x.classList.toggle('secondary', x.dataset.jenis !== jenis); });
+        tampil();
+      }; });
+      tampil();
+      function tampil(){
+        var box = document.getElementById('rapIsi');
+        if (jenis === 'km') rkmPanel(box, info, per.km, semuaKelas);
+        else rwuPanelK13(box, info, per.k13, semuaKelas, ulang);
+      }
+    }).catch(function(e){ c.innerHTML = '<div class="card">'+errBox(e && e.message || 'Gagal memuat.')+'</div>'; });
+  }
+
+  function rwuPanelK13(box, info, daftarKelas, semuaKelas, ulang){
+    var ctx = null;
+    box.innerHTML = '<p class="muted">Memuat mesin cetak...</p>';
+    muatMesinRaporWU().then(function(){
+      box.innerHTML = '<p class="muted" style="font-size:12.5px;margin:0 0 6px">Semester aktif: <b>'+esc(info.semester.nama || '-')+'</b>. Nilai dari Rekap Nilai guru, ketidakhadiran dari <b>Halaqoh Maghrib</b> dan <b>absensi asrama</b> (bila satu tanggal ada keduanya, dipakai catatan Halaqoh Maghrib). Format cetak sama dengan Aplikasi Rapor Santri WU.</p>' +
+        (daftarKelas.length ? '' : warnBox('Belum ada kelas yang memakai rapor K13.' + (semuaKelas.length ? ' Kelas ' + semuaKelas.join(', ') + ' memakai jenis rapor lain atau belum diatur.' : ''))) +
         '<label>Kelas</label><select id="rwuKelas">'+(daftarKelas.length ? daftarKelas.map(function(k){ return '<option>'+esc(k)+'</option>'; }).join('') : '<option value="">(tidak ada kelas)</option>')+'</select>' +
-        '<div id="rwuIsi" style="margin-top:12px"></div></div>';
-      var bA = document.getElementById('rwuAtur'); if (bA) bA.onclick = function(){ aturRaporWU(info, function(){ halRaporWU(kelasTetap); }); };
+        '<div id="rwuIsi" style="margin-top:12px"></div>';
       document.getElementById('rwuKelas').onchange = muatKelas;
       muatKelas();
-    }).catch(function(e){ c.innerHTML = '<div class="card">'+errBox(e && e.message || 'Gagal memuat.')+'</div>'; });
+    }).catch(function(e){ box.innerHTML = errBox(e && e.message || 'Gagal memuat.'); });
 
     function muatKelas(){
-      var kelas = document.getElementById('rwuKelas').value, box = document.getElementById('rwuIsi');
-      if (!kelas) { box.innerHTML = warnBox('Belum ada kelas.'); return; }
-      box.innerHTML = '<p class="muted">&#9203; Mengumpulkan nilai, kehadiran, dan hafalan kelas '+esc(kelas)+'...</p>';
-      apiPrm('raporWuKelas', {kelas: kelas}).then(function(r){
-        if (!r.ok) { box.innerHTML = errBox(r.error); return; }
-        ctx = r.data; ctx.mapelWasiat = info.mapelWasiat; ctx.aturan = r.data.aturan || {}; 
+      var kelas = document.getElementById('rwuKelas').value, isi = document.getElementById('rwuIsi');
+      if (!kelas) { isi.innerHTML = ''; return; }
+      isi.innerHTML = '<p class="muted">&#9203; Mengumpulkan nilai, kehadiran, dan hafalan kelas '+esc(kelas)+'...</p>';
+      Promise.all([apiPrm('raporWuKelas', {kelas: kelas}), rhfMuat(kelas, info.kmServerLama)]).then(function(h){
+        var r = h[0];
+        if (!r.ok) { isi.innerHTML = errBox(r.error); return; }
+        ctx = r.data; ctx.mapelWasiat = info.mapelWasiat; ctx.aturan = r.data.aturan || {};
+        ctx.info = info; ctx.hafalan = h[1].data; ctx.hafalanGalat = h[1].galat;
         gambarDaftar();
       });
     }
     function gambarDaftar(){
       var R = window.RaporWU, cfg = rwuKonfig(R, ctx); ctx.cfg = cfg;
-      var box = document.getElementById('rwuIsi');
+      var isi = document.getElementById('rwuIsi');
       var baris = ctx.santri.map(function(s, i){
         var o = rwuSantriCetak(R, ctx, s), terisi = 0;
         Object.keys(o.nilai).forEach(function(k){ if (o.nilai[k].p !== '') terisi++; });
         return '<tr><td>'+(i+1)+'</td><td><b>'+esc(s.nama)+'</b><div class="muted" style="font-size:11.5px">NISN '+esc(s.nisn)+(s.induk ? '' : ' &middot; <span style="color:#b45309">Buku Induk belum diisi</span>')+'</div></td>' +
-          '<td>'+terisi+'/'+cfg.mapel.length+'</td><td>'+o.hadir.s+' / '+o.hadir.i+' / '+o.hadir.a+'</td><td>'+(s.isian ? '&#9989;' : '<span class="muted">-</span>')+'</td>' +
+          '<td>'+terisi+'/'+cfg.mapel.length+'</td><td>'+o.hadir.s+' / '+o.hadir.i+' / '+o.hadir.a+'</td><td>'+rhfLabelSel(rhfSantri(ctx.hafalan, s))+'</td><td>'+(s.isian && s.isian.nilai ? '&#9989;' : '<span class="muted">-</span>')+'</td>' +
           '<td style="white-space:nowrap"><button class="small rwuIsi" data-i="'+i+'">Isi / periksa</button> <button class="small secondary rwuCetak1" data-i="'+i+'">&#128424;&#65039;</button></td></tr>';
       }).join('');
-      box.innerHTML = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"><button class="small" id="rwuCetakSemua">&#128424;&#65039; Cetak rapor semua santri ('+ctx.santri.length+')</button>' +
+      isi.innerHTML = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"><button class="small" id="rwuCetakSemua">&#128424;&#65039; Cetak rapor semua santri ('+ctx.santri.length+')</button>' +
+        (ctx.hafalan ? '<label style="display:flex;gap:5px;align-items:center;font-size:13px;margin:0"><input type="checkbox" id="rwuHf" style="width:auto"'+(ctx.tanpaHafalan ? '' : ' checked')+'> Sertakan lembar Capaian Hafalan</label>' : '') +
         '<button class="small secondary" id="rwuImpor">&#128229; Impor identitas dari file rapor Excel lama</button><input type="file" id="rwuFile" accept=".xlsx,.xls" multiple hidden></div>' +
         '<p class="muted" style="font-size:12px;margin:0 0 6px">Wali kelas: <b>'+esc(ctx.wali || '(belum diatur di Data Guru)')+'</b> &middot; Kelas di rapor: <b>'+esc(cfg.periode.kelas)+'</b> &middot; Kolom "Mapel" = jumlah baris nilai yang sudah terisi.</p>' +
-        (ctx.santri.length ? '<div style="overflow-x:auto"><table><tr><th>No</th><th>Santri</th><th>Mapel</th><th>S / I / A</th><th>Isian</th><th></th></tr>'+baris+'</table></div>' : '<p class="muted">Belum ada santri di kelas ini.</p>');
-      box.querySelectorAll('.rwuIsi').forEach(function(b){ b.onclick = function(){ editorRaporWU(ctx, ctx.santri[Number(b.dataset.i)], gambarDaftar); }; });
-      box.querySelectorAll('.rwuCetak1').forEach(function(b){ b.onclick = function(){ cetakRaporWU(ctx, [ctx.santri[Number(b.dataset.i)]]); }; });
+        (ctx.santri.length ? '<div style="overflow-x:auto"><table><tr><th>No</th><th>Santri</th><th>Mapel</th><th>S / I / A</th><th>Hafalan baru</th><th>Isian</th><th></th></tr>'+baris+'</table></div>' : '<p class="muted">Belum ada santri di kelas ini.</p>');
+      isi.querySelectorAll('.rwuIsi').forEach(function(b){ b.onclick = function(){ editorRaporWU(ctx, ctx.santri[Number(b.dataset.i)], gambarDaftar); }; });
+      isi.querySelectorAll('.rwuCetak1').forEach(function(b){ b.onclick = function(){ cetakRaporWU(ctx, [ctx.santri[Number(b.dataset.i)]]); }; });
       document.getElementById('rwuCetakSemua').onclick = function(){ cetakRaporWU(ctx, ctx.santri); };
+      var cbHf = document.getElementById('rwuHf'); if (cbHf) cbHf.onchange = function(){ ctx.tanpaHafalan = !cbHf.checked; };
       var f = document.getElementById('rwuFile');
       document.getElementById('rwuImpor').onclick = function(){ f.click(); };
       f.onchange = function(){ imporIndukRaporWU(ctx, f.files, gambarDaftar); f.value = ''; };
@@ -5173,9 +5217,22 @@
   function cetakRaporWU(ctx, daftar){
     var w = window.open('', '_blank');
     if (w) { try { w.document.write('<p style="font-family:Arial;padding:20px">Menyiapkan rapor...</p>'); } catch(e){} }
-    muatMesinRaporWU().then(function(R){
-      var cfg = rwuKonfig(R, ctx);
-      var html = R.dokumen('Rapor ' + (daftar.length === 1 ? daftar[0].nama : ctx.kelas), cfg, daftar.map(function(s){ return rwuSantriCetak(R, ctx, s); }));
+    var pakaiHf = !!ctx.hafalan && !ctx.tanpaHafalan;
+    Promise.all([muatMesinRaporWU(), pakaiHf ? muatMesinRaporKM() : null]).then(function(m){
+      var R = m[0], K = m[1];
+      var cfg = rwuKonfig(R, ctx), judul = 'Rapor ' + (daftar.length === 1 ? daftar[0].nama : ctx.kelas);
+      var data = daftar.map(function(s){ return rwuSantriCetak(R, ctx, s); });
+      var html;
+      if (!pakaiHf) html = R.dokumen(judul, cfg, data);
+      else {
+        // lembar Capaian Hafalan diletakkan di akhir rapor masing-masing santri
+        var cfgH = rhfKonfigK13(ctx, ctx.info);
+        var isi = daftar.map(function(s, i){
+          var o = Object.assign({}, rkmIdentitas(s), {kelasLabel: cfgH.periode.kelas, hafalan: rhfSantri(ctx.hafalan, s)});
+          return R.halaman(cfg, [data[i]]) + K.halHafalanK13(cfgH, o);
+        }).join('');
+        html = R.dokumen(judul, cfg, []).replace('</style>', K.cssHafalan() + '</style>').replace('</body>', isi + '</body>');
+      }
       if (w && !w.closed) { w.document.open(); w.document.write(html); w.document.close(); return; }
       var blob = new Blob([html], {type:'text/html'}); var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'Rapor ' + ctx.kelas + '.html'; a.click();
     }).catch(function(e){ alert(e.message); if (w) w.close(); });
@@ -5212,7 +5269,7 @@
     };
     function kumpul(){
       var q = function(sel){ return Array.prototype.slice.call(m.el.querySelectorAll(sel)); };
-      var induk = {}; R.ID_ROWS.forEach(function(r){ induk[r[1]] = m.el.querySelector('#reId_'+r[1]).value.trim(); });
+      var induk = Object.assign({}, s.induk || {}); R.ID_ROWS.forEach(function(r){ induk[r[1]] = m.el.querySelector('#reId_'+r[1]).value.trim(); });
       induk.foto = fotoBaru || idn.foto || '';
       var baru = {nilai:{}, hadir:{}, pd:{}, pribadi:{}, prestasi:[], mutasi:[]};
       q('.reN').forEach(function(x){ if (x.value !== '') (baru.nilai[x.dataset.i] = baru.nilai[x.dataset.i] || {})[x.dataset.f] = Number(x.value); });
@@ -5221,7 +5278,7 @@
       q('.rePr').forEach(function(x){ baru.pribadi[x.dataset.i] = x.value.trim(); });
       q('.rePsI').forEach(function(x, i){ baru.prestasi[i] = {item: x.value.trim(), ket: q('.rePsK')[i].value.trim()}; });
       q('.reMk').forEach(function(x, i){ baru.mutasi[i] = {kelas: x.value.trim(), alasan: q('.reMa')[i].value.trim()}; });
-      return {induk: induk, isian: baru};
+      return {induk: induk, isian: Object.assign({}, isi, baru)};
     }
     m.el.querySelector('#reSimpan').onclick = function(){
       var b = this, d = kumpul(); loadingBtn(b, 'Menyimpan...');
@@ -5246,7 +5303,7 @@
         var d = R.imporExcel(XLSX.read(new Uint8Array(buf), {type:'array'}));
         var s = ctx.santri.find(function(x){ return (d.nisn && kunci(x.nisn) === kunci(d.nisn)) || kunci(x.nama) === kunci(d.nama); });
         if (!s) { hasil.tidak.push(d.nama || f.name); return; }
-        var induk = {}; R.ID_ROWS.forEach(function(r){ induk[r[1]] = d[r[1]] || ''; });
+        var induk = Object.assign({}, s.induk || {}); R.ID_ROWS.forEach(function(r){ induk[r[1]] = d[r[1]] || induk[r[1]] || ''; });
         if (!induk.nisn) induk.nisn = s.nisn;
         induk.foto = (s.induk && s.induk.foto) || '';
         hasil.cocok++;
@@ -5275,8 +5332,8 @@
       '<div><label>Nilai huruf</label><select id="raHuruf"><option value="asli"'+((a.opsi||{}).huruf!=='lengkap'?' selected':'')+'>Seperti Excel (Delapan Dua)</option><option value="lengkap"'+((a.opsi||{}).huruf==='lengkap'?' selected':'')+'>Lengkap (Delapan Puluh Dua)</option></select></div></div>' +
       '<h4>Mata pelajaran rapor &amp; sumber nilainya di WASIAT</h4><div style="overflow-x:auto"><table><tr><th>Baris rapor</th><th>KKM</th><th>SKK</th><th>Ambil nilai dari</th></tr>' +
         mp.map(function(m, i){ return '<tr><td><input class="raN" data-i="'+i+'" value="'+esc(m.nama)+'"></td><td><input class="raK" data-i="'+i+'" value="'+esc(m.kkm)+'" style="width:60px"></td><td><input class="raQ" data-i="'+i+'" value="'+esc(m.skk)+'" style="width:60px"></td><td>'+opsiSumber(i, m.nama)+'</td></tr>'; }).join('') + '</table></div>' +
-      '<h4>Kelas yang memakai rapor ini, kelas di rapor &amp; NIY wali kelas</h4><p class="muted" style="font-size:12px">Centang kelas yang memakai rapor ini (bawaan: kelas 2 dan 3). Kolom teks = tulisan kelas di rapor, contoh "2 (Dua)"; kosongkan untuk otomatis (7&rarr;1, 8&rarr;2, 9&rarr;3).</p><div class="grid2">' +
-        info.kelas.map(function(k){ return '<div><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="raB" data-k="'+esc(k)+'" style="width:auto"'+(rwuBerlaku(a, k)?' checked':'')+'> Kelas '+esc(k)+'</label><input class="raKl" data-k="'+esc(k)+'" value="'+esc((a.kelasLabel||{})[k]||'')+'" placeholder="'+esc(rwuLabelKelas({}, k))+'"></div>'; }).join('') + '</div>' +
+      '<h4>Tulisan kelas di rapor &amp; NIY wali kelas</h4><p class="muted" style="font-size:12px">Kelas mana yang memakai rapor K13 diatur lewat tombol "Jenis rapor per kelas". Kolom teks = tulisan kelas di rapor, contoh "2 (Dua)"; kosongkan untuk otomatis (7&rarr;1, 8&rarr;2, 9&rarr;3).</p><div class="grid2">' +
+        info.kelas.filter(function(k){ return rkmJenisKelas(info, k) === 'k13'; }).map(function(k){ return '<div><label>Kelas '+esc(k)+'</label><input class="raKl" data-k="'+esc(k)+'" value="'+esc((a.kelasLabel||{})[k]||'')+'" placeholder="'+esc(rwuLabelKelas({}, k))+'"></div>'; }).join('') + '</div>' +
       '<label style="margin-top:8px">NIY wali kelas (satu per baris: Nama = NIY)</label><textarea id="raNiy" rows="4">'+esc(Object.keys(a.niyTampil||{}).map(function(n){ return n + ' = ' + a.niyTampil[n]; }).join('\n'))+'</textarea>';
     var m = keuModal(html, 820);
     m.el.querySelector('#raSimpan').onclick = function(){
@@ -5284,16 +5341,495 @@
       var lem = {}; q('.raL').forEach(function(x){ lem[x.dataset.k] = x.value.trim(); });
       var niyTampil = {}, niy = {};
       m.el.querySelector('#raNiy').value.split('\n').forEach(function(l){ var p = l.split('='); if (p.length >= 2 && p[0].trim()) { niyTampil[p[0].trim()] = p.slice(1).join('=').trim(); niy[normNamaRwu(p[0])] = p.slice(1).join('=').trim(); } });
-      var kl = {}; q('.raKl').forEach(function(x){ if (x.value.trim()) kl[x.dataset.k] = x.value.trim(); });
+      var kl = Object.assign({}, a.kelasLabel || {}); q('.raKl').forEach(function(x){ if (x.value.trim()) kl[x.dataset.k] = x.value.trim(); else delete kl[x.dataset.k]; });
       var baru = { lembaga: lem, tglIdentitas: m.el.querySelector('#raTgl').value.trim(), opsi: {huruf: m.el.querySelector('#raHuruf').value},
         mapel: q('.raN').map(function(x, i){ return {nama: x.value.trim(), kkm: q('.raK')[i].value.trim(), skk: q('.raQ')[i].value.trim()}; }),
-        sumber: q('.raS').map(function(x){ return x.value; }), kelasLabel: kl, niy: niy, niyTampil: niyTampil,
-        kelasBerlaku: q('.raB').filter(function(x){ return x.checked; }).map(function(x){ return x.dataset.k; }) };
+        sumber: q('.raS').map(function(x){ return x.value; }), kelasLabel: kl, niy: niy, niyTampil: niyTampil };
+      baru = Object.assign({}, a, baru);
       loadingBtn(btn, 'Menyimpan...');
       apiPrm('raporWuAtur', {aturan: baru}).then(function(r){
         resetBtn(btn, 'Simpan');
         if (!r.ok) { m.el.querySelector('#raPesan').innerHTML = errBox(r.error); return; }
         info.aturan = r.data; m.tutup(); if (selesai) selesai();
+      });
+    };
+  }
+
+  // =====================================================================
+  // RAPOR KURIKULUM MERDEKA (Kurmer) -- format Laporan Hasil Belajar Kurikulum Merdeka
+  // (sampul, identitas, capaian hasil belajar, ekstrakurikuler/prestasi/kehadiran/catatan),
+  // memakai identitas PP Wihdatul Ummah. Nilai akhir = Nilai Pengetahuan di Rekap Nilai,
+  // ketidakhadiran = aturan yang sama dengan rapor K13 (Halaqoh Maghrib + asrama).
+  // Capaian kompetensi = predikat dari nilai + materi yang diisi per kelas (saran dari Jurnal Mengajar).
+  // =====================================================================
+  var _rkmMuat = null;
+  function muatMesinRaporKM(){
+    if (window.RaporKM) return Promise.resolve(window.RaporKM);
+    if (_rkmMuat) return _rkmMuat;
+    _rkmMuat = new Promise(function(ok, gagal){
+      var sc = document.createElement('script'); sc.src = '/rapor-km.js?v=' + VERSI_APP;
+      sc.onload = function(){ ok(window.RaporKM); }; sc.onerror = function(){ _rkmMuat = null; gagal(new Error('Mesin cetak rapor Kurikulum Merdeka belum termuat. Periksa internet lalu coba lagi.')); };
+      document.head.appendChild(sc);
+    });
+    return _rkmMuat;
+  }
+  // Baris mapel bawaan. al = indeks alias di RWU_ALIAS (dipakai menebak mapel WASIAT yang sesuai,
+  // dan memakai pemetaan yang sudah diatur di rapor K13 bila ada).
+  var RKM_MAPEL_BAWAAN = [
+    {nama:'Pendidikan Agama Islam', judul:1},
+    {nama:"Al-Qur'an", sub:1, al:6}, {nama:'Hadits', sub:1, al:7}, {nama:'Aqidah', sub:1, al:8}, {nama:'Akhlaq', sub:1, al:9}, {nama:'Fiqih', sub:1, al:10}, {nama:'Tarikh', sub:1, al:11},
+    {nama:'Bahasa Arab', al:12}, {nama:'Pendidikan Pancasila', al:0}, {nama:'Bahasa Indonesia', al:1}, {nama:'Matematika', al:4},
+    {nama:'Ilmu Pengetahuan Alam', al:2}, {nama:'Ilmu Pengetahuan Sosial', al:3}, {nama:'Bahasa Inggris', al:5},
+    {nama:'Muatan Lokal', judul:1}, {nama:"Tahfizhul Qur'an", sub:1, al:13}, {nama:'Tarbiyah', sub:1, al:14}
+  ];
+  var RKM_LEMBAGA = {nama:'PONDOK PESANTREN WIHDATUL UMMAH', namaPendek:'PP Wihdatul Ummah', alamatPendek:'Jl. Lingkar Moengko-Lembomawo', labelSatuan:'Pondok',
+    kepala:'', niyKepala:'', jabatanKepala:'Mudir'};
+  var RKM_KOP = {b1:'PENDIDIKAN KESETARAAN PONDOK PESANTREN SALAFIYAH', b2:'PONDOK PESANTREN WIHDATUL UMMAH', b3:'Jl. Lingkar Moengko-Lembomawo, Kel. Moengko', b4:'Kecamatan Poso Kota, Kabupaten Poso - Sulawesi Tengah 94618'};
+  var RKM_SAMPUL = {j1:'LAPORAN HASIL BELAJAR', j2:'PENDIDIKAN KESETARAAN', j3:'PONDOK PESANTREN SALAFIYAH', j4:'TINGKAT WUSTHA',
+    bawah1:'PONDOK PESANTREN WIHDATUL UMMAH', bawah2:'KABUPATEN POSO', bawah3:'PROVINSI SULAWESI TENGAH'};
+  var RKM_CATATAN_SARAN = ['Pertahankan prestasi belajarmu dan tingkatkan terus hafalan Al-Qur\'an.', 'Tingkatkan lagi semangat belajar dan muraja\'ah hafalan setiap hari.',
+    'Ananda rajin dan disiplin. Terus jaga adab kepada guru dan teman.', 'Perlu meningkatkan kehadiran dan kedisiplinan dalam mengikuti kegiatan pondok.',
+    'Tingkatkan cara belajar, perbanyak bertanya kepada ustadz/ustadzah bila belum paham.'];
+  function rkmKey(row){ return rwuKunci(row && row.nama); }
+  function rkmKunciNisn(v){ var t = String(v == null ? '' : v).trim().replace(/^'+/, '').replace(/\.0+$/, '').replace(/\s+/g, ''); return t.replace(/^0+/, '') || t; }
+  function rkmMapel(A){ return (A && Array.isArray(A.mapel) && A.mapel.length) ? A.mapel : RKM_MAPEL_BAWAAN; }
+  function rkmSumber(row, aturanK13, mapelWasiat){
+    if (!row || row.judul) return '';
+    if (row.sumber !== undefined && row.sumber !== null) return row.sumber;
+    if (row.al != null) return rwuSumber(aturanK13 || {}, row.al, mapelWasiat || [], row.nama);
+    var k = rkmKey(row), mw = mapelWasiat || [];
+    var x = mw.filter(function(m){ return rwuKunci(m) === k; })[0] || mw.filter(function(m){ var q = rwuKunci(m); return k.length > 3 && (q.indexOf(k) === 0 || k.indexOf(q) === 0); })[0];
+    return x || '';
+  }
+  function rkmEkskulSumber(A, mapelWasiat){
+    if (A && Array.isArray(A.ekskul)) return A.ekskul;
+    return (mapelWasiat || []).filter(function(m){ return /bela\s*diri|silat|pramuka|panah|memanah|renang|futsal|sepak|voli|badminton|kaligrafi|marawis|hadroh|ekskul|ekstra|muhadharah|khitobah|pidato/i.test(m); });
+  }
+  function rkmNamaEkskul(m){ return String(m || '').replace(/^\s*(ekskul|ekstrakurikuler|ekstra)\s*/i, '').trim() || m; }
+  function rkmRentangJuz(arr){
+    var a = (arr || []).slice().sort(function(x, y){ return x - y; }), hasil = [], i = 0;
+    while (i < a.length) { var j = i; while (j + 1 < a.length && a[j + 1] === a[j] + 1) j++; hasil.push(j > i ? a[i] + '–' + a[j] : String(a[i])); i = j + 1; }
+    return hasil.join(', ');
+  }
+  function rkmTeksHafalan(h){
+    if (!h || !h.n) return '';
+    var qs = function(x){ return 'QS. ' + String(x).replace(/^\s*(qs\.?|q\.s\.?|surah|surat)\s*/i, ''); };
+    var t = "menghafal Al-Qur'an" + (h.juz && h.juz.length ? ' Juz ' + rkmRentangJuz(h.juz) : '');
+    if (h.awal && h.akhir && rwuKunci(h.awal) !== rwuKunci(h.akhir)) t += ' (' + qs(h.awal) + ' s.d. ' + qs(h.akhir) + ')';
+    else if (h.akhir) t += ' (' + qs(h.akhir) + ')';
+    return t;
+  }
+  function rkmKelasBerikut(label){
+    var s = String(label || ''), m = s.match(/\d+/);
+    if (m) return String(Number(m[0]) + 1);
+    var R = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'], r = s.toUpperCase().match(/\b(XII|XI|X|IX|VIII|VII|VI|V|IV|III|II|I)\b/);
+    if (r) { var i = R.indexOf(r[1]); return R[i + 1] || ''; }
+    return '';
+  }
+  function rkmHariIni(){ var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+  // Identitas: Buku Induk (bersama rapor K13) + kolom tambahan Kurmer, terisi awal dari formulir SPMB
+  function rkmIdentitas(s){
+    var b = rwuIdentitas(s), d = s.ppdb || {}, i = s.induk || {}, up = function(x){ return String(x || '').toUpperCase(); };
+    var alamat = d._alamat || [d.jalan, d.rtrw ? 'RT/RW ' + d.rtrw : '', d.desa, d.kecamatan, d.kabupaten, d.provinsi].filter(Boolean).join(', ');
+    var pilih = function(k, cadangan){ return i[k] != null && i[k] !== '' ? i[k] : cadangan; };
+    return Object.assign({}, b, {
+      alamat: pilih('alamat', up(alamat)), telp: pilih('telp', d.hp || ''), sekolahAsal: pilih('sekolahAsal', b.ijazahAsal || ''),
+      diterimaKelas: pilih('diterimaKelas', ''), diterimaTgl: pilih('diterimaTgl', ''), alamatOrtu: pilih('alamatOrtu', b.alamatAyah || b.alamatIbu || ''),
+      waliNama: pilih('waliNama', up(d.wali_nama)), waliPek: pilih('waliPek', up(d.wali_pekerjaan)), waliAlamat: pilih('waliAlamat', '')
+    });
+  }
+  var RKM_ID = [['nama','Nama peserta didik'],['nis','NIS (nomor induk lokal)'],['nisn','NISN'],['ttl','Tempat, tanggal lahir'],['jk','Jenis kelamin'],['agama','Agama'],
+    ['statusKel','Status dalam keluarga'],['anakKe','Anak ke'],['alamat','Alamat peserta didik'],['telp','Nomor telepon rumah/HP'],['sekolahAsal','Sekolah asal'],
+    ['diterimaKelas','Diterima di kelas'],['diterimaTgl','Diterima pada tanggal'],['ayah','Nama ayah'],['ibu','Nama ibu'],['alamatOrtu','Alamat orang tua'],
+    ['pekAyah','Pekerjaan ayah'],['pekIbu','Pekerjaan ibu'],['waliNama','Nama wali'],['waliPek','Pekerjaan wali'],['waliAlamat','Alamat wali']];
+
+  // Konfigurasi cetak (identitas pondok, kop, periode)
+  function rkmKonfig(ctx){
+    var A = ctx.aturanKm || {}, aK = ctx.aturan || {}, kc = (ctx.km && ctx.km.kelasCfg) || {}, sem = ctx.semester || {};
+    var lk = aK.lembaga || {};
+    var L = Object.assign({}, RKM_LEMBAGA, {kepala: lk.kepala || 'Muh. Idul Fitran, S.H.', niyKepala: lk.niyKepala || '10031994092018027'}, A.lembaga || {});
+    var logo = logoSrc();
+    var niy = (A.niy || {})[normNamaRwu(ctx.wali)] || (aK.niy || {})[normNamaRwu(ctx.wali)] || '';
+    return {
+      lembaga: L, kop: Object.assign({}, RKM_KOP, A.kop || {}), sampul: Object.assign({}, RKM_SAMPUL, A.sampul || {}), labelSatuan: L.labelSatuan,
+      logo: logo, logoKanan: A.logoKanan === 'kanan' ? logo : '', kertas: A.kertas || 'A4',
+      watermark: A.watermark === false ? '' : (A.watermarkTeks || 'PP WIHDATUL UMMAH POSO'), tampilRata: !!A.tampilRata,
+      kota: A.kota || 'Poso', tglRapor: kc.tglRapor || A.tglRapor || rkmHariIni(), tglIdentitas: A.tglIdentitas || '',
+      ambang: (Array.isArray(A.ambang) && A.ambang.length === 3) ? A.ambang.map(Number) : [90, 80, 70],
+      periode: { tahun: sem.tahun || '', semester: sem.semester || '', kelas: (A.kelasLabel || {})[ctx.kelas] || ctx.kelas, fase: (A.fase || {})[ctx.kelas] || 'D', wali: ctx.wali || '', niyWali: niy }
+    };
+  }
+  // Baris mapel yang dipakai kelas ini + sumber nilainya; baris tanpa nilai disembunyikan dari cetakan
+  function rkmBaris(ctx){
+    var A = ctx.aturanKm || {}, mk = (ctx.km && ctx.km.mapelKelas) || [];
+    var rows = rkmMapel(A).map(function(r){ return Object.assign({}, r, {_src: rkmSumber(r, ctx.aturan, ctx.mapelWasiat), _key: rkmKey(r)}); });
+    rows.forEach(function(r){
+      if (r.judul) return;
+      var adaNilai = ctx.santri.some(function(s){
+        var u = (((s.isian || {}).km || {}).nilai || {})[r._key];
+        if (u !== undefined && u !== '' && u !== null) return true;
+        if (r._src === '#hafalan') return s.tahfidz != null;
+        return r._src && s.nilai[r._src] && s.nilai[r._src].p != null;
+      });
+      r._tampil = A.sembunyikanKosong === false ? true : (adaNilai || (r._src && r._src !== '#hafalan' && mk.indexOf(r._src) >= 0));
+    });
+    rows.forEach(function(r, i){
+      if (!r.judul) return;
+      var ada = false; for (var j = i + 1; j < rows.length && rows[j].sub; j++) if (rows[j]._tampil) ada = true;
+      r._tampil = ada;
+    });
+    return rows;
+  }
+  // Baris tahfizh: bila materi kosong, capaian diisi otomatis dengan cakupan hafalan tiap santri
+  function rkmBarisHafalan(row){ return row._src === '#hafalan' || /tahfi[dz]|tahfiz/.test(row._key || ''); }
+  function rkmMateri(ctx, row, ex){
+    var kc = (ctx.km && ctx.km.kelasCfg) || {}, m = String(((kc.materi || {})[row._key]) || '').trim();
+    var haf = rkmTeksHafalan(ex && ex.hafalan);
+    if (/\{hafalan\}/i.test(m)) return m.replace(/\{hafalan\}/ig, haf || "menghafal Al-Qur'an").trim();
+    if (!m && rkmBarisHafalan(row)) return haf;
+    return m;
+  }
+  // Satu santri -> objek siap cetak. peringkat: {nisn: [urutan, jumlahSantri]}
+  function rkmSantriCetak(ctx, s, cfg, peringkat){
+    var R = window.RaporKM, A = ctx.aturanKm || {}, isi = (s.isian || {}).km || {}, ex = ((ctx.km || {}).santri || {})[rkmKunciNisn(s.nisn)] || {};
+    var idn = rkmIdentitas(s);
+    var o = Object.assign({}, idn, {kelasLabel: cfg.periode.kelas});
+    var semua = ctx._baris || rkmBaris(ctx);
+    o.mapelSemua = semua.map(function(row){
+      if (row.judul) return {judul: 1, nama: row.nama, _tampil: row._tampil, _key: row._key};
+      var auto = row._src === '#hafalan' ? s.tahfidz : (row._src && s.nilai[row._src] ? s.nilai[row._src].p : null);
+      var ub = (isi.nilai || {})[row._key];
+      var nilai = ub !== undefined && ub !== '' && ub !== null ? Number(ub) : (auto == null ? '' : Math.round(auto));
+      var materi = rkmMateri(ctx, row, ex);
+      var deskAuto = nilai === '' ? '' : R.deskripsi(nilai, materi, cfg.ambang);
+      var dU = (isi.desk || {})[row._key];
+      return {nama: row.nama, sub: !!row.sub, nilai: nilai, auto: auto == null ? '' : Math.round(auto), materi: materi, deskAuto: deskAuto, desk: dU ? dU : deskAuto, _tampil: row._tampil, _key: row._key, _src: row._src};
+    });
+    o.mapel = o.mapelSemua.filter(function(m){ return m._tampil; });
+    var angka = o.mapel.filter(function(m){ return !m.judul && m.nilai !== ''; }).map(function(m){ return Number(m.nilai); });
+    o.jumlah = angka.length ? angka.reduce(function(a, b){ return a + b; }, 0) : '';
+    o.rata = angka.length ? Math.round(o.jumlah / angka.length * 100) / 100 : '';
+    // ekstrakurikuler
+    o.ekskulAuto = rkmEkskulSumber(A, ctx.mapelWasiat).map(function(m){
+      var n = s.nilai[m] && s.nilai[m].p; if (n == null) return null;
+      var nm = rkmNamaEkskul(m); return {nama: nm, nilai: R.nilaiEkskul(Math.round(n)), ket: 'Aktif mengikuti kegiatan ' + nm};
+    }).filter(Boolean);
+    o.ekskul = Array.isArray(isi.ekskul) ? isi.ekskul : o.ekskulAuto;
+    // prestasi
+    var pa = (ex.prestasi || []).map(function(p){ return {jenis: p.t, ket: p.tgl ? R.tglIndo(p.tgl) : ''}; });
+    if (ex.tasmi && ex.tasmi.juz) pa.push({jenis: "Tasmi' Al-Qur'an " + ex.tasmi.juz + ' juz', ket: [ex.tasmi.rincian ? 'Juz ' + ex.tasmi.rincian : '', ex.tasmi.nilai ? 'Predikat ' + rwuPredikatTasmi(Number(ex.tasmi.nilai)) + ' (nilai ' + ex.tasmi.nilai + ')' : ''].filter(Boolean).join(', ')});
+    if (A.peringkat && peringkat && peringkat[s.nisn]) pa.push({jenis: 'Peringkat kelas', ket: 'Peringkat ' + peringkat[s.nisn][0] + ' dari ' + peringkat[s.nisn][1] + ' santri'});
+    o.prestasiAuto = pa;
+    o.prestasi = Array.isArray(isi.prestasi) ? isi.prestasi : pa;
+    // kehadiran
+    var h = s.hadir || {s: 0, i: 0, a: 0}, hu = isi.hadir || {};
+    var pakai = function(f){ return hu[f] !== undefined && hu[f] !== '' && hu[f] !== null ? Number(hu[f]) : (h[f] || 0); };
+    o.hadir = {s: pakai('s'), i: pakai('i'), a: pakai('a')};
+    o.catatan = isi.catatan != null && isi.catatan !== '' ? isi.catatan : (((ctx.km || {}).kelasCfg || {}).catatanDefault || '');
+    // kenaikan kelas (semester Genap)
+    var genap = /genap/i.test(cfg.periode.semester);
+    o.naikAuto = genap ? 'NAIK ke kelas ' + (rkmKelasBerikut(cfg.periode.kelas) || '...') : '';
+    o.naik = genap ? (isi.naik != null && isi.naik !== '' ? isi.naik : o.naikAuto) : '';
+    o.hafalan = rhfSantri(ctx.hafalan, s);
+    o._ex = ex;
+    return o;
+  }
+  // Lembar Capaian Hafalan: data per santri dari rekap hafalan bulanan (raporHafalanKelas)
+  function rhfMuat(kelas, lama){
+    if (lama) return Promise.resolve({data: null, galat: ''});
+    return apiPrm('raporHafalanKelas', {kelas: kelas}).then(function(r){ return r && r.ok ? {data: r.data, galat: ''} : {data: null, galat: (r && r.error) || 'gagal'}; })
+      .catch(function(e){ return {data: null, galat: e && e.message || 'gagal'}; });
+  }
+  function rhfSantri(hf, s){
+    if (!hf) return undefined;
+    var x = (hf.santri || {})[rkmKunciNisn(s.nisn)];
+    if (x) return x;
+    return {bulan: (hf.bulanList || []).map(function(b){ return {label: b.label, labelPanjang: b.labelPanjang, teks: '\u2013', status: 'kosong', rincian: ''}; }), jumlahRingkas: '\u2013', totalSemesterTeks: '\u2013', pengampu: '', halaqoh: ''};
+  }
+  function rhfLabelSel(x){ return x ? esc(x.totalSemesterTeks && x.totalSemesterTeks !== '\u2013' ? x.totalSemesterTeks : '-') + '<div class="muted" style="font-size:11px">total '+esc(x.jumlahRingkas || '-')+'</div>' : '<span class="muted">-</span>'; }
+  function rhfKonfigK13(ctx, info){
+    var cfgK = rwuKonfig(window.RaporWU, ctx);
+    var c = rkmKonfig(Object.assign({}, ctx, {aturanKm: (info && info.aturanKm) || {}, km: {kelasCfg: {}}}));
+    c.periode = Object.assign({}, c.periode, {kelas: cfgK.periode.kelas, semester: cfgK.periode.semester, tahun: cfgK.periode.tahun});
+    c.labelSatuanHafalan = 'Nama PK PPS'; c.namaSatuanHafalan = cfgK.lembaga.nama;
+    return c;
+  }
+  function rkmPeringkat(ctx, cfg){
+    var daftar = ctx.santri.map(function(s){ var o = rkmSantriCetak(ctx, s, cfg, null); return {nisn: s.nisn, j: o.jumlah === '' ? -1 : o.jumlah}; });
+    var urut = daftar.filter(function(x){ return x.j >= 0; }).sort(function(a, b){ return b.j - a.j; }), hasil = {};
+    urut.forEach(function(x, i){ var r = i > 0 && urut[i - 1].j === x.j ? hasil[urut[i - 1].nisn][0] : i + 1; hasil[x.nisn] = [r, urut.length]; });
+    return hasil;
+  }
+  function rkmSiapkan(ctx){ ctx._baris = rkmBaris(ctx); ctx.cfgKm = rkmKonfig(ctx); ctx._peringkat = (ctx.aturanKm || {}).peringkat ? rkmPeringkat(ctx, ctx.cfgKm) : null; }
+
+  function rkmPanel(box, info, daftarKelas, semuaKelas){
+    var ctx = null;
+    box.innerHTML = (info.kmServerLama ? warnBox('Kode server (Code.gs) belum versi terbaru. Rapor Kurikulum Merdeka tetap bisa dicetak, tetapi pengaturan, materi kelas, dan data prestasi/hafalan otomatis baru aktif setelah Code.gs diperbarui.') : '') +
+      '<p class="muted" style="font-size:12.5px;margin:0 0 6px">Semester aktif: <b>'+esc(info.semester.nama || '-')+'</b>. Nilai akhir = Nilai Pengetahuan di Rekap Nilai guru. Capaian kompetensi = predikat dari nilai + materi yang diisi per kelas (saran diambil dari Jurnal Mengajar). Ketidakhadiran dari <b>Halaqoh Maghrib</b> dan <b>absensi asrama</b> (bentrok &rarr; Halaqoh Maghrib).</p>' +
+      (daftarKelas.length ? '' : warnBox('Belum ada kelas yang memakai rapor Kurikulum Merdeka.' + (info.bolehAtur ? ' Atur di "Jenis rapor per kelas".' : ''))) +
+      '<label>Kelas</label><select id="rkmKelas">'+(daftarKelas.length ? daftarKelas.map(function(k){ return '<option>'+esc(k)+'</option>'; }).join('') : '<option value="">(tidak ada kelas)</option>')+'</select>' +
+      '<div id="rkmIsi" style="margin-top:12px"></div>';
+    document.getElementById('rkmKelas').onchange = muat;
+    muat();
+    function muat(){
+      var kelas = document.getElementById('rkmKelas').value, isi = document.getElementById('rkmIsi');
+      if (!kelas) { isi.innerHTML = ''; return; }
+      isi.innerHTML = '<p class="muted">&#9203; Mengumpulkan nilai, kehadiran, hafalan, dan jurnal kelas '+esc(kelas)+'...</p>';
+      Promise.all([apiPrm('raporWuKelas', {kelas: kelas}), info.kmServerLama ? Promise.resolve(null) : apiPrm('raporKmKelas', {kelas: kelas}).catch(function(){ return null; }), muatMesinRaporKM(), rhfMuat(kelas, info.kmServerLama)]).then(function(h){
+        if (!h[0].ok) { isi.innerHTML = errBox(h[0].error); return; }
+        ctx = h[0].data; ctx.mapelWasiat = info.mapelWasiat; ctx.aturan = h[0].data.aturan || {}; ctx.aturanKm = info.aturanKm || {};
+        var x = h[1] && h[1].ok ? h[1].data : null;
+        ctx.km = x || {kelasCfg: {}, mapelKelas: [], materiJurnal: {}, santri: {}};
+        ctx.kmGalat = h[1] && !h[1].ok ? h[1].error : '';
+        ctx.hafalan = h[3].data; ctx.hafalanGalat = h[3].galat;
+        if (x && x.aturanKm) ctx.aturanKm = x.aturanKm;
+        gambar();
+      }).catch(function(e){ isi.innerHTML = errBox(e && e.message || 'Gagal memuat.'); });
+    }
+    function gambar(){
+      rkmSiapkan(ctx);
+      var cfg = ctx.cfgKm, isi = document.getElementById('rkmIsi');
+      var tampil = ctx._baris.filter(function(r){ return !r.judul && r._tampil; });
+      var tanpaMateri = tampil.filter(function(r){ return !rkmMateri(ctx, r, null) && !rkmBarisHafalan(r); });
+      var baris = ctx.santri.map(function(s, i){
+        var o = rkmSantriCetak(ctx, s, cfg, ctx._peringkat);
+        var terisi = o.mapel.filter(function(m){ return !m.judul && m.nilai !== ''; }).length, jml = o.mapel.filter(function(m){ return !m.judul; }).length;
+        return '<tr><td>'+(i+1)+'</td><td><b>'+esc(s.nama)+'</b><div class="muted" style="font-size:11.5px">NISN '+esc(s.nisn)+(s.induk ? '' : ' &middot; <span style="color:#b45309">Buku Induk belum diisi</span>')+'</div></td>' +
+          '<td>'+terisi+'/'+jml+'</td><td>'+esc(o.rata === '' ? '-' : o.rata)+'</td><td>'+o.hadir.s+' / '+o.hadir.i+' / '+o.hadir.a+'</td><td>'+rhfLabelSel(o.hafalan)+'</td><td>'+(s.isian && s.isian.km ? '&#9989;' : '<span class="muted">-</span>')+'</td>' +
+          '<td style="white-space:nowrap"><button class="small rkmIsi" data-i="'+i+'">Isi / periksa</button> <button class="small secondary rkmCetak1" data-i="'+i+'">&#128424;&#65039;</button></td></tr>';
+      }).join('');
+      isi.innerHTML = (ctx.kmGalat ? warnBox('Data tambahan Kurmer belum termuat: ' + ctx.kmGalat) : '') +
+        (ctx.hafalanGalat ? warnBox('Lembar Capaian Hafalan belum bisa dibuat: ' + ctx.hafalanGalat) : '') +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"><button class="small" id="rkmMateri">&#128221; Materi capaian kelas ini</button>' +
+        '<button class="small" id="rkmCetakSemua">&#128424;&#65039; Cetak rapor semua santri ('+ctx.santri.length+')</button>' +
+        '<select id="rkmLembar" style="width:auto;padding:4px 8px"><option value="">Semua halaman</option>'+window.RaporKM.LEMBAR.map(function(l){ return '<option value="'+l[0]+'">Hanya: '+esc(l[1])+'</option>'; }).join('')+'</select></div>' +
+        (tanpaMateri.length ? warnBox('Materi capaian belum diisi untuk ' + tanpaMateri.length + ' mapel (' + tanpaMateri.map(function(r){ return r.nama; }).join(', ') + '). Deskripsi di rapor akan berhenti di "Menunjukkan penguasaan yang ...". Isi lewat tombol "Materi capaian kelas ini".') : '') +
+        '<p class="muted" style="font-size:12px;margin:0 0 6px">Wali kelas: <b>'+esc(ctx.wali || '(belum diatur di Data Guru)')+'</b> &middot; Kelas di rapor: <b>'+esc(cfg.periode.kelas)+'</b> &middot; Fase <b>'+esc(cfg.periode.fase)+'</b> &middot; Tanggal rapor: <b>'+esc(window.RaporKM.tglIndo(cfg.tglRapor))+'</b> &middot; Mapel dicetak: '+tampil.length+'</p>' +
+        (ctx.santri.length ? '<div style="overflow-x:auto"><table><tr><th>No</th><th>Santri</th><th>Nilai</th><th>Rata-rata</th><th>S / I / A</th><th>Hafalan baru</th><th>Isian</th><th></th></tr>'+baris+'</table></div>' : '<p class="muted">Belum ada santri di kelas ini.</p>');
+      var lembar = function(){ var v = document.getElementById('rkmLembar').value; return v ? [v] : null; };
+      isi.querySelectorAll('.rkmIsi').forEach(function(b){ b.onclick = function(){ rkmEditor(ctx, ctx.santri[Number(b.dataset.i)], gambar); }; });
+      isi.querySelectorAll('.rkmCetak1').forEach(function(b){ b.onclick = function(){ rkmCetak(ctx, [ctx.santri[Number(b.dataset.i)]], lembar()); }; });
+      document.getElementById('rkmCetakSemua').onclick = function(){ rkmCetak(ctx, ctx.santri, lembar()); };
+      document.getElementById('rkmMateri').onclick = function(){ rkmMateriKelas(ctx, gambar); };
+    }
+  }
+
+  function rkmCetak(ctx, daftar, lembar){
+    var w = window.open('', '_blank');
+    if (w) { try { w.document.write('<p style="font-family:Arial;padding:20px">Menyiapkan rapor...</p>'); } catch(e){} }
+    muatMesinRaporKM().then(function(R){
+      rkmSiapkan(ctx);
+      var cfg = ctx.cfgKm;
+      var html = R.dokumen('Rapor ' + (daftar.length === 1 ? daftar[0].nama : ctx.kelas), cfg, daftar.map(function(s){ return rkmSantriCetak(ctx, s, cfg, ctx._peringkat); }), lembar);
+      if (w && !w.closed) { w.document.open(); w.document.write(html); w.document.close(); return; }
+      var blob = new Blob([html], {type:'text/html'}); var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'Rapor Kurmer ' + ctx.kelas + '.html'; a.click();
+    }).catch(function(e){ alert(e.message); if (w) w.close(); });
+  }
+
+  function rkmEditor(ctx, s, selesai){
+    rkmSiapkan(ctx);
+    var R = window.RaporKM, cfg = ctx.cfgKm, o = rkmSantriCetak(ctx, s, cfg, ctx._peringkat);
+    var isi = JSON.parse(JSON.stringify((s.isian || {}).km || {})), idn = rkmIdentitas(s);
+    var genap = /genap/i.test(cfg.periode.semester);
+    var inp = function(id, v, extra){ return '<input id="'+id+'" value="'+esc(v == null ? '' : v)+'" '+(extra||'')+'>'; };
+    var sek = function(no, judul, isiHtml, buka){ return '<details'+(buka ? ' open' : '')+'><summary style="cursor:pointer;font-weight:700;margin:10px 0 6px">'+no+'. '+judul+'</summary>'+isiHtml+'</details>'; };
+    var ekRows = (o.ekskul.length ? o.ekskul : []).slice(); while (ekRows.length < 3) ekRows.push({});
+    var prRows = (o.prestasi.length ? o.prestasi : []).slice(); while (prRows.length < 3) prRows.push({});
+    var html = '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><b>'+esc(s.nama)+'</b><span><button class="small" id="rkSimpan">&#128190; Simpan</button> <button class="small secondary" id="rkCetak">&#128424;&#65039; Pratinjau / cetak</button> <button class="small secondary" data-tutup>Tutup</button></span></div><div id="rkPesan"></div>' +
+      sek(1, 'Identitas peserta didik (Buku Induk)', '<p class="muted" style="font-size:12px;margin:0 0 6px">Dipakai juga oleh rapor K13. Diisi sekali, berlaku setiap semester.'+(s.induk ? '' : (s.ppdb ? ' Terisi awal dari formulir SPMB.' : ''))+'</p><div class="grid2">' +
+        RKM_ID.map(function(r){ return '<div><label>'+esc(r[1])+'</label>'+inp('rkId_'+r[0], idn[r[0]], r[0] === 'diterimaTgl' ? 'type="date"' : '')+'</div>'; }).join('') +
+        '<div><label>Pas foto 3x4 (opsional)</label><input type="file" id="rkFoto" accept="image/*">'+(idn.foto ? '<img src="'+idn.foto+'" style="height:70px;margin-top:4px;border-radius:4px">' : '')+'</div></div>', !s.induk) +
+      sek(2, 'Nilai akhir &amp; capaian kompetensi', '<p class="muted" style="font-size:12px;margin:0 0 6px">Angka/teks abu-abu = otomatis dari WASIAT. Isi kotak hanya bila ingin mengganti untuk santri ini.</p><div style="overflow-x:auto"><table><tr><th>Mapel</th><th style="width:90px">Nilai akhir</th><th>Capaian kompetensi</th></tr>' +
+        o.mapelSemua.filter(function(m){ return !m.judul; }).map(function(m){
+          var u = (isi.nilai || {})[m._key], d = (isi.desk || {})[m._key];
+          return '<tr><td>'+esc(m.nama)+(m._tampil ? '' : '<div class="muted" style="font-size:11px">tidak dicetak (belum ada nilai)</div>')+'</td>' +
+            '<td><input class="rkN" data-k="'+esc(m._key)+'" type="number" min="0" max="100" style="width:80px" placeholder="'+esc(m.auto === '' ? '-' : m.auto)+'" value="'+esc(u == null ? '' : u)+'"></td>' +
+            '<td><textarea class="rkD" data-k="'+esc(m._key)+'" rows="2" style="min-width:260px" placeholder="'+esc(m.deskAuto || '(otomatis setelah nilai ada)')+'">'+esc(d || '')+'</textarea></td></tr>';
+        }).join('') + '</table></div>', true) +
+      sek(3, 'Ekstrakurikuler', '<p class="muted" style="font-size:12px;margin:0 0 6px">'+(o.ekskulAuto.length ? 'Terisi otomatis dari nilai ekstrakurikuler di WASIAT.' : 'Belum ada nilai ekstrakurikuler di WASIAT untuk santri ini; isi manual bila ada.')+'</p>' +
+        ekRows.map(function(x, i){ return '<div class="grid2" style="grid-template-columns:2fr 1fr 2fr"><div><label>Kegiatan '+(i+1)+'</label><input class="rkEn" value="'+esc(x.nama||'')+'"></div><div><label>Nilai</label><input class="rkEv" list="rkEkOpt" value="'+esc(x.nilai||'')+'"></div><div><label>Keterangan</label><input class="rkEk" value="'+esc(x.ket||'')+'"></div></div>'; }).join('') +
+        '<datalist id="rkEkOpt"><option value="Sangat Baik"><option value="Baik"><option value="Cukup"><option value="Kurang"></datalist>') +
+      sek(4, 'Prestasi', '<p class="muted" style="font-size:12px;margin:0 0 6px">'+(o.prestasiAuto.length ? 'Terisi otomatis dari catatan prestasi'+(o._ex.tasmi ? ", riwayat tasmi'" : '')+(ctx._peringkat ? ', peringkat kelas' : '')+'.' : 'Belum ada catatan prestasi santri ini di WASIAT.')+'</p>' +
+        prRows.map(function(x, i){ return '<div class="grid2"><div><label>Jenis prestasi '+(i+1)+'</label><input class="rkPj" value="'+esc(x.jenis||'')+'"></div><div><label>Keterangan</label><input class="rkPk" value="'+esc(x.ket||'')+'"></div></div>'; }).join('')) +
+      sek(5, 'Ketidakhadiran', '<p class="muted" style="font-size:12px;margin:0 0 6px">Otomatis: sakit '+(s.hadir||{}).s+', izin '+(s.hadir||{}).i+', tanpa keterangan '+(s.hadir||{}).a+' hari (dari '+((s.hadir||{}).hariMaghrib||0)+' hari catatan Halaqoh Maghrib, '+((s.hadir||{}).hariAsrama||0)+' hari absensi asrama'+((s.hadir||{}).bentrok ? ', '+s.hadir.bentrok+' hari berbeda &rarr; dipakai Halaqoh Maghrib' : '')+'). Kosongkan untuk memakai angka otomatis.</p><div class="grid2">' +
+        [['s','Sakit'],['i','Izin'],['a','Tanpa keterangan']].map(function(x){ var v = (isi.hadir || {})[x[0]]; return '<div><label>'+x[1]+'</label><input class="rkH" data-f="'+x[0]+'" type="number" min="0" placeholder="'+esc((s.hadir||{})[x[0]] || 0)+'" value="'+esc(v == null ? '' : v)+'"></div>'; }).join('') + '</div>') +
+      sek(6, 'Catatan wali kelas', '<textarea id="rkCatatan" rows="3" placeholder="'+esc(((ctx.km||{}).kelasCfg||{}).catatanDefault || '')+'">'+esc(isi.catatan || '')+'</textarea>' +
+        '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">'+RKM_CATATAN_SARAN.map(function(t){ return '<button type="button" class="small secondary rkSaran" style="font-size:11px">'+esc(t)+'</button>'; }).join('')+'</div>', true) +
+      (genap ? sek(7, 'Keterangan kenaikan kelas', '<label>Keterangan</label><input id="rkNaik" list="rkNaikOpt" placeholder="'+esc(o.naikAuto)+'" value="'+esc(isi.naik || '')+'"><datalist id="rkNaikOpt"><option value="'+esc(o.naikAuto)+'"><option value="TIDAK NAIK, tetap di kelas '+esc(cfg.periode.kelas)+'"></datalist><p class="muted" style="font-size:12px">Kosongkan untuk memakai: '+esc(o.naikAuto)+'</p>', true) : '');
+    var m = keuModal(html, 900);
+    var fotoBaru = null;
+    m.el.querySelector('#rkFoto').onchange = function(){
+      var f = this.files[0]; if (!f) return;
+      var r = new FileReader(); r.onload = function(){ var im = new Image(); im.onload = function(){ var cv = document.createElement('canvas'), sk = Math.min(1, 300/im.width, 400/im.height); cv.width = Math.round(im.width*sk); cv.height = Math.round(im.height*sk); cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height); fotoBaru = cv.toDataURL('image/jpeg', .8); }; im.src = r.result; }; r.readAsDataURL(f);
+    };
+    m.el.querySelectorAll('.rkSaran').forEach(function(b){ b.onclick = function(){ var t = m.el.querySelector('#rkCatatan'); t.value = (t.value.trim() ? t.value.trim() + ' ' : '') + b.textContent; }; });
+    function kumpul(){
+      var q = function(sel){ return Array.prototype.slice.call(m.el.querySelectorAll(sel)); };
+      var induk = Object.assign({}, rwuIdentitas(s));
+      RKM_ID.forEach(function(r){ induk[r[0]] = m.el.querySelector('#rkId_'+r[0]).value.trim(); });
+      if (!induk.ijazahAsal && induk.sekolahAsal) induk.ijazahAsal = induk.sekolahAsal;
+      induk.foto = fotoBaru || idn.foto || '';
+      var baru = {nilai: {}, desk: {}, hadir: {}};
+      q('.rkN').forEach(function(x){ if (x.value !== '') baru.nilai[x.dataset.k] = Number(x.value); });
+      q('.rkD').forEach(function(x){ if (x.value.trim()) baru.desk[x.dataset.k] = x.value.trim(); });
+      q('.rkH').forEach(function(x){ if (x.value !== '') baru.hadir[x.dataset.f] = Number(x.value); });
+      var ek = q('.rkEn').map(function(x, i){ return {nama: x.value.trim(), nilai: q('.rkEv')[i].value.trim(), ket: q('.rkEk')[i].value.trim()}; }).filter(function(x){ return x.nama || x.nilai || x.ket; });
+      var pr = q('.rkPj').map(function(x, i){ return {jenis: x.value.trim(), ket: q('.rkPk')[i].value.trim()}; }).filter(function(x){ return x.jenis || x.ket; });
+      var sama = function(a, b){ return JSON.stringify(a) === JSON.stringify((b || []).map(function(x){ return x.jenis !== undefined ? {jenis: x.jenis || '', ket: x.ket || ''} : {nama: x.nama || '', nilai: x.nilai || '', ket: x.ket || ''}; })); };
+      if (!sama(ek, o.ekskulAuto)) baru.ekskul = ek;
+      if (!sama(pr, o.prestasiAuto)) baru.prestasi = pr;
+      baru.catatan = m.el.querySelector('#rkCatatan').value.trim();
+      var nk = m.el.querySelector('#rkNaik'); if (nk) baru.naik = nk.value.trim();
+      return {induk: induk, isian: Object.assign({}, s.isian || {}, {km: baru})};
+    }
+    m.el.querySelector('#rkSimpan').onclick = function(){
+      var b = this, d = kumpul(); loadingBtn(b, 'Menyimpan...');
+      apiPrm('raporWuSimpan', {kelas: ctx.kelas, nisn: s.nisn, nama: s.nama, induk: d.induk, isian: d.isian}).then(function(r){
+        resetBtn(b, '&#128190; Simpan');
+        if (!r.ok) { m.el.querySelector('#rkPesan').innerHTML = errBox(r.error); return; }
+        s.induk = d.induk; s.isian = d.isian;
+        m.el.querySelector('#rkPesan').innerHTML = '<div class="muted" style="color:#166534;font-size:13px">&#9989; Tersimpan.</div>';
+        if (selesai) selesai();
+      });
+    };
+    m.el.querySelector('#rkCetak').onclick = function(){ var d = kumpul(); rkmCetak(ctx, [Object.assign({}, s, {induk: d.induk, isian: d.isian})]); };
+  }
+
+  // Materi capaian per mapel untuk satu kelas (semester aktif) -- diisi wali kelas / Admin
+  function rkmMateriKelas(ctx, selesai){
+    var kc = JSON.parse(JSON.stringify((ctx.km && ctx.km.kelasCfg) || {})), materi = kc.materi || {}, jurnal = (ctx.km && ctx.km.materiJurnal) || {};
+    var rows = (ctx._baris || rkmBaris(ctx)).filter(function(r){ return !r.judul; });
+    var html = '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><b>&#128221; Materi capaian &middot; kelas '+esc(ctx.kelas)+' &middot; '+esc((ctx.semester||{}).nama || '')+'</b><span><button class="small" id="rmSimpan">Simpan</button> <button class="small secondary" data-tutup>Tutup</button></span></div><div id="rmPesan"></div>' +
+      '<p class="muted" style="font-size:12.5px">Tulis materi/tujuan pembelajaran utama tiap mapel semester ini. Rapor menyusunnya menjadi: <i>"Menunjukkan penguasaan yang <b>[sangat baik / baik / cukup baik]</b> dalam <b>[materi]</b>."</i> sesuai nilai santri (di bawah KKTP: <i>"Perlu bimbingan dalam [materi]."</i>). Klik saran dari Jurnal Mengajar untuk menambahkannya. Untuk tahfizh, <code>{hafalan}</code> diganti otomatis dengan cakupan hafalan tiap santri.</p>' +
+      '<div class="grid2"><div><label>Tanggal rapor (tanda tangan)</label><input type="date" id="rmTgl" value="'+esc(kc.tglRapor || '')+'"></div><div><label>Catatan wali kelas bawaan (bila catatan santri kosong)</label><input id="rmCat" value="'+esc(kc.catatanDefault || '')+'"></div></div>' +
+      rows.map(function(r){
+        var sar = (jurnal[r._src] || []).slice(0, 10);
+        return '<div style="border-top:1px solid #e2e8f0;padding:8px 0;margin-top:6px"><label style="font-weight:700">'+esc(r.nama)+' <span class="muted" style="font-weight:400;font-size:11.5px">'+(r._src === '#hafalan' ? '(nilai dari hafalan)' : r._src ? '(nilai dari: '+esc(r._src)+')' : '(nilai diisi manual)')+(rkmBarisHafalan(r) ? ' &middot; kosongkan = otomatis cakupan hafalan santri' : '')+(r._tampil ? '' : ' &middot; belum ada nilai, tidak dicetak')+'</span></label>' +
+          '<textarea class="rmM" data-k="'+esc(r._key)+'" rows="2" placeholder="'+(rkmBarisHafalan(r) ? 'Kosongkan = otomatis {hafalan}' : 'contoh: memahami hukum bacaan mad dan menerapkannya dalam tilawah')+'">'+esc(materi[r._key] || '')+'</textarea>' +
+          (sar.length ? '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px"><span class="muted" style="font-size:11px;align-self:center">Dari Jurnal Mengajar:</span>'+sar.map(function(x, j){ return '<button type="button" class="small secondary rmSar" data-k="'+esc(r._key)+'" data-s="'+esc(r._src)+'" data-j="'+j+'" style="font-size:11px" title="'+esc(x.t+' ('+x.n+' kali, terakhir '+x.tgl+')')+'">+ '+esc(x.t.length > 70 ? x.t.slice(0, 70) + '...' : x.t)+'</button>'; }).join('')+'</div>' : '') +
+          '</div>';
+      }).join('');
+    var m = keuModal(html, 860);
+    var cari = function(k){ return Array.prototype.slice.call(m.el.querySelectorAll('.rmM')).filter(function(t){ return t.dataset.k === k; })[0]; };
+    m.el.querySelectorAll('.rmSar').forEach(function(b){ b.onclick = function(){
+      var t = cari(b.dataset.k), x = (jurnal[b.dataset.s] || [])[Number(b.dataset.j)];
+      if (!t || !x) return;
+      var teks = x.t.replace(/[.\s]+$/, '');
+      teks = teks.charAt(0).toLowerCase() + teks.slice(1);
+      t.value = t.value.trim() ? t.value.trim().replace(/[.\s]+$/, '') + ', ' + teks : teks;
+    }; });
+    m.el.querySelector('#rmSimpan').onclick = function(){
+      var btn = this, baru = {materi: {}, tglRapor: m.el.querySelector('#rmTgl').value, catatanDefault: m.el.querySelector('#rmCat').value.trim()};
+      m.el.querySelectorAll('.rmM').forEach(function(t){ if (t.value.trim()) baru.materi[t.dataset.k] = t.value.trim(); });
+      loadingBtn(btn, 'Menyimpan...');
+      apiPrm('raporKmSimpanKelas', {kelas: ctx.kelas, kelasCfg: baru}).then(function(r){
+        resetBtn(btn, 'Simpan');
+        if (!r.ok) { m.el.querySelector('#rmPesan').innerHTML = errBox(r.error); return; }
+        ctx.km.kelasCfg = baru; m.tutup(); if (selesai) selesai();
+      });
+    };
+  }
+
+  // Jenis rapor tiap kelas (Admin/Mudir)
+  function rkmAturJenis(info, selesai){
+    var html = '<div style="display:flex;justify-content:space-between;align-items:center"><b>&#128450;&#65039; Jenis rapor per kelas</b><span><button class="small" id="rjSimpan">Simpan</button> <button class="small secondary" data-tutup>Tutup</button></span></div><div id="rjPesan"></div>' +
+      '<p class="muted" style="font-size:12.5px">Pilih rapor yang dipakai tiap kelas. Nilai, kehadiran, dan Buku Induk santri sama untuk kedua jenis rapor, jadi kelas bisa dipindah kapan saja.</p>' +
+      '<table><tr><th>Kelas</th><th>Jenis rapor</th></tr>' + info.kelas.map(function(k){ var j = rkmJenisKelas(info, k);
+        return '<tr><td>'+esc(k)+'</td><td><select class="rjS" data-k="'+esc(k)+'"><option value="k13"'+(j==='k13'?' selected':'')+'>K13 (PK PPS Wustha)</option><option value="km"'+(j==='km'?' selected':'')+'>Kurikulum Merdeka</option><option value=""'+(j!=='k13'&&j!=='km'?' selected':'')+'>Belum memakai rapor</option></select></td></tr>'; }).join('') + '</table>';
+    var m = keuModal(html, 560);
+    m.el.querySelector('#rjSimpan').onclick = function(){
+      var btn = this, jk = {};
+      m.el.querySelectorAll('.rjS').forEach(function(s){ jk[s.dataset.k] = s.value; });
+      loadingBtn(btn, 'Menyimpan...');
+      apiPrm('raporKmAtur', {aturan: Object.assign({}, info.aturanKm || {}, {jenisKelas: jk})}).then(function(r){
+        resetBtn(btn, 'Simpan');
+        if (!r.ok) { m.el.querySelector('#rjPesan').innerHTML = errBox(/tidak dikenal|unknown|belum/i.test(r.error || '') ? 'Kode server (Code.gs) belum diperbarui ke versi 2026.11.27-a.' : r.error); return; }
+        info.aturanKm = r.data; m.tutup(); if (selesai) selesai();
+      });
+    };
+  }
+
+  // Pengaturan rapor Kurikulum Merdeka (Admin/Mudir)
+  function rkmAtur(info, selesai){
+    var A = JSON.parse(JSON.stringify(info.aturanKm || {})), aK = info.aturan || {};
+    var lk = aK.lembaga || {};
+    var L = Object.assign({}, RKM_LEMBAGA, {kepala: lk.kepala || 'Muh. Idul Fitran, S.H.', niyKepala: lk.niyKepala || '10031994092018027'}, A.lembaga || {});
+    var K = Object.assign({}, RKM_KOP, A.kop || {}), S = Object.assign({}, RKM_SAMPUL, A.sampul || {});
+    var rows = rkmMapel(A).map(function(r){ return Object.assign({}, r, {sumber: rkmSumber(r, aK, info.mapelWasiat)}); });
+    var eks = rkmEkskulSumber(A, info.mapelWasiat), amb = (Array.isArray(A.ambang) && A.ambang.length === 3) ? A.ambang : [90, 80, 70];
+    var grid = function(kelas, obj, lbl){ return '<div class="grid2">' + Object.keys(lbl).map(function(k){ return '<div><label>'+lbl[k]+'</label><input class="'+kelas+'" data-k="'+k+'" value="'+esc(obj[k] || '')+'"></div>'; }).join('') + '</div>'; };
+    var opsiSumber = function(v){ return '<option value="">— diisi manual —</option><option value="#hafalan"'+(v==='#hafalan'?' selected':'')+'>Hafalan (rata-rata nilai setoran)</option>' + info.mapelWasiat.map(function(x){ return '<option'+(x===v?' selected':'')+'>'+esc(x)+'</option>'; }).join(''); };
+    var barisMapel = function(r){
+      var jenis = r.judul ? 'judul' : r.sub ? 'sub' : 'mapel';
+      return '<tr class="raMp"><td><select class="mJ" style="width:auto"><option value="mapel"'+(jenis==='mapel'?' selected':'')+'>Mapel</option><option value="judul"'+(jenis==='judul'?' selected':'')+'>Judul kelompok</option><option value="sub"'+(jenis==='sub'?' selected':'')+'>Sub-mapel (A, B, ...)</option></select></td>' +
+        '<td><input class="mN" value="'+esc(r.nama)+'"></td><td><select class="mS"'+(r.judul?' disabled':'')+'>'+opsiSumber(r.sumber || '')+'</select></td>' +
+        '<td style="white-space:nowrap"><button type="button" class="small secondary mU">&#8593;</button><button type="button" class="small secondary mD">&#8595;</button><button type="button" class="small secondary mX">&#10005;</button></td></tr>';
+    };
+    var html = '<div style="display:flex;justify-content:space-between;align-items:center"><b>&#9881;&#65039; Pengaturan Rapor Kurikulum Merdeka</b><span><button class="small" id="kaSimpan">Simpan</button> <button class="small secondary" data-tutup>Tutup</button></span></div><div id="kaPesan"></div>' +
+      '<h4>Pondok &amp; penanda tangan</h4>' + grid('kaL', L, {nama:'Nama pondok', namaPendek:'Nama di identitas halaman nilai', alamatPendek:'Alamat di identitas halaman nilai', labelSatuan:'Label baris nama pondok', kepala:'Nama pimpinan (tanda tangan)', jabatanKepala:'Jabatan pimpinan', niyKepala:'NIY pimpinan'}) +
+      '<div class="grid2"><div><label>Kota (tempat tanda tangan)</label><input id="kaKota" value="'+esc(A.kota || 'Poso')+'"></div><div><label>Tanggal rapor bawaan (bisa diganti per kelas)</label><input type="date" id="kaTgl" value="'+esc(A.tglRapor || '')+'"></div>' +
+      '<div><label>Tanggal di halaman identitas (kosong = tanggal diterima santri)</label><input type="date" id="kaTglId" value="'+esc(A.tglIdentitas || '')+'"></div></div>' +
+      '<h4>Kop rapor</h4><p class="muted" style="font-size:12px;margin:0">Logo pondok diambil dari pengaturan aplikasi.</p>' + grid('kaK', K, {b1:'Baris 1 (kecil, tebal)', b2:'Baris 2 (nama pondok, besar)', b3:'Baris 3 (alamat, miring)', b4:'Baris 4 (miring)'}) +
+      '<div class="grid2"><div><label>Logo di kanan kop</label><select id="kaLogoKanan"><option value="kosong">Hanya logo kiri</option><option value="kanan"'+(A.logoKanan==='kanan'?' selected':'')+'>Logo kiri &amp; kanan</option></select></div></div>' +
+      '<h4>Sampul</h4>' + grid('kaS', S, {j1:'Judul baris 1', j2:'Judul baris 2', j3:'Judul baris 3', j4:'Judul baris 4', bawah1:'Nama di bagian bawah', bawah2:'Baris bawah 2', bawah3:'Baris bawah 3'}) +
+      '<h4>Tampilan &amp; penilaian</h4><div class="grid2">' +
+        '<div><label>Ukuran kertas</label><select id="kaKertas"><option value="A4">A4</option><option value="F4"'+(A.kertas==='F4'?' selected':'')+'>F4 / Folio</option></select></div>' +
+        '<div><label>Tulisan tanda air (kosong = tanpa tanda air)</label><input id="kaWm" value="'+esc(A.watermark === false ? '' : (A.watermarkTeks || 'PP WIHDATUL UMMAH POSO'))+'"></div>' +
+        '<div><label>Batas predikat: sangat baik / baik / cukup baik (di bawahnya = perlu bimbingan)</label><div style="display:flex;gap:4px"><input class="kaAm" type="number" value="'+esc(amb[0])+'"><input class="kaAm" type="number" value="'+esc(amb[1])+'"><input class="kaAm" type="number" value="'+esc(amb[2])+'"></div></div>' +
+        '<div style="display:flex;flex-direction:column;gap:4px;justify-content:center"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="kaRata" style="width:auto"'+(A.tampilRata?' checked':'')+'> Tampilkan baris rata-rata</label>' +
+        '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="kaRank" style="width:auto"'+(A.peringkat?' checked':'')+'> Cantumkan peringkat kelas di Prestasi</label>' +
+        '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="kaSembunyi" style="width:auto"'+(A.sembunyikanKosong===false?'':' checked')+'> Sembunyikan mapel yang tidak ada nilainya di kelas</label></div></div>' +
+      '<h4>Mata pelajaran rapor &amp; sumber nilainya</h4><div style="overflow-x:auto"><table id="kaMapel"><tr><th>Jenis baris</th><th>Nama di rapor</th><th>Ambil nilai dari (WASIAT)</th><th></th></tr>' + rows.map(barisMapel).join('') + '</table></div>' +
+      '<button type="button" class="small secondary" id="kaTambah" style="margin-top:6px">+ Tambah baris</button> <button type="button" class="small secondary" id="kaBawaan" style="margin-top:6px">Kembalikan susunan bawaan</button>' +
+      '<h4>Mapel WASIAT yang dihitung sebagai ekstrakurikuler</h4><div class="grid2">' + info.mapelWasiat.map(function(x){ return '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="kaE" value="'+esc(x)+'" style="width:auto"'+(eks.indexOf(x)>=0?' checked':'')+'> '+esc(x)+'</label>'; }).join('') + '</div>' +
+      '<h4>Tulisan kelas &amp; fase di rapor</h4><p class="muted" style="font-size:12px">Kosongkan untuk memakai nama kelas di WASIAT dan fase D.</p><div class="grid2">' +
+        info.kelas.filter(function(k){ return rkmJenisKelas(info, k) === 'km'; }).map(function(k){ return '<div><label>Kelas '+esc(k)+'</label><div style="display:flex;gap:4px"><input class="kaKl" data-k="'+esc(k)+'" placeholder="'+esc(k)+'" value="'+esc((A.kelasLabel||{})[k]||'')+'"><input class="kaF" data-k="'+esc(k)+'" placeholder="D" style="width:60px" value="'+esc((A.fase||{})[k]||'')+'"></div></div>'; }).join('') + '</div>' +
+      '<label style="margin-top:8px">NIY wali kelas (satu per baris: Nama = NIY). Kosong = memakai daftar NIY di pengaturan rapor K13.</label><textarea id="kaNiy" rows="3">'+esc(Object.keys(A.niyTampil||{}).map(function(n){ return n + ' = ' + A.niyTampil[n]; }).join('\n'))+'</textarea>';
+    var m = keuModal(html, 900);
+    var tbl = m.el.querySelector('#kaMapel');
+    function pasang(){
+      tbl.querySelectorAll('tr.raMp').forEach(function(tr){
+        tr.querySelector('.mU').onclick = function(){ var p = tr.previousElementSibling; if (p && p.classList.contains('raMp')) tr.parentNode.insertBefore(tr, p); };
+        tr.querySelector('.mD').onclick = function(){ var n = tr.nextElementSibling; if (n) tr.parentNode.insertBefore(n, tr); };
+        tr.querySelector('.mX').onclick = function(){ tr.parentNode.removeChild(tr); };
+        tr.querySelector('.mJ').onchange = function(){ tr.querySelector('.mS').disabled = this.value === 'judul'; };
+      });
+    }
+    pasang();
+    m.el.querySelector('#kaTambah').onclick = function(){ var t = document.createElement('tbody'); t.innerHTML = barisMapel({nama: '', sumber: ''}); tbl.querySelector('tbody').appendChild(t.firstChild); pasang(); };
+    m.el.querySelector('#kaBawaan').onclick = function(){
+      if (!confirm('Kembalikan susunan mapel ke bawaan?')) return;
+      tbl.querySelectorAll('tr.raMp').forEach(function(tr){ tr.parentNode.removeChild(tr); });
+      var t = document.createElement('tbody'); t.innerHTML = RKM_MAPEL_BAWAAN.map(function(r){ return barisMapel(Object.assign({}, r, {sumber: rkmSumber(r, aK, info.mapelWasiat)})); }).join('');
+      Array.prototype.slice.call(t.children).forEach(function(tr){ tbl.querySelector('tbody').appendChild(tr); }); pasang();
+    };
+    m.el.querySelector('#kaSimpan').onclick = function(){
+      var q = function(sel){ return Array.prototype.slice.call(m.el.querySelectorAll(sel)); }, btn = this;
+      var ambil = function(sel){ var o = {}; q(sel).forEach(function(x){ o[x.dataset.k] = x.value.trim(); }); return o; };
+      var mapel = q('tr.raMp').map(function(tr){
+        var j = tr.querySelector('.mJ').value, nama = tr.querySelector('.mN').value.trim();
+        if (!nama) return null;
+        return j === 'judul' ? {nama: nama, judul: 1} : (j === 'sub' ? {nama: nama, sub: 1, sumber: tr.querySelector('.mS').value} : {nama: nama, sumber: tr.querySelector('.mS').value});
+      }).filter(Boolean);
+      var am = q('.kaAm').map(function(x){ return Number(x.value); });
+      if (am.some(isNaN) || !(am[0] > am[1] && am[1] > am[2])) { m.el.querySelector('#kaPesan').innerHTML = errBox('Batas predikat harus menurun, contoh 90 / 80 / 70.'); return; }
+      var niyTampil = {}, niy = {};
+      m.el.querySelector('#kaNiy').value.split('\n').forEach(function(l){ var p = l.split('='); if (p.length >= 2 && p[0].trim()) { niyTampil[p[0].trim()] = p.slice(1).join('=').trim(); niy[normNamaRwu(p[0])] = p.slice(1).join('=').trim(); } });
+      var kl = {}, fs = {};
+      q('.kaKl').forEach(function(x){ if (x.value.trim()) kl[x.dataset.k] = x.value.trim(); });
+      q('.kaF').forEach(function(x){ if (x.value.trim()) fs[x.dataset.k] = x.value.trim(); });
+      var wm = m.el.querySelector('#kaWm').value.trim();
+      var baru = Object.assign({}, A, {
+        lembaga: ambil('.kaL'), kop: ambil('.kaK'), sampul: ambil('.kaS'), kota: m.el.querySelector('#kaKota').value.trim(), tglRapor: m.el.querySelector('#kaTgl').value,
+        tglIdentitas: m.el.querySelector('#kaTglId').value, logoKanan: m.el.querySelector('#kaLogoKanan').value, kertas: m.el.querySelector('#kaKertas').value,
+        watermark: !!wm, watermarkTeks: wm, ambang: am, tampilRata: m.el.querySelector('#kaRata').checked, peringkat: m.el.querySelector('#kaRank').checked,
+        sembunyikanKosong: m.el.querySelector('#kaSembunyi').checked, mapel: mapel, ekskul: q('.kaE').filter(function(x){ return x.checked; }).map(function(x){ return x.value; }),
+        kelasLabel: kl, fase: fs, niy: niy, niyTampil: niyTampil });
+      loadingBtn(btn, 'Menyimpan...');
+      apiPrm('raporKmAtur', {aturan: baru}).then(function(r){
+        resetBtn(btn, 'Simpan');
+        if (!r.ok) { m.el.querySelector('#kaPesan').innerHTML = errBox(/tidak dikenal|unknown/i.test(r.error || '') ? 'Kode server (Code.gs) belum diperbarui ke versi 2026.11.27-a.' : r.error); return; }
+        info.aturanKm = r.data; m.tutup(); if (selesai) selesai();
       });
     };
   }
@@ -16072,7 +16608,7 @@
       {key:'otomatis', label:'Otomatisasi & Pengingat', icon:'&#9201;&#65039;'},
       {key:'kartusantri', label:'Kartu Santri QR', icon:'&#129706;'},
       {key:'ppdb', label:'PPDB Online', icon:'&#128221;'},
-      {key:'raporwu', label:'Rapor PK PPS (Wustha)', icon:'&#128216;'}
+      {key:'raporwu', label:'Rapor Semester (K13 / Kurmer)', icon:'&#128216;'}
     ];
     var map = {ringkasan:adminRingkasan, tahun:adminTahunAjaran, rombel:adminRombel, halaqoh:adminHalaqoh, santri:adminDataSantri, mutasi:adminMutasiSantri, pengaturankasir:adminPengaturanKasir,
       data:adminDataMaster, pengganti:adminPenggantian, cetakjadwal:halCetakJadwal, rekapguru:adminRekapGuru, rekapsantri:adminRekapSantri, rekaphafalanbulan:halamanRekapHafalanBulanan, rapor:adminRaporSantri,
