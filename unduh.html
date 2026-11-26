@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Aplikasi Android WASIAT</title>
+<meta name="description" content="Unduh aplikasi Android WASIAT: alarm 10 menit sebelum jam mengajar dan pengingat absen untuk ustadz/ustadzah Pondok Pesantren Wihdatul Ummah Poso.">
+<meta name="theme-color" content="#0F5F5C">
+<link rel="icon" href="/favicon-32.png">
+<style>
+  :root{--hijau:#0F5F5C;--hijau2:#13807b;--emas:#F2B33D;--teks:#0f172a;--redup:#475569;--garis:#e2e8f0;--latar:#f5f7f6}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:var(--teks);background:var(--latar);line-height:1.55}
+  a{color:var(--hijau2)}
+  .atas{background:linear-gradient(160deg,var(--hijau),#0b4644);color:#fff;padding:22px 16px 76px}
+  .wadah{max-width:720px;margin:0 auto}
+  .nav{display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .nav a{color:#d1fae5;text-decoration:none;font-size:14px}
+  .merek{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.3px}
+  .merek img{width:38px;height:38px;border-radius:10px;background:#fff}
+  h1{font-size:28px;line-height:1.2;margin:26px 0 8px}
+  .sub{color:#ccfbf1;margin:0;font-size:16px}
+  .kartu{background:#fff;border:1px solid var(--garis);border-radius:16px;padding:20px;margin:16px 0;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+  .unduh{margin-top:-60px;text-align:center}
+  .tombol{display:inline-flex;align-items:center;justify-content:center;gap:10px;background:var(--emas);color:#1f2937;font-weight:800;font-size:18px;
+    padding:15px 26px;border-radius:14px;text-decoration:none;border:0;min-width:260px}
+  .tombol:active{transform:translateY(1px)}
+  .tombol.mati{background:#cbd5e1;color:#475569;pointer-events:none}
+  .ket{color:var(--redup);font-size:13.5px;margin-top:10px}
+  h2{font-size:19px;margin:0 0 12px}
+  .fitur{display:grid;gap:12px}
+  .fitur div{display:flex;gap:12px;align-items:flex-start}
+  .fitur .ik{font-size:24px;line-height:1;flex:0 0 32px;text-align:center}
+  .fitur b{display:block}
+  .fitur span{color:var(--redup);font-size:14px}
+  ol{margin:0;padding-left:22px}
+  ol li{margin:0 0 10px}
+  .catatan{background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:12px 14px;font-size:14px}
+  .ok{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:12px 14px;font-size:14px;margin-top:12px;text-align:left}
+  details{border-top:1px solid var(--garis);padding:10px 0}
+  details:first-of-type{border-top:0}
+  summary{cursor:pointer;font-weight:600}
+  details p{margin:8px 0 0;color:var(--redup);font-size:14.5px}
+  .kaki{text-align:center;color:var(--redup);font-size:13px;padding:10px 16px 30px}
+</style>
+</head>
+<body>
+  <header class="atas">
+    <div class="wadah">
+      <div class="nav">
+        <div class="merek"><img src="/icon-192.png" alt="">WASIAT</div>
+        <a href="/">&larr; Kembali ke beranda</a>
+      </div>
+      <h1>Aplikasi Android WASIAT</h1>
+      <p class="sub">Alarm sebelum jam mengajar dan pengingat absen, langsung di HP ustadz dan ustadzah.</p>
+    </div>
+  </header>
+
+  <main class="wadah" style="padding:0 16px">
+    <section class="kartu unduh">
+      <a id="tUnduh" class="tombol mati" href="/unduh/WASIAT.apk" download="WASIAT.apk">&#11015;&#65039; Unduh Aplikasi (APK)</a>
+      <div class="ket" id="infoVersi">Memeriksa versi terbaru...</div>
+      <div id="sudahPasang"></div>
+    </section>
+
+    <section class="kartu">
+      <h2>Yang didapat dari aplikasi</h2>
+      <div class="fitur">
+        <div><div class="ik">&#9200;</div><p style="margin:0"><b>Alarm 10 menit sebelum jam mengajar</b><span>Berbunyi seperti alarm jam, juga saat HP terkunci dan aplikasi ditutup. Isinya mapel, kelas, dan jam mulai.</span></p></div>
+        <div><div class="ik">&#9888;&#65039;</div><p style="margin:0"><b>Pengingat bila absen belum diisi</b><span>35 menit setelah jam mengajar dimulai, aplikasi memeriksa ke server. Kalau absen sesi itu belum diisi, alarm peringatan berbunyi. Kalau sudah diisi, tidak ada bunyi.</span></p></div>
+        <div><div class="ik">&#128197;</div><p style="margin:0"><b>Jadwal selalu terbaru</b><span>Jadwal 7 hari ke depan diperbarui otomatis setiap pagi. Hari libur, izin yang disetujui, dan jadwal yang digantikan guru lain tidak dibunyikan.</span></p></div>
+        <div><div class="ik">&#128241;</div><p style="margin:0"><b>Semua fitur WASIAT tetap sama</b><span>Isinya sama dengan situs WASIAT, jadi tidak perlu belajar ulang. Pembaruan fitur langsung masuk tanpa memasang ulang aplikasi.</span></p></div>
+      </div>
+    </section>
+
+    <section class="kartu">
+      <h2>Cara memasang</h2>
+      <ol>
+        <li>Tekan tombol <b>Unduh Aplikasi (APK)</b> di atas, tunggu sampai selesai.</li>
+        <li>Buka berkas <b>WASIAT.apk</b> dari notifikasi unduhan atau folder <b>Download</b>.</li>
+        <li>Bila muncul peringatan <i>"Instal aplikasi tidak dikenal"</i>, tekan <b>Setelan</b>, aktifkan <b>Izinkan dari sumber ini</b>, lalu kembali dan tekan <b>Instal</b>. Aplikasi ini resmi dari pondok, hanya saja tidak dipasang lewat Play Store.</li>
+        <li>Buka aplikasi <b>WASIAT</b>, lalu masuk dengan akun yang biasa dipakai.</li>
+        <li>Saat diminta, tekan <b>Izinkan</b> untuk notifikasi.</li>
+        <li>Buka menu <b>Jadwal &amp; Absen</b>. Di bagian atas ada kartu <b>Alarm jam mengajar</b>. Bila ada tanda &#9888;&#65039;, tekan tombol di bawahnya satu per satu sampai semuanya beres, lalu coba <b>Tes alarm</b>.</li>
+      </ol>
+    </section>
+
+    <section class="kartu">
+      <h2>Agar alarm tidak terlewat</h2>
+      <div class="catatan">
+        HP <b>Xiaomi/Redmi/POCO, Oppo, Vivo, Realme, Infinix</b> sering mematikan aplikasi di latar belakang. Buka <b>Setelan &rarr; Aplikasi &rarr; WASIAT</b>, lalu:
+        <ul style="margin:8px 0 0;padding-left:20px">
+          <li>aktifkan <b>Mulai otomatis / Autostart</b>,</li>
+          <li>pada <b>Penghemat baterai</b> pilih <b>Tidak ada pembatasan</b>,</li>
+          <li>pastikan <b>Notifikasi</b> menyala dan <b>Tampilkan di layar kunci</b> diizinkan.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="kartu">
+      <h2>Pertanyaan</h2>
+      <details><summary>Apakah perlu internet?</summary><p>Alarm 10 menit sebelum mengajar tetap berbunyi tanpa internet karena jadwalnya sudah tersimpan di HP. Pengingat absen perlu internet untuk memeriksa apakah absen sudah diisi; bila HP sedang offline, pengingat tetap berbunyi dengan keterangan "tidak dapat memastikan".</p></details>
+      <details><summary>Jam mengajar saya tidak dibunyikan.</summary><p>Alarm memakai jam mulai dari Pengaturan "Jam Mulai Tiap Jam Pelajaran". Bila jam pelajaran di hari itu belum diatur, sesi tersebut tidak diberi alarm. Hubungi Admin. Setelah jadwal diubah, tekan <b>Perbarui</b> di kartu Alarm jam mengajar.</p></details>
+      <details><summary>Bagaimana memperbarui aplikasi?</summary><p>Bila ada versi baru, kartu Alarm jam mengajar akan memberi tahu. Unduh lagi dari halaman ini lalu pasang di atas aplikasi lama.</p></details>
+      <details><summary>Saya memakai iPhone.</summary><p>Aplikasi ini khusus Android. Pengguna iPhone tetap bisa memakai WASIAT lewat Safari di <a href="/">wasiat.vercel.app</a>.</p></details>
+    </section>
+  </main>
+  <div class="kaki">Pondok Pesantren Wihdatul Ummah Poso &middot; WASIAT</div>
+
+<script>
+(function(){
+  var t = document.getElementById('tUnduh'), info = document.getElementById('infoVersi'), sp = document.getElementById('sudahPasang');
+  var diApk = /WASIAT-Android\/([\d.]+)/.exec(navigator.userAgent);
+  var iphone = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  fetch('/unduh/versi.json?t=' + Date.now(), {cache: 'no-store'}).then(function(r){ return r.ok ? r.json() : null; }).then(function(v){
+    if (!v) { info.textContent = 'Aplikasi sedang disiapkan. Silakan coba lagi beberapa menit lagi.'; return; }
+    t.classList.remove('mati');
+    var mb = v.ukuran ? (v.ukuran / 1048576).toFixed(1).replace('.', ',') + ' MB' : '';
+    info.textContent = 'Versi ' + v.versionName + (mb ? ' · ' + mb : '') + (v.tanggal ? ' · diperbarui ' + v.tanggal.split('-').reverse().join('-') : '') + ' · Android 7 ke atas';
+    if (diApk) {
+      var terpasang = diApk[1];
+      var baru = String(v.versionName) !== terpasang && Number(String(v.versionName).split('.').pop()) > Number(terpasang.split('.').pop());
+      sp.innerHTML = '<div class="ok">' + (baru ? 'Anda memakai versi ' + terpasang + '. Versi ' + v.versionName + ' tersedia: tekan tombol di atas untuk memperbarui.' : 'Anda sudah memakai aplikasi WASIAT versi terbaru (' + terpasang + ').') + '</div>';
+    }
+  }).catch(function(){ info.textContent = 'Tidak dapat memeriksa versi. Periksa koneksi internet.'; });
+  if (iphone) sp.innerHTML = '<div class="catatan" style="margin-top:12px;text-align:left">Aplikasi ini khusus HP Android. Di iPhone, tetap gunakan WASIAT lewat Safari.</div>';
+})();
+</script>
+</body>
+</html>

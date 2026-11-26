@@ -10,7 +10,7 @@
 //
 // CACHE_VERSION diisi otomatis saat build — ubah ini kalau mau paksa re-cache semua.
 
-const CACHE_VERSION = 'wasiat-offline-v74'; // diupdate otomatis tiap build
+const CACHE_VERSION = 'wasiat-offline-v75'; // diupdate otomatis tiap build
 const CACHE_NAME = CACHE_VERSION;
 // Cache foto (produk kantin, galeri, logo) SENGAJA tidak diberi nomor versi aplikasi.
 // Kalau ikut versi, setiap kali aplikasi diperbarui semua foto akan terhapus dan
@@ -21,7 +21,7 @@ const CACHE_IMG = 'wasiat-img-v1';
 const APP_SHELL = [
   '/',
   '/index.html',
-  '/app.js?v=2026.11.27-e',
+  '/app.js?v=2026.11.28-a',
   '/manifest.json',
   '/config.js',
   '/icon-192.png',
@@ -127,6 +127,8 @@ self.addEventListener('fetch', function(e) {
     url.pathname.indexOf('/surat/') === 0 || url.pathname === '/surat' ||
     // Halaman pendaftaran santri baru (/ppdb/) juga selalu langsung dari jaringan
     url.pathname.indexOf('/ppdb/') === 0 || url.pathname === '/ppdb' ||
+    // Unduhan aplikasi Android (APK & info versi) selalu langsung dari jaringan
+    url.pathname.indexOf('/unduh') === 0 ||
     req.method !== 'GET'
   ) return;
 

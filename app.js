@@ -328,7 +328,7 @@
   // MEMASTIKAN versi mana yang sedang berjalan di HP -- bukan menebak. Kalau angka
   // ini tidak berubah setelah upload, berarti berkasnya belum sampai atau browser
   // masih memakai salinan lama.
-  var VERSI_APP = '2026.11.27-e';
+  var VERSI_APP = '2026.11.28-a';
   var root = document.getElementById('absensi-app');
   var STATE = { user: null, pengaturan: {NamaPesantren:'Pondok Pesantren', LogoURL:'', WarnaTema:'#0d9488'} };
 
@@ -340,6 +340,8 @@
   var SESI_KEY = 'wasiatSesiUserV1';
   function simpanSesi(){
     try { localStorage.setItem(SESI_KEY, JSON.stringify(STATE.user)); } catch(e) {}
+    // Aplikasi Android: pasang/perbarui alarm jam mengajar
+    try { setTimeout(function(){ alarmSegarkan(false); }, 2500); } catch(e) {}
     // HP ini pernah dipakai login -> jendela sambutan halaman depan tidak muncul otomatis lagi
     try { tandaiPernahMasuk(); } catch(e) {}
   }
@@ -366,6 +368,7 @@
   }
   function hapusSesiTersimpan(){
     try { localStorage.removeItem(SESI_KEY); } catch(e) {}
+    try { if (window.WasiatApp && window.WasiatApp.hapusJadwal) window.WasiatApp.hapusJadwal(); _alarmInfo = null; localStorage.removeItem('wasiat-alarm-info'); } catch(e) {}
     // Data yang di-cache untuk mode offline ikut dibuang saat logout, supaya data
     // santri/kelas milik akun sebelumnya tidak terbaca oleh akun lain yang login
     // di perangkat yang sama.
@@ -716,6 +719,89 @@
         window.OneSignal.User.addTags({ role: roles });
       }
     } catch(e) { /* bukan fitur wajib, jangan ganggu aplikasi */ }
+  }
+
+  // ===== Aplikasi Android WASIAT (APK) =====
+  // Di dalam aplikasi Android tersedia jembatan window.WasiatApp: jadwal mengajar guru dikirim
+  // ke HP supaya alarm berbunyi X menit sebelum jam mengajar dan Y menit setelah mulai bila
+  // absen belum diisi -- tetap berbunyi walau aplikasi ditutup.
+  var DI_APK = !!(window.WasiatApp && typeof window.WasiatApp.jadwalkan === 'function');
+  if (DI_APK) { try { var gayaApk = document.createElement('style'); gayaApk.textContent = '#btnInstallPWA{display:none !important}'; document.head.appendChild(gayaApk); } catch(e){} }
+  var _alarmTerakhir = 0, _alarmInfo = null, _alarmJalan = null;
+  function bolehAlarmMengajar(){
+    var u = STATE.user; if (!u || !u.tokenSurat) return false;
+    var r = u.roles || [u.level];
+    return r.some(function(x){ return x && x !== 'WaliSantri' && x !== 'Santri'; });
+  }
+  function alarmSegarkan(paksa){
+    if (!DI_APK) return Promise.resolve(null);
+    if (!bolehAlarmMengajar()) { try { window.WasiatApp.hapusJadwal(); } catch(e){} return Promise.resolve(null); }
+    if (_alarmJalan) return _alarmJalan;
+    if (!paksa && _alarmInfo && Date.now() - _alarmTerakhir < 30 * 60 * 1000) return Promise.resolve(_alarmInfo);
+    _alarmJalan = apiPrm('getJadwalAlarmGuru', {hari: 7}).then(function(r){
+      _alarmJalan = null;
+      if (!r || !r.ok || !r.data) return null;
+      var d = r.data; _alarmInfo = d; _alarmTerakhir = Date.now();
+      try {
+        window.WasiatApp.jadwalkan(JSON.stringify({url: WEBAPP_URL, token: STATE.user.tokenSurat, nama: STATE.user.nama,
+          menitSebelum: d.menitSebelum, menitTelat: d.menitTelat, sesi: d.sesi || []}));
+      } catch(e){}
+      try { localStorage.setItem('wasiat-alarm-info', JSON.stringify({tanpaWaktu: d.tanpaWaktu || 0, jumlah: (d.sesi || []).length, waktu: Date.now()})); } catch(e){}
+      try { if (document.getElementById('widgetAlarmApk')) setTimeout(function(){ widgetAlarmApk('widgetAlarmApk'); }, 300); } catch(e){}
+      return d;
+    }).catch(function(){ _alarmJalan = null; return null; });
+    return _alarmJalan;
+  }
+  window.wasiatSegarkanAlarm = function(){ try { alarmSegarkan(false); } catch(e){} };
+  window.wasiatBuka = function(apa){
+    if (!STATE.user) return;
+    var roles = STATE.user.roles || [STATE.user.level];
+    if (apa === 'jadwal' && roles.indexOf('Guru') !== -1) { try { dashboardMultiRole(roles, 'Guru', 'jadwal'); return; } catch(e){} }
+    try { lanjutkanKeDashboard(); } catch(e){}
+  };
+  // Kartu di halaman Jadwal & Absen: status alarm (di aplikasi) atau ajakan memasang aplikasi (di Android)
+  function widgetAlarmApk(id){
+    var el = document.getElementById(id); if (!el) return;
+    if (!DI_APK) {
+      if (!/Android/i.test(navigator.userAgent)) { el.innerHTML = ''; return; }
+      var tutup = 0; try { tutup = Number(localStorage.getItem('wasiat-ajak-apk-tutup') || 0); } catch(e){}
+      if (Date.now() - tutup < 7 * 86400000) { el.innerHTML = ''; return; }
+      el.innerHTML = '<div class="card" style="border:1px solid #99f6e4;background:#f0fdfa"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">' +
+        '<div style="font-size:30px">&#128241;</div><div style="flex:1;min-width:200px"><b>Pasang aplikasi Android WASIAT</b><div class="muted" style="font-size:13px">Alarm berbunyi 10 menit sebelum jam mengajar, dan mengingatkan bila absen belum diisi 35 menit setelah jam dimulai, walau aplikasi sedang ditutup.</div></div>' +
+        '<a href="/unduh" class="btn" style="text-decoration:none"><button class="small">Unduh aplikasi</button></a> <button class="small secondary" id="ajakApkNanti">Nanti</button></div></div>';
+      var n = document.getElementById('ajakApkNanti'); if (n) n.onclick = function(){ try { localStorage.setItem('wasiat-ajak-apk-tutup', String(Date.now())); } catch(e){} el.innerHTML = ''; };
+      return;
+    }
+    var st = {}; try { st = JSON.parse(window.WasiatApp.statusIzin() || '{}'); } catch(e){}
+    var info = {}; try { info = JSON.parse(localStorage.getItem('wasiat-alarm-info') || '{}'); } catch(e){}
+    var masalah = [];
+    if (st.notifikasi === false) masalah.push(['notifikasi', 'Notifikasi WASIAT dimatikan, alarm tidak akan muncul.', 'Nyalakan notifikasi']);
+    if (st.alarmTepat === false) masalah.push(['alarm', 'Izin "Alarm & pengingat" belum diberikan, alarm bisa terlambat.', 'Beri izin alarm']);
+    if (st.layarPenuh === false) masalah.push(['layar', 'Alarm belum boleh tampil layar penuh saat HP terkunci.', 'Izinkan layar penuh']);
+    if (st.baterai === false) masalah.push(['baterai', 'Penghemat baterai dapat menunda alarm (terutama HP Xiaomi, Oppo, Vivo, Realme).', 'Matikan pembatasan baterai']);
+    var tgl = st.diperbarui ? new Date(st.diperbarui) : null;
+    el.innerHTML = '<div class="card" style="border:1px solid '+(masalah.length ? '#fde68a' : '#bbf7d0')+';background:'+(masalah.length ? '#fffbeb' : '#f0fdf4')+'">' +
+      '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center"><b>&#9200; Alarm jam mengajar '+(st.jumlahSesi ? 'aktif' : 'belum ada jadwal')+'</b>' +
+      '<span style="display:flex;gap:6px;flex-wrap:wrap"><button class="small secondary" id="alTes">&#128276; Tes alarm</button><button class="small secondary" id="alSegar">&#128260; Perbarui</button></span></div>' +
+      '<div class="muted" style="font-size:12.5px;margin-top:4px">'+(st.jumlahSesi || 0)+' sesi mengajar 7 hari ke depan sudah dipasang alarmnya: '+(st.menitSebelum || 10)+' menit sebelum mulai, dan '+(st.menitTelat || 35)+' menit setelah mulai bila absen belum diisi.' +
+        (tgl ? ' Diperbarui '+('0'+tgl.getHours()).slice(-2)+':'+('0'+tgl.getMinutes()).slice(-2)+'.' : '') +
+        (info.tanpaWaktu ? ' <span style="color:#b45309">'+info.tanpaWaktu+' sesi belum punya jam di Pengaturan, jadi tidak diberi alarm.</span>' : '') + '</div>' +
+      masalah.map(function(m){ return '<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:8px;font-size:13px"><span>&#9888;&#65039; '+esc(m[1])+'</span><button class="small alAtur" data-j="'+m[0]+'">'+esc(m[2])+'</button></div>'; }).join('') +
+      '<div id="alVersi"></div></div>';
+    var b1 = document.getElementById('alTes'); if (b1) b1.onclick = function(){ try { window.WasiatApp.tesAlarm(5); } catch(e){} b1.innerText = 'Alarm berbunyi 5 detik lagi...'; setTimeout(function(){ b1.innerHTML = '&#128276; Tes alarm'; }, 8000); };
+    var b2 = document.getElementById('alSegar'); if (b2) b2.onclick = function(){ b2.disabled = true; b2.innerText = 'Memperbarui...'; alarmSegarkan(true).then(function(){ widgetAlarmApk(id); }); };
+    el.querySelectorAll('.alAtur').forEach(function(b){ b.onclick = function(){ try { window.WasiatApp.bukaPengaturan(b.dataset.j); } catch(e){} }; });
+    // Versi aplikasi yang lebih baru tersedia?
+    fetch('/unduh/versi.json?t=' + Date.now(), {cache: 'no-store'}).then(function(r){ return r.ok ? r.json() : null; }).then(function(v){
+      var kini = 0; try { kini = Number(window.WasiatApp.versiKode()) || 0; } catch(e){}
+      var box = document.getElementById('alVersi');
+      if (v && box && Number(v.versionCode) > kini) box.innerHTML = '<div style="margin-top:8px;font-size:13px">&#11014;&#65039; Versi aplikasi baru tersedia ('+esc(v.versionName)+'). <a href="/unduh">Unduh pembaruan</a></div>';
+    }).catch(function(){});
+    // Muat ulang status setelah kembali dari pengaturan HP
+    if (!widgetAlarmApk._pasang) {
+      widgetAlarmApk._pasang = true;
+      document.addEventListener('visibilitychange', function(){ if (!document.hidden && document.getElementById(id)) widgetAlarmApk(id); });
+    }
   }
 
   function statusIzinNotif(){
@@ -2684,6 +2770,7 @@
       '<button class="bv-cta" id="btnHeroCta" type="button">Jelajahi Lebih Lanjut &#8595;</button>' +
       // Formulir SPMB bawaan (halaman /spmb.html, tersambung ke menu PPDB Online)
       '<a class="bv-cta garis" href="/spmb.html">Daftar Santri Baru</a>' +
+      (DI_APK ? '' : '<a class="bv-cta garis" href="/unduh">&#128241; Aplikasi Android</a>') +
       '</div>';
     // Menu ibadah (tautan & ikon sama seperti sebelumnya)
     var menuIbadah = [
@@ -6007,8 +6094,14 @@
     // Kalau izin notifikasi sudah pernah diberikan, muat SDK diam-diam supaya
     // perangkat ini tetap terdaftar dengan nama pengguna yang sedang login
     // (penting saat satu HP dipakai berganti akun).
-    if (statusIzinNotif() === 'granted') setTimeout(muatOneSignal, 3000);
+    if (DI_APK) { /* aplikasi Android memakai notifikasi & alarm bawaan HP */ }
+    else if (statusIzinNotif() === 'granted') setTimeout(muatOneSignal, 3000);
     else setTimeout(tawarkanAktifkanNotif, 14000);
+    // Dibuka dari notifikasi alarm (?buka=jadwal): langsung ke Jadwal & Absen
+    if (/[?&]buka=jadwal(&|$)/.test(location.search)) {
+      try { history.replaceState(null, '', location.pathname); } catch(e) {}
+      setTimeout(function(){ window.wasiatBuka('jadwal'); }, 50);
+    }
     lengkapiPeranSekretaris();
     var roles = STATE.user.roles || [STATE.user.level];
     // WaliSantri (orang tua) selalu dashboard sendiri
@@ -8837,16 +8930,16 @@
       var jadwalLain = res.data.filter(function(j){return !j.hariIni;});
 
       if (!res.data.length) {
-        c.innerHTML = '<div id="widgetTiketSusulan"></div><div id="widgetJamMengajarTop"></div><div id="widgetKehadiranSaya"></div><div class="card">'+
+        c.innerHTML = '<div id="widgetAlarmApk"></div><div id="widgetTiketSusulan"></div><div id="widgetJamMengajarTop"></div><div id="widgetKehadiranSaya"></div><div class="card">'+
           warnBox('Belum ada jadwal terdaftar untuk Anda. Minta Admin melengkapi jadwal di menu Kelola Mata Pelajaran.')+
           '</div>';
         widgetJamMengajarRingkas('widgetJamMengajarTop'); // jam halaqoh tetap terhitung walau tanpa jadwal mapel
         widgetKehadiranSaya('widgetKehadiranSaya');
-        widgetTiketSusulan('widgetTiketSusulan');
+        widgetTiketSusulan('widgetTiketSusulan'); widgetAlarmApk('widgetAlarmApk');
         return;
       }
 
-      var html = '<div id="widgetTiketSusulan"></div><div id="widgetJamMengajarTop"></div><div id="widgetKehadiranSaya"></div>' +
+      var html = '<div id="widgetAlarmApk"></div><div id="widgetTiketSusulan"></div><div id="widgetJamMengajarTop"></div><div id="widgetKehadiranSaya"></div>' +
         '<div class="card"><h3>&#128197; Jadwal Mengajar</h3>'+
         '<p class="muted">Hari ini: <b>'+hariIni+'</b>. Jadwal hari ini aktif (bisa diisi absen). Jadwal hari lain ditampilkan samar.</p></div>';
 
@@ -8928,7 +9021,7 @@
       });
       widgetJamMengajarRingkas('widgetJamMengajarTop');
       widgetKehadiranSaya('widgetKehadiranSaya');
-      widgetTiketSusulan('widgetTiketSusulan');
+      widgetTiketSusulan('widgetTiketSusulan'); widgetAlarmApk('widgetAlarmApk');
     });
   }
 
@@ -9068,6 +9161,7 @@
         api('submitAbsensi',{tanggal:tanggalDipakai, hari:hariDariTanggal(tanggalDipakai)||j.hari, jamKeList:j.jamKeList, mapel:j.mapel, kelas:j.kelas, pengampu:STATE.user.nama, items:items})
           .then(function(res2){
             if(!res2.ok){ document.getElementById('pesanSimpanAbsen').innerHTML=errBox(res2.error); btn.disabled=false; btn.innerText='Simpan Absensi'; return; }
+            try { if (!res2.offline) setTimeout(function(){ alarmSegarkan(true); }, 1500); } catch(e){}
             if(res2.offline){ document.getElementById('pesanSimpanAbsen').innerHTML='<div style="background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:10px;font-size:13px">'+res2.pesanOffline+'</div>'; btn.disabled=false; btn.innerText='Simpan Absensi'; return; }
             // Server melengkapi jam ke- yang bersambung di jadwal (mis. jam ke-1 & 2) -- ikuti hasilnya
             if (res2.jamKeList && res2.jamKeList.length > (j.jamKeList||[]).length) {
